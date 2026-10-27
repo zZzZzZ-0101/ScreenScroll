@@ -1,7 +1,7 @@
 # Progress
 
 ## Current milestone
-M1 — in progress. M0 done (tag `m0`, local only; see Known issues), except one unverified item: `pnpm dev` opening Chrome on a desktop (needs user).
+M1 — nearly done (see Remaining in M1). Next: M2 (smart pagination, Studio, export). M0 done (tag `m0`, local only; see Known issues), except one unverified item: `pnpm dev` opening Chrome on a desktop (needs user).
 
 ## Done
 ### M0 — Scaffold (2026-10-27)
@@ -17,32 +17,29 @@ M1 — in progress. M0 done (tag `m0`, local only; see Known issues), except one
 - `pnpm test` 8/8, `pnpm e2e` 2/2, `pnpm lint`, `pnpm typecheck` clean, `pnpm zip` → `scrollpress-0.0.1-chrome.zip` (78 kB).
 - `pnpm dev` builds `.output/chrome-mv3-dev` and starts the dev server; it could not auto-open Chrome in the cloud sandbox (no Chrome on PATH). Not yet tried on a desktop.
 
-### M1 — Capture engine (in progress, 2026-10-27)
-Working and verified:
-- Full-page and visible capture end to end: popup / hotkey → background injects `capture.js` → content script scrolls and settles → background paces `captureVisibleTab` (550 ms, quota backoff) → PNG frames + measured `docY` + real DPR into IndexedDB.
-- Scroll target: document vs largest inner scroller, cropped to the panel (`core/scroll-target.ts`). Verified on `inner-scroll.html`: only the panel, full height, no top bar or sidebar.
-- Fixed/sticky handling: sticky → relative, fixed top hidden after frame 1, fixed bottom hidden always, > 80%-viewport elements skipped. Verified on `sticky-header.html`: top bar once (48 px), sticky once, cookie bar absent.
-- Freeze stylesheet, video pause, `background-attachment: fixed` → scroll (code in place; no fixture yet for the last two).
-- Restore through `core/mutation-log.ts` (reverse, idempotent, error-tolerant). Verified after success: scroll back at 0, no leftover `<style>`, inline styles or nodes; sticky element's computed position restored.
-- Stitching geometry (`core/compose.ts`): each frame draws only rows no earlier frame covered. Stitched PNGs of all three fixtures inspected by eye: no seams, no repeats, no progress pill in the output.
-- Loop planner (`core/capture-plan.ts`): growth detection and hard caps (300 screens / 200k px) with explicit warnings; unit-tested.
-- Seam safety net (`core/registration.ts`): row-profile NCC registration with a confidence flag; unit-tested, **not yet wired** into the Studio.
-- Blocked-page detection (`core/blocked.ts`): unit-tested; the popup shows the message, not yet e2e-tested.
+### M1 — Capture engine (nearly done, 2026-10-27; 3 sessions)
+Everything below is covered by e2e tests in headless Chromium with the extension loaded, and the stitched output was inspected by eye for article, sticky-header, inner-scroll, lazy-images, iframe-xorigin, virtual-list and animations.
 
-Added in session 2:
-- Lazy content: `loading=lazy` → eager, `data-src`/`data-srcset` copied in only over placeholders (`core/lazy.ts`), preload pass (0.9 viewport / 120 ms, capped at the capture's screen limit or 60 s with a warning), one global image wait (≤ 5 s), per-frame visible-image wait (≤ 1.5 s) with a warning if any image was still loading. `lazy-images.html` serves images with a 2.5 s delay; the e2e test samples top/middle/bottom of all 12 images. **The test fails with the new code disabled and passes with it** (checked both ways, 3 stable runs). The first version of the test only sampled image centres and missed a half-blank image at a frame seam; the global wait fixed that.
-- Restore on Esc and on a failed frame grab: e2e tests compare the page with its pre-capture state. They found elements left with an empty `style=""`; `MutationLog` now removes those in a final pass.
-- Infinite scroll: `infinite.html` + e2e test, capture stops at the cap with "Page kept loading more content; captured the first N screens."
-- Cross-origin iframes: explicit warning; `iframe-xorigin.html` + e2e (one warning for the :5178 frame, none for the same-origin one). Stitched output inspected: both frames captured as pixels.
-- Modal / pop-up overlays: a visible fixed box in the middle band of the viewport is left in place with a warning (CAPTURE §4). `modal.html` + e2e. The one-click "Overlay killer" is M6.
-- Context menu: "Capture full page" / "Capture visible area". Not testable headless (needs a real right-click); needs a manual check.
+- **Pipeline**: popup / hotkey / context menu → background injects `capture.js` → content script scrolls, settles, collects hints → background paces `captureVisibleTab` (550 ms, quota backoff) → PNG frame + `docY` + real DPR + hints into IndexedDB. The session record holds tab and window ids, so a service-worker restart mid-capture is survived (tested by wiping in-memory state).
+- **Scroll target**: document vs largest inner scroller, cropped to the panel. `overflow: hidden` scroll locks on html/body are undone when nothing else scrolls (`scroll-lock.html`); app layouts keep their panel (`inner-scroll.html`).
+- **Fixed/sticky**: sticky → relative; fixed top hidden from frame 2 (before settling, because of the freeze stylesheet's 1 ms transitions); fixed bottom hidden; > 80% elements skipped; `background-attachment: fixed` → scroll (`fixed-background.html`, test fails with the conversion disabled); mid-viewport modals left in place with a warning (`modal.html`).
+- **Motion**: freeze stylesheet plus finishing already-running animations/transitions; two captures of `animations.html` are pixel-identical. Video pause is in place but untested (no video fixture).
+- **Lazy content**: eager images, `data-src` over placeholders, preload pass, global and per-frame image waits with a warning (`lazy-images.html` with 2.5 s image delay; test fails with the feature disabled).
+- **Restore**: `MutationLog` (reverse, idempotent, error-tolerant, removes empty `style=""`). Tested after success, Esc and an injected grab failure, comparing the page with its pre-capture state.
+- **Limits and warnings**: growth/caps (`infinite.html`), cross-origin iframes (`iframe-xorigin.html`), stuck scrolling, slow hints, images still loading, blocked pages (chrome:// tested; the message explains browser pages because Chrome hides their URL).
+- **DOM hints** (`lib/hints-collector.ts` → `core/hints.ts`): line boxes, line and block boundaries, keep-with-next, atomic elements, opaque regions, tables, text runs, links; de-duplicated across frames. Checked against independently measured line boxes on `article.html` and `inner-scroll.html`; all 1,000 rows of `virtual-list.html` reported once at their own position; fixed-header text reported once. Budget: on `huge.html` (150,000 px, 189 frames) median 14.7 ms, max 27.4 ms per frame.
+- **Stitching geometry** (`core/compose.ts`), **seam registration** (`core/registration.ts`, unit-tested, not wired yet).
 
-- DOM hints data model (`core/hints.ts`): types plus `mergeHints`, which de-duplicates entries from overlapping frames on rounded geometry and sorts deterministically; unit-tested. The content-script collector that fills it is not written yet.
+Speed: `huge.html` (150,000 px, 189 screens) captured in 2.1 minutes in headless Chromium, ≈ 0.67 s per screen, dominated by the 550 ms rate limit. Extrapolated, a 30-screen page takes ≈ 20 s plus the preload pass, inside the spec's 25 s target; not yet measured on a real laptop.
 
-Not done yet in M1: the per-frame DOM hints collector in the content script (the big remaining item, needed by M2 pagination); `pagehide` restore test; SW-restart safety; wiring the seam safety net; fixtures virtual-list, animations, huge; Studio tab opening after capture; manual real-site checks.
+Remaining in M1:
+- Seam safety net wiring (needs the Studio's compositor — M2).
+- `pagehide` restore test; video pause test.
+- Popup/hotkey/context-menu item stays unticked until the manual check (needs a real user gesture).
+- Manual real-site checks (Wikipedia, Gmail, Notion, Drive preview, MDN) — needs the user's browser.
 
-### Verified (end of session 2)
-`pnpm test` 75/75 (incl. offline guard), `pnpm e2e` 12/12, `pnpm lint` and `pnpm typecheck` clean.
+### Verified (end of session 3)
+`pnpm test` 75/75 (incl. offline guard), `pnpm e2e` 23/23 (4.4 min, incl. the 150,000 px page), `pnpm lint` and `pnpm typecheck` clean.
 
 ## Manual site checks
 | Site | Date | Capture | Header once | Images loaded | No text cut | Text searchable | Links | Time | Notes |
