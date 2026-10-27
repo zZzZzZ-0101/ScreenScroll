@@ -136,6 +136,8 @@ export async function download(
 ): Promise<void> {
   const blob = data instanceof Blob ? data : new Blob([data as BlobPart], { type: mime });
   const url = URL.createObjectURL(blob);
+  // e2e only: the test browser renames downloads, so record the name we asked for.
+  if (__SP_E2E__) await chrome.storage.session.set({ lastDownload: filename });
   try {
     await chrome.downloads.download({ url, filename, saveAs: false });
   } finally {
