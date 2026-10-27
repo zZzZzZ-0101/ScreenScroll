@@ -34,3 +34,5 @@ Format: `YYYY-MM-DD — decision — reason — alternatives considered`
 - 2026-10-27 — Started M2 with M1's manual real-site checks still open: they need the user's own browser, and the user said "continue" after being offered M2. M1 stays untagged until those checks are done.
 - 2026-10-27 — Filename tokens: `{title} {domain} {url} {yyyy} {mm} {dd} {HH} {min} {HHmm}`; `{mm}` is the month (as in the default template), minutes are `{min}` — avoids the month/minute ambiguity in PDF_OUTPUT §7.
 - 2026-10-27 — Fixed print scale is clamped to fit the printable width (with a flag for the UI) — content wider than the paper would otherwise be cut off at the right edge.
+- 2026-10-27 — A row's "dominant colour" (PAGINATION §4) is the grey window of width 2τ+1 holding the most pixels, not the single most common value — with ±8 JPEG noise the most common value can sit at the noise edge and flag the other half of the noise as ink (caught by a unit test).
+- 2026-10-27 — Pixel analysis uses luma grey — the spec allows grey or per-channel max; luma is cheaper and coloured text on a same-luma background is rare.

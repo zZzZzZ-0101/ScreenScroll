@@ -11,4 +11,5 @@ export * from './mutation-log.js';
 export * from './pixel.js';
 export * from './rate-limit.js';
 export * from './registration.js';
+export * from './rows.js';
 export * from './scroll-target.js';
