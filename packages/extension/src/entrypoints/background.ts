@@ -65,6 +65,8 @@ export default defineBackground(() => {
         imageWidth: size.width,
         imageHeight: size.height,
         blob,
+        hints: msg.hints,
+        hintsMs: msg.hintsMs,
       });
       return { ok: true };
     } catch (e) {

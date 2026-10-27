@@ -1,4 +1,4 @@
-import type { CaptureLimits, Rect } from '@scrollpress/core';
+import type { CaptureLimits, DomHints, Rect } from '@scrollpress/core';
 
 export type CaptureMode = 'full' | 'visible';
 
@@ -22,6 +22,10 @@ export interface GrabFrame {
   crop: Rect;
   /** `innerWidth`, to derive the real DPR from the image width. */
   viewportWidth: number;
+  /** DOM hints new in this frame (region coordinates). */
+  hints: DomHints;
+  /** Time spent collecting them, for the 50 ms budget. */
+  hintsMs: number;
 }
 
 /** Content script → background: capture finished (or failed / was cancelled). */

@@ -1,5 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { Rect } from '@scrollpress/core';
+import type { DomHints, Rect } from '@scrollpress/core';
 
 export interface SessionRecord {
   id: string;
@@ -23,6 +23,8 @@ export interface FrameRecord {
   imageWidth: number;
   imageHeight: number;
   blob: Blob;
+  hints: DomHints;
+  hintsMs: number;
 }
 
 interface Schema extends DBSchema {

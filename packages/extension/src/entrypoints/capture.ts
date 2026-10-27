@@ -11,6 +11,7 @@ import {
   type Rect,
   type ScrollCandidate,
 } from '@scrollpress/core';
+import { collectHints } from '@/lib/hints-collector';
 import type { CaptureDone, GrabFrame, GrabResult, StartCapture } from '@/lib/messages';
 
 // Injected on demand into the page (CAPTURE §2). All page changes go through `log` so they
@@ -85,6 +86,13 @@ async function run(msg: StartCapture): Promise<void> {
     const initialScrollHeight = target.scrollHeight;
     let lastOffset: number | null = null;
     let warnedImages = false;
+    const hintCtx = {
+      root: target.el ?? document.body,
+      crop: target.crop,
+      offset: 0,
+      seen: new Set<string>(),
+      skipTextRuns: false,
+    };
     for (let index = 0; ; index++) {
       if (cancelled) {
         status = 'cancelled';
@@ -108,6 +116,9 @@ async function run(msg: StartCapture): Promise<void> {
         break;
       }
       if (msg.mode === 'full') target.scrollTo(step.y);
+      // Before settling: the freeze stylesheet gives every property a 1 ms transition, so
+      // `visibility: hidden` only takes effect a frame later.
+      if (index === 1) hideFixedTop(log);
       const stillLoading = await settle();
       if (stillLoading > 0 && !warnedImages) {
         warnedImages = true;
@@ -118,7 +129,16 @@ async function run(msg: StartCapture): Promise<void> {
         warnings.push(STUCK_WARNING);
         break;
       }
-      if (index === 1) hideFixedTop(log);
+      // The pill hangs off <html>, outside the walk root, so it never appears in hints.
+      hintCtx.offset = measured;
+      const t0 = performance.now();
+      const hints = collectHints(hintCtx);
+      const hintsMs = performance.now() - t0;
+      if (hintsMs > 50 && !hintCtx.skipTextRuns) {
+        // CAPTURE §11 budget: keep line boxes, drop text runs for the rest of the capture.
+        hintCtx.skipTextRuns = true;
+        warnings.push('Page text was too slow to read; the PDF may not be fully searchable.');
+      }
       pill.set(`Capturing ${index + 1} · Esc to cancel`);
       pill.hide();
       await frames(2);
@@ -129,6 +149,8 @@ async function run(msg: StartCapture): Promise<void> {
         docY: measured,
         crop: target.crop,
         viewportWidth: innerWidth,
+        hints,
+        hintsMs,
       };
       const res = (await chrome.runtime.sendMessage(grab)) as GrabResult;
       pill.show();
