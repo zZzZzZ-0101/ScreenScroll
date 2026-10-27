@@ -16,6 +16,8 @@ export interface RowProfile {
   mode: Uint8Array;
   /** Pixels whose grey changes by more than τ from the row above: what a cut here would split. */
   damage: Uint16Array;
+  /** Per column: rows where the pixel is off its row's dominant colour (for side-cropping). */
+  colInk: Uint32Array;
 }
 
 export interface RowOptions {
@@ -36,6 +38,7 @@ export class RowAnalyzer {
   /** Non-uniform columns of rows that might be rule-only (null when too many). */
   private cols: Array<Int32Array | null> = [];
   private prev: Uint8Array | null = null;
+  private readonly colInk: Uint32Array;
   private readonly opts: RowOptions;
 
   constructor(
@@ -44,6 +47,7 @@ export class RowAnalyzer {
     opts: Partial<RowOptions> = {},
   ) {
     this.opts = { ...DEFAULT_ROW_OPTIONS, ...opts };
+    this.colInk = new Uint32Array(width);
   }
 
   push(img: GreyImage): void {
@@ -74,6 +78,9 @@ export class RowAnalyzer {
       }
       const m = Math.min(255, bestStart + tau);
       const off = x1 - x0 - best;
+      if (off > 0) {
+        for (let x = x0; x < x1; x++) if (Math.abs(row[x]! - m) > tau) this.colInk[x]!++;
+      }
       let cols: Int32Array | null = null;
       if (off > 0 && off <= maxRule) {
         cols = new Int32Array(off);
@@ -111,6 +118,7 @@ export class RowAnalyzer {
       safe,
       mode: Uint8Array.from(this.mode),
       damage: Uint16Array.from(this.damage),
+      colInk: this.colInk.slice(),
     };
   }
 }

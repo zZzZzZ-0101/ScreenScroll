@@ -36,3 +36,8 @@ Format: `YYYY-MM-DD — decision — reason — alternatives considered`
 - 2026-10-27 — Fixed print scale is clamped to fit the printable width (with a flag for the UI) — content wider than the paper would otherwise be cut off at the right edge.
 - 2026-10-27 — A row's "dominant colour" (PAGINATION §4) is the grey window of width 2τ+1 holding the most pixels, not the single most common value — with ±8 JPEG noise the most common value can sit at the noise edge and flag the other half of the noise as ink (caught by a unit test).
 - 2026-10-27 — Pixel analysis uses luma grey — the spec allows grey or per-channel max; luma is cheaper and coloured text on a same-luma background is rare.
+- 2026-10-27 — Pagination counts the forced-cut overlap inside T (a page with overlap is still ≤ T) — the page image must fit the printable box at scale s; TESTING's "≤ T + overlap" is the looser bound.
+- 2026-10-27 — Opaque regions shorter than 0.9·T get +8 on their pixel cuts (keep a chart together if possible); taller ones are cut freely at pixel gaps. Images taller than 0.5·T count as opaque (CAPTURE §11).
+- 2026-10-27 — Last-resort cuts: when no candidate sequence fits (no hints and no pixels, or pinned breaks further apart than a page), cuts every 8 px are added at badness 200 with overlap and the warning "no clean break was found" — the DP must always produce pages; never silently.
+- 2026-10-27 — PageSlice.breakKind adds `manual` (user-pinned break) to the spec's union; pixel-derived candidates keep their graded kind (section/paragraph/tableRow/line) so the Studio colours them like DOM breaks.
+- 2026-10-27 — Widow/orphan penalty (+6) applies to line-level cuts with fewer than 2 line boxes between the cut and the nearest block-level boundary on either side.

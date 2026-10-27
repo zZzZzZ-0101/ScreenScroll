@@ -1,6 +1,7 @@
 export * from './blocked.js';
 export * from './capture-plan.js';
 export * from './compose.js';
+export * from './crop.js';
 export * from './filename.js';
 export * from './geometry.js';
 export * from './hints.js';
@@ -8,6 +9,7 @@ export * from './image.js';
 export * from './layout.js';
 export * from './lazy.js';
 export * from './mutation-log.js';
+export * from './paginate.js';
 export * from './pixel.js';
 export * from './rate-limit.js';
 export * from './registration.js';
