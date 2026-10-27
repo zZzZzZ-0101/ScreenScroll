@@ -147,3 +147,19 @@ test('huge page: completes within the caps and hints stay inside the time budget
   );
   expect(ms.at(-1)!).toBeLessThan(50);
 });
+
+test('scroll-locked page: capture unlocks it, reaches the end, and locks it again', async ({
+  context,
+  serviceWorker,
+}) => {
+  const { page, result, hints } = await capture(context, serviceWorker, 'scroll-lock.html');
+  expect(result.done.status).toBe('complete');
+  expect(result.done.warnings).toEqual([]);
+  expect(hints.textRuns.some((t) => t.text.includes('END OF LOCKED PAGE'))).toBe(true);
+  expect(result.frames.length).toBeGreaterThanOrEqual(5);
+  const overflow = await page.evaluate(() => [
+    getComputedStyle(document.documentElement).overflowY,
+    getComputedStyle(document.body).overflowY,
+  ]);
+  expect(overflow).toEqual(['hidden', 'hidden']);
+});

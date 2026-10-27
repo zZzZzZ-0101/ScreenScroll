@@ -59,6 +59,11 @@ async function run(msg: StartCapture): Promise<void> {
 
   try {
     target = pickTarget();
+    // A dialog-style scroll lock (overflow hidden on html/body) leaves nothing to scroll.
+    // Only unlock when no inner scroller was found, so app layouts keep their panel.
+    if (!target.el && target.scrollHeight <= innerHeight + 2 && unlockScroll(log)) {
+      target = pickTarget();
+    }
     const startOffset = target.offset;
     const t = target;
     log.record(() => t.scrollTo(startOffset));
@@ -359,6 +364,19 @@ function unreadableIframes(): number {
     if (!readable) n++;
   }
   return n;
+}
+
+/** Sets `overflow: visible` on html/body when either hides vertical overflow. */
+function unlockScroll(log: MutationLog): boolean {
+  let changed = false;
+  for (const el of [document.documentElement, document.body]) {
+    const oy = getComputedStyle(el).overflowY;
+    if (oy === 'hidden' || oy === 'clip') {
+      log.setStyle(el, 'overflow', 'visible');
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 /** Top-anchored fixed headers appear in frame 1 only (CAPTURE §4). */
