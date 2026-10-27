@@ -31,3 +31,6 @@ Format: `YYYY-MM-DD — decision — reason — alternatives considered`
 - 2026-10-27 — Scroll locks (overflow hidden on html/body) are undone only when no inner scroller was chosen and the document can't scroll — app shells like Gmail also lock html/body but scroll a panel; unlocking them could make the document the target — always unlocking.
 - 2026-10-27 — Missing tab URL → "The browser blocks extensions on its own pages…" — without the `tabs` permission Chrome hides the URL of chrome:// and store pages, so they arrive with no URL; adding `tabs` just for a nicer message isn't worth the permission.
 - 2026-10-27 — The service worker keeps only a cache of each capture's window id; the session record in IndexedDB holds tab and window ids, so a restarted worker carries on.
+- 2026-10-27 — Started M2 with M1's manual real-site checks still open: they need the user's own browser, and the user said "continue" after being offered M2. M1 stays untagged until those checks are done.
+- 2026-10-27 — Filename tokens: `{title} {domain} {url} {yyyy} {mm} {dd} {HH} {min} {HHmm}`; `{mm}` is the month (as in the default template), minutes are `{min}` — avoids the month/minute ambiguity in PDF_OUTPUT §7.
+- 2026-10-27 — Fixed print scale is clamped to fit the printable width (with a flag for the UI) — content wider than the paper would otherwise be cut off at the right edge.
