@@ -9,13 +9,13 @@ Legend: `[ ]` todo · `(L#)` = lesson from `docs/PRIOR_ART.md` §7 · `→ DOC` 
 
 ## M0 — Scaffold (~1 h)
 
-- [ ] pnpm monorepo: `packages/core`, `packages/extension` (WXT, React, Tailwind), `packages/fixtures`. TS strict, ESLint, Prettier. → ARCHITECTURE
-- [ ] `pnpm dev` loads the unpacked extension in Chrome with hot reload. `pnpm build` produces `dist/chrome-mv3`. `pnpm zip` produces an installable zip.
-- [ ] Vitest in `core`. Playwright set up with the extension loaded (a smoke test opens the popup).
-- [ ] Offline guard test (bundle grep). → TESTING §1
-- [ ] Minimal manifest: `activeTab`, `scripting`, `storage`, `unlimitedStorage`, `downloads`, `clipboardWrite`, `contextMenus`; `commands` key for hotkeys. Icons (simple teal page-with-scissors glyph; SVG → PNG sizes).
-- [ ] `docs/DECISIONS.md` (append-only decision log) and `docs/PROGRESS.md` (status + manual-check results) created.
-- [ ] Port the reference Python prototype's whitespace logic to `core/pixel.ts` as a first test target.
+- [x] pnpm monorepo: `packages/core`, `packages/extension` (WXT, React, Tailwind), `packages/fixtures`. TS strict, ESLint, Prettier. → ARCHITECTURE
+- [ ] `pnpm dev` loads the unpacked extension in Chrome with hot reload (builds and serves; desktop launch not yet verified — see PROGRESS). `pnpm build` produces `packages/extension/.output/chrome-mv3` (see DECISIONS). `pnpm zip` produces an installable zip.
+- [x] Vitest in `core`. Playwright set up with the extension loaded (a smoke test opens the popup).
+- [x] Offline guard test (bundle grep). → TESTING §1
+- [x] Minimal manifest: `activeTab`, `scripting`, `storage`, `unlimitedStorage`, `downloads`, `clipboardWrite`, `contextMenus`; `commands` key for hotkeys. Icons (simple teal page-with-scissors glyph; SVG → PNG sizes).
+- [x] `docs/DECISIONS.md` (append-only decision log) and `docs/PROGRESS.md` (status + manual-check results) created.
+- [x] Port the reference Python prototype's whitespace logic to `core/pixel.ts` as a first test target.
 
 ## M1 — Capture engine: full page & visible (~4 h)
 

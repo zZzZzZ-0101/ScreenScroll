@@ -35,8 +35,24 @@ The key insight: **an extension that takes the screenshot itself can read the pa
 | `docs/PDF_OUTPUT.md` | PDF assembly: page geometry, invisible text layer, links, headers/footers |
 | `docs/UI.md` | Screens, interactions, keyboard shortcuts, visual design |
 | `docs/TESTING.md` | Fixture pages, automated tests, manual checklist |
+| `packages/core` | Pure TypeScript logic (pixel analysis, pagination, layout) with unit tests |
+| `packages/extension` | The WXT browser extension |
+| `packages/fixtures` | Local fixture pages and their static server |
+| `e2e/` | Playwright tests with the extension loaded |
 | `reference/` | A working Python prototype of whitespace-aware splitting, tested on a real capture |
 
 ## Status
 
-Specification only. Implementation starts from `KICKOFF_PROMPT.md`.
+M0 (scaffold) is done. See `docs/PROGRESS.md` for the current milestone.
+
+## Development
+
+```
+pnpm install
+pnpm dev          # WXT dev mode
+pnpm build        # → packages/extension/.output/chrome-mv3 (load unpacked)
+pnpm zip          # installable zip
+pnpm test         # unit tests + offline guard
+pnpm e2e          # Playwright with the extension loaded
+pnpm fixtures     # fixture pages on localhost:5177 and :5178
+```
