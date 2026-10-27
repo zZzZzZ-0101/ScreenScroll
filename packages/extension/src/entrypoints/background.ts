@@ -5,7 +5,9 @@ import { dataUrlToBlob, pngSize } from '@/lib/png';
 
 export default defineBackground(() => {
   const pacer = new Pacer();
-  const tabOf = new Map<string, chrome.tabs.Tab>();
+  // Window of each running capture. Only a cache: the service worker can be stopped at any
+  // time, so the session record in IndexedDB is the source of truth.
+  const windowOf = new Map<string, number>();
   const waiters = new Map<string, (done: CaptureDone) => void>();
   // e2e only: finished sessions (a test may wait after the capture already ended) and an
   // injected grab failure, to exercise the error path.
@@ -20,7 +22,7 @@ export default defineBackground(() => {
     const blocked = blockedReason(tab.url, await chrome.extension.isAllowedFileSchemeAccess());
     if (blocked || tab.id === undefined) throw new Error(blocked?.message ?? 'No tab to capture.');
     const id = crypto.randomUUID();
-    tabOf.set(id, tab);
+    windowOf.set(id, tab.windowId);
     await (
       await db()
     ).put('sessions', {
@@ -33,6 +35,8 @@ export default defineBackground(() => {
       docHeight: 0,
       frameCount: 0,
       warnings: [],
+      tabId: tab.id,
+      windowId: tab.windowId,
     });
     await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['/capture.js'] });
     await chrome.tabs.sendMessage(tab.id, { type: 'sp:start', sessionId: id, mode, limits });
@@ -40,15 +44,19 @@ export default defineBackground(() => {
   }
 
   async function grab(msg: GrabFrame): Promise<GrabResult> {
-    const tab = tabOf.get(msg.sessionId);
-    if (!tab) return { ok: false, error: 'Unknown capture session.' };
+    let windowId = windowOf.get(msg.sessionId);
+    if (windowId === undefined) {
+      windowId = (await (await db()).get('sessions', msg.sessionId))?.windowId;
+      if (windowId === undefined) return { ok: false, error: 'Unknown capture session.' };
+      windowOf.set(msg.sessionId, windowId);
+    }
     if (__SP_E2E__ && failGrabAt === msg.index) {
       failGrabAt = null;
       return { ok: false, error: 'Injected test failure' };
     }
     try {
       const dataUrl = await pacer.run(() =>
-        chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' }),
+        chrome.tabs.captureVisibleTab(windowId, { format: 'png' }),
       );
       const blob = dataUrlToBlob(dataUrl);
       const size = await pngSize(blob);
@@ -88,7 +96,7 @@ export default defineBackground(() => {
         warnings: msg.warnings,
       });
     }
-    tabOf.delete(msg.sessionId);
+    windowOf.delete(msg.sessionId);
     if (__SP_E2E__) finished.set(msg.sessionId, msg);
     waiters.get(msg.sessionId)?.(msg);
     waiters.delete(msg.sessionId);
@@ -156,6 +164,10 @@ export default defineBackground(() => {
         },
         failGrabAt(index: number | null) {
           failGrabAt = index;
+        },
+        /** Simulates a service-worker restart: all in-memory capture state is lost. */
+        forgetMemory() {
+          windowOf.clear();
         },
         async capture(tabId: number, mode: CaptureMode = 'full') {
           const hook = (globalThis as unknown as { __spTest: E2EHook }).__spTest;

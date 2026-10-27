@@ -11,6 +11,9 @@ export interface SessionRecord {
   docHeight: number;
   frameCount: number;
   warnings: string[];
+  /** Where the capture runs, so a restarted service worker can carry on. */
+  tabId: number;
+  windowId: number;
 }
 
 export interface FrameRecord {

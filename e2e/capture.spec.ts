@@ -318,3 +318,36 @@ test('CSS animations are frozen: two captures give identical pixels', async ({
   expect(imgA.height).toBe(imgB.height);
   expect(imgA.png.equals(imgB.png)).toBe(true);
 });
+
+test('capture survives the service worker losing its in-memory state', async ({
+  context,
+  serviceWorker,
+}) => {
+  const page = await context.newPage();
+  const url = `${FIXTURES}/article.html`;
+  await page.goto(url);
+  await page.bringToFront();
+  type RestartHook = {
+    start(id: number): Promise<string>;
+    wait(id: string): Promise<CaptureResult>;
+    forgetMemory(): void;
+  };
+  const id = await serviceWorker.evaluate(async (u) => {
+    const [tab] = await chrome.tabs.query({ url: u });
+    return (globalThis as unknown as { __spTest: RestartHook }).__spTest.start(tab!.id!);
+  }, url);
+  await expect
+    .poll(() => page.evaluate(() => document.scrollingElement!.scrollTop), { timeout: 20_000 })
+    .toBeGreaterThan(0);
+  await serviceWorker.evaluate(() =>
+    (globalThis as unknown as { __spTest: RestartHook }).__spTest.forgetMemory(),
+  );
+  const result = await serviceWorker.evaluate(
+    (i) => (globalThis as unknown as { __spTest: RestartHook }).__spTest.wait(i),
+    id,
+  );
+  expect(result.done.warnings).toEqual([]);
+  expect(result.done.status).toBe('complete');
+  const height = await page.evaluate(() => document.scrollingElement!.scrollHeight);
+  expect(result.frames.length).toBe(Math.ceil(height / 800));
+});
