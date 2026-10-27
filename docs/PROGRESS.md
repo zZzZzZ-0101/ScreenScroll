@@ -1,7 +1,7 @@
 # Progress
 
 ## Current milestone
-M0 — done (tag `m0`), except one unverified item: `pnpm dev` opening Chrome on a desktop (needs user). Next: M1 (capture engine).
+M1 — in progress. M0 done (tag `m0`, local only; see Known issues), except one unverified item: `pnpm dev` opening Chrome on a desktop (needs user).
 
 ## Done
 ### M0 — Scaffold (2026-10-27)
@@ -17,12 +17,30 @@ M0 — done (tag `m0`), except one unverified item: `pnpm dev` opening Chrome on
 - `pnpm test` 8/8, `pnpm e2e` 2/2, `pnpm lint`, `pnpm typecheck` clean, `pnpm zip` → `scrollpress-0.0.1-chrome.zip` (78 kB).
 - `pnpm dev` builds `.output/chrome-mv3-dev` and starts the dev server; it could not auto-open Chrome in the cloud sandbox (no Chrome on PATH). Not yet tried on a desktop.
 
+### M1 — Capture engine (in progress, 2026-10-27)
+Working and verified:
+- Full-page and visible capture end to end: popup / hotkey → background injects `capture.js` → content script scrolls and settles → background paces `captureVisibleTab` (550 ms, quota backoff) → PNG frames + measured `docY` + real DPR into IndexedDB.
+- Scroll target: document vs largest inner scroller, cropped to the panel (`core/scroll-target.ts`). Verified on `inner-scroll.html`: only the panel, full height, no top bar or sidebar.
+- Fixed/sticky handling: sticky → relative, fixed top hidden after frame 1, fixed bottom hidden always, > 80%-viewport elements skipped. Verified on `sticky-header.html`: top bar once (48 px), sticky once, cookie bar absent.
+- Freeze stylesheet, video pause, `background-attachment: fixed` → scroll (code in place; no fixture yet for the last two).
+- Restore through `core/mutation-log.ts` (reverse, idempotent, error-tolerant). Verified after success: scroll back at 0, no leftover `<style>`, inline styles or nodes; sticky element's computed position restored.
+- Stitching geometry (`core/compose.ts`): each frame draws only rows no earlier frame covered. Stitched PNGs of all three fixtures inspected by eye: no seams, no repeats, no progress pill in the output.
+- Loop planner (`core/capture-plan.ts`): growth detection and hard caps (300 screens / 200k px) with explicit warnings; unit-tested.
+- Seam safety net (`core/registration.ts`): row-profile NCC registration with a confidence flag; unit-tested, **not yet wired** into the Studio.
+- Blocked-page detection (`core/blocked.ts`): unit-tested; the popup shows the message, not yet e2e-tested.
+
+Not done yet in M1: preload pass for lazy content and `data-src` eager-ifying; per-frame DOM hints; context menu; `pagehide`/Esc/error restore tests; SW-restart safety; Studio tab opening after capture; fixtures lazy-images, virtual-list, infinite, modal, animations, huge; manual real-site checks.
+
+### Verified (end of session 1)
+`pnpm test` 55/55 (incl. offline guard), `pnpm e2e` 6/6, `pnpm lint` and `pnpm typecheck` clean.
+
 ## Manual site checks
 | Site | Date | Capture | Header once | Images loaded | No text cut | Text searchable | Links | Time | Notes |
 |---|---|---|---|---|---|---|---|---|---|
 
 ## Known issues
-- The popup's capture button is a disabled placeholder until M1.
+- Git tag `m0` exists locally but could not be pushed: the session's git proxy dropped the tag push (only the branch push is allowed). Push it from a normal clone with `git push origin m0`, or re-create it there.
+- After a capture nothing opens yet (the Studio is M2). Frames sit in IndexedDB.
 - The e2e build is a non-production (unminified, React dev) build. Fine for tests; the offline guard checks the production build.
 
 ## Needs from user

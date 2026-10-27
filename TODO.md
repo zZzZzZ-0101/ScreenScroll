@@ -21,13 +21,13 @@ Legend: `[ ]` todo · `(L#)` = lesson from `docs/PRIOR_ART.md` §7 · `→ DOC` 
 
 - [ ] Popup with "Capture full page" + "Visible area". Hotkeys via `commands`. Context menu entries. → UI §1
 - [ ] Content-script injection on demand. Blocked-page detection with clear messages. → CAPTURE §13
-- [ ] Scroll-target detection (document vs largest inner scroller), with crop rect for inner scrollers (L9). → CAPTURE §3
+- [x] Scroll-target detection (document vs largest inner scroller), with crop rect for inner scrollers (L9). → CAPTURE §3
 - [ ] Mutation log + bulletproof restore (success, error, Esc, pagehide) (L13). → CAPTURE §10
 - [ ] Freeze animations/transitions; pause videos. → CAPTURE §6
 - [ ] Sticky → relative; fixed top → hide after frame 1; fixed bottom → hide always; skip >80%-viewport fixed elements; `background-attachment: fixed` → scroll (L8). → CAPTURE §4
 - [ ] Unlock `overflow:hidden` scroll locks during capture, then restore.
 - [ ] Preload pass for lazy content; eager-ify lazy images; per-frame image `decode()` wait; `document.fonts.ready` (L10). → CAPTURE §5
-- [ ] Capture loop with measured offsets, ≥550 ms pacing, quota-error backoff. Actual DPR from the image width. → CAPTURE §9
+- [x] Capture loop with measured offsets, ≥550 ms pacing, quota-error backoff. Actual DPR from the image width. → CAPTURE §9
 - [ ] Frames streamed to IndexedDB as PNG blobs. SW restart-safe.
 - [ ] In-page progress pill, hidden during each grab; Esc cancels. → UI §2
 - [ ] Growth detection + hard cap + loud warnings, never silent truncation (L11).
