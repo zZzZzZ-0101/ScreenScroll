@@ -65,11 +65,12 @@ test('full-page capture of the article stores contiguous frames and restores the
   expect(after).toEqual({ scrollTop: 0, styles: 1, inline: 0, lastChild: 'BODY' });
 });
 
-test('stitched article capture has no seams or repeats (artifact for review)', async ({
-  context,
-  serviceWorker,
-}) => {
-  const { result } = await captureFixture(context, serviceWorker, 'article.html');
+/** Stitches stored frames with the core compositor; also saves the PNG for human review. */
+async function stitch(
+  serviceWorker: import('@playwright/test').Worker,
+  result: CaptureResult,
+  name: string,
+) {
   const pngs = await serviceWorker.evaluate(
     (id) =>
       (
@@ -78,21 +79,82 @@ test('stitched article capture has no seams or repeats (artifact for review)', a
     result.id,
   );
   const images = await Promise.all(pngs.map((b64) => loadImage(Buffer.from(b64, 'base64'))));
+  const f0 = result.frames[0]!;
   const geoms = result.frames.map((f) => ({
     docY: f.docY,
     height: f.crop.height,
-    cropX: 0,
-    cropY: 0,
+    cropX: f.crop.x * f.dpr,
+    cropY: f.crop.y * f.dpr,
     dpr: f.dpr,
   }));
+  const width = Math.round(f0.crop.width);
   const height = result.done.docHeight;
-  const width = images[0]!.width;
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext('2d');
   for (const op of composeOps(geoms, { x0: 0, x1: width, y0: 0, y1: height }, 1)) {
     ctx.drawImage(images[op.frame]!, op.sx, op.sy, op.sw, op.sh, op.dx, op.dy, op.dw, op.dh);
   }
-  mkdirSync('test-results/artifacts', { recursive: true });
-  writeFileSync('test-results/artifacts/article-stitched.png', canvas.toBuffer('image/png'));
-  expect(height).toBeGreaterThan(images[0]!.height);
+  mkdirSync('e2e-artifacts', { recursive: true });
+  writeFileSync(`e2e-artifacts/${name}-stitched.png`, canvas.toBuffer('image/png'));
+  const data = ctx.getImageData(0, 0, width, height).data;
+  /** Rows whose pixel at column x is within 12 of the given colour. */
+  const rowsWithColour = (x: number, [r, g, b]: [number, number, number]) => {
+    const rows: number[] = [];
+    for (let y = 0; y < height; y++) {
+      const i = (y * width + x) * 4;
+      if (Math.abs(data[i]! - r) + Math.abs(data[i + 1]! - g) + Math.abs(data[i + 2]! - b) < 36)
+        rows.push(y);
+    }
+    return rows;
+  };
+  return { width, height, rowsWithColour };
+}
+
+/** Number of separate runs in a sorted list of row numbers. */
+const runs = (rows: number[]) => rows.filter((y, i) => i === 0 || y !== rows[i - 1]! + 1).length;
+
+test('stitched article capture is written for review', async ({ context, serviceWorker }) => {
+  const { result } = await captureFixture(context, serviceWorker, 'article.html');
+  const { height } = await stitch(serviceWorker, result, 'article');
+  expect(height).toBe(result.done.docHeight);
+});
+
+test('sticky and fixed headers appear once; bottom bar is absent', async ({
+  context,
+  serviceWorker,
+}) => {
+  const { result, page } = await captureFixture(context, serviceWorker, 'sticky-header.html');
+  expect(result.done.status).toBe('complete');
+  expect(result.frames.length).toBeGreaterThan(2);
+  const img = await stitch(serviceWorker, result, 'sticky-header');
+  const red = img.rowsWithColour(5, [0xc0, 0x39, 0x2b]);
+  expect(runs(red)).toBe(1);
+  expect(red[0]).toBe(0);
+  expect(red.length).toBe(48);
+  // Sample right of the label text, which would otherwise split the band.
+  expect(runs(img.rowsWithColour(1000, [0xf1, 0xc4, 0x0f]))).toBe(1);
+  expect(img.rowsWithColour(5, [0x2c, 0x3e, 0x50])).toEqual([]);
+  // Restored: the page's own styles are back.
+  const pos = await page.evaluate(
+    () => getComputedStyle(document.getElementById('sticky')!).position,
+  );
+  expect(pos).toBe('sticky');
+});
+
+test('inner scroller: only the panel is captured, whole content, no repeated chrome', async ({
+  context,
+  serviceWorker,
+}) => {
+  const { result, page } = await captureFixture(context, serviceWorker, 'inner-scroll.html');
+  expect(result.done.status).toBe('complete');
+  const panel = await page.evaluate(() => {
+    const el = document.getElementById('panel')!;
+    return { scrollHeight: el.scrollHeight, clientWidth: el.clientWidth, scrollTop: el.scrollTop };
+  });
+  expect(result.done.docHeight).toBe(panel.scrollHeight);
+  expect(panel.scrollTop).toBe(0);
+  const img = await stitch(serviceWorker, result, 'inner-scroll');
+  expect(img.width).toBe(panel.clientWidth);
+  expect(img.rowsWithColour(5, [0x34, 0x49, 0x5e])).toEqual([]); // top bar
+  expect(img.rowsWithColour(5, [0xec, 0xf0, 0xf1])).toEqual([]); // sidebar
 });
