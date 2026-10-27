@@ -128,3 +128,22 @@ test('virtual list: recycled rows are all reported once, at their own positions'
     expect(Math.abs(ys[0]! - (60 + i * 30))).toBeLessThan(8);
   }
 });
+
+test('huge page: completes within the caps and hints stay inside the time budget', async ({
+  context,
+  serviceWorker,
+}) => {
+  test.setTimeout(600_000);
+  const { page, result, hints } = await capture(context, serviceWorker, 'huge.html');
+  const height = await page.evaluate(() => document.scrollingElement!.scrollHeight);
+  expect(height).toBeGreaterThan(140_000);
+  expect(result.done.status).toBe('complete');
+  expect(result.done.warnings).toEqual([]);
+  expect(result.frames.length).toBe(Math.ceil(height / 800));
+  expect(hints.textRuns.some((t) => t.text.includes('END OF HUGE PAGE'))).toBe(true);
+  const ms = result.frames.map((f) => f.hintsMs).sort((a, b) => a - b);
+  console.log(
+    `hints ms: median ${ms[Math.floor(ms.length / 2)]!.toFixed(1)}, max ${ms.at(-1)!.toFixed(1)}`,
+  );
+  expect(ms.at(-1)!).toBeLessThan(50);
+});

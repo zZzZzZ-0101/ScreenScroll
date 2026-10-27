@@ -13,8 +13,14 @@ const WEB_STORE_HOSTS = ['chromewebstore.google.com', 'microsoftedge.microsoft.c
  * capture can be attempted. `fileAccess` is `chrome.extension.isAllowedFileSchemeAccess()`.
  */
 export function blockedReason(url: string | undefined, fileAccess = false): BlockInfo | null {
+  // Without the `tabs` permission the browser hides the URL of restricted pages
+  // (chrome://, edge://, the store), so a missing URL almost always means one of those.
   if (!url) {
-    return { reason: 'no-url', message: 'This tab has no page to capture.' };
+    return {
+      reason: 'no-url',
+      message:
+        'This page can’t be captured. The browser blocks extensions on its own pages (chrome://, edge://) and on the extension store.',
+    };
   }
   let u: URL;
   try {

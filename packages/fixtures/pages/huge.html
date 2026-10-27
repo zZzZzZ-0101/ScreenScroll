@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Huge page fixture</title>
+<style>
+  body { margin: 0 auto; max-width: 760px; font: 16px/1.5 system-ui, sans-serif; padding: 16px; }
+  p { margin: 0 0 12px; height: 60px; overflow: hidden; }
+</style>
+</head>
+<body data-expect='{"height": 150000}'>
+<h1>Huge page fixture</h1>
+<main id="main"></main>
+<script>
+  // About 150,000 px of paragraphs, generated so the file stays small.
+  const main = document.getElementById('main');
+  const words = 'capture page break text line paragraph section frame document column'.split(' ');
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < 2080; i++) {
+    const p = document.createElement('p');
+    let s = `Paragraph ${i}.`;
+    for (let w = 0; w < 18; w++) s += ' ' + words[(i * 7 + w * 3) % words.length];
+    p.textContent = s;
+    frag.append(p);
+  }
+  main.append(frag);
+  document.getElementById('main').insertAdjacentHTML('beforeend', '<p id="end">END OF HUGE PAGE</p>');
+</script>
+</body>
+</html>
