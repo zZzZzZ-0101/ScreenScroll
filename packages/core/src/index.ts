@@ -16,3 +16,5 @@ export * from './rate-limit.js';
 export * from './registration.js';
 export * from './rows.js';
 export * from './scroll-target.js';
+// PDF assembly lives at '@scrollpress/core/pdf' so pdf-lib never lands in the service
+// worker or the content script.

@@ -8,6 +8,10 @@ Runtime dependencies are installed from npm and bundled at build time. All are p
 |---|---|---|
 | react, react-dom | MIT | extension UI |
 | tailwindcss | MIT | extension styles (build-time, emits CSS) |
+| pdf-lib (+ @pdf-lib/standard-fonts, @pdf-lib/upng) | MIT | PDF assembly in the Studio |
+| idb | ISC | IndexedDB wrapper |
+
+Dev-only (tests, never bundled): @napi-rs/canvas (MIT), pdfjs-dist (Apache-2.0), vitest, Playwright.
 
 Update this table when a runtime dependency is added.
 

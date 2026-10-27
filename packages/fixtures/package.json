@@ -10,5 +10,8 @@
   },
   "dependencies": {
     "@scrollpress/core": "workspace:*"
+  },
+  "devDependencies": {
+    "pdf-lib": "1.17.1"
   }
 }

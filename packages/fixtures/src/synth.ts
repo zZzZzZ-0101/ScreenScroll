@@ -48,13 +48,19 @@ class Builder {
     readonly theme: Theme,
     seed: number,
   ) {
-    this.seed = seed;
+    this.seed = seed * 2654435761 || 1; // spread small seeds; xorshift needs a non-zero state
     this.ctx.fillStyle = theme.bg;
     this.ctx.fillRect(0, 0, WIDTH, MAX_HEIGHT);
   }
 
+  /** xorshift32: a plain LCG has strong lattice patterns at fixed strides, which made the
+   * synthetic "photo" look like a few hundred colours to any sampler. */
   rand(): number {
-    this.seed = (this.seed * 1103515245 + 12345) >>> 0;
+    let x = this.seed;
+    x ^= x << 13;
+    x ^= x >>> 17;
+    x ^= x << 5;
+    this.seed = x >>> 0;
     return this.seed / 2 ** 32;
   }
 
@@ -200,10 +206,10 @@ class Builder {
     const top = this.y;
     const img = this.ctx.createImageData(WIDTH - 80, height);
     for (let i = 0; i < img.data.length; i += 4) {
-      const v = Math.floor(this.rand() * 255);
-      img.data[i] = v;
-      img.data[i + 1] = (v * 3) % 255;
-      img.data[i + 2] = 255 - v;
+      // Independent channels: thousands of distinct colours, like a real photo.
+      img.data[i] = Math.floor(this.rand() * 256);
+      img.data[i + 1] = Math.floor(this.rand() * 256);
+      img.data[i + 2] = Math.floor(this.rand() * 256);
       img.data[i + 3] = 255;
     }
     this.ctx.putImageData(img, 40, top);

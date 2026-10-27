@@ -111,6 +111,9 @@ function writeOverlay(doc: SynthDoc, d: ReturnType<typeof paginateDebug>, mode: 
     sctx.fillStyle = 'rgba(217, 48, 37, 0.9)';
     sctx.fillRect(0, sl.y1 - top, 40, 1);
     sctx.fillRect(doc.width - 40, sl.y1 - top, 40, 1);
-    writeFileSync(new URL(`${doc.name}-${mode}-break${i + 1}.png`, OUT), strip.toBuffer('image/png'));
+    writeFileSync(
+      new URL(`${doc.name}-${mode}-break${i + 1}.png`, OUT),
+      strip.toBuffer('image/png'),
+    );
   });
 }
