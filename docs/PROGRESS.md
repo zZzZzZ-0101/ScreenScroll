@@ -36,10 +36,12 @@ Added in session 2:
 - Cross-origin iframes: explicit warning; `iframe-xorigin.html` + e2e (one warning for the :5178 frame, none for the same-origin one). Stitched output inspected: both frames captured as pixels.
 - Context menu: "Capture full page" / "Capture visible area". Not testable headless (needs a real right-click); needs a manual check.
 
-Not done yet in M1: per-frame DOM hints (the big remaining item, needed by M2 pagination); `pagehide` restore test; SW-restart safety; wiring the seam safety net; modal overlay warning; fixtures virtual-list, modal, animations, huge; Studio tab opening after capture; manual real-site checks.
+- DOM hints data model (`core/hints.ts`): types plus `mergeHints`, which de-duplicates entries from overlapping frames on rounded geometry and sorts deterministically; unit-tested. The content-script collector that fills it is not written yet.
+
+Not done yet in M1: the per-frame DOM hints collector in the content script (the big remaining item, needed by M2 pagination); `pagehide` restore test; SW-restart safety; wiring the seam safety net; modal overlay warning; fixtures virtual-list, modal, animations, huge; Studio tab opening after capture; manual real-site checks.
 
 ### Verified (end of session 2)
-`pnpm test` 72/72 (incl. offline guard), `pnpm e2e` 11/11, `pnpm lint` and `pnpm typecheck` clean.
+`pnpm test` 75/75 (incl. offline guard), `pnpm e2e` 11/11, `pnpm lint` and `pnpm typecheck` clean.
 
 ## Manual site checks
 | Site | Date | Capture | Header once | Images loaded | No text cut | Text searchable | Links | Time | Notes |

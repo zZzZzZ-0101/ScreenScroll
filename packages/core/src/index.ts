@@ -2,6 +2,7 @@ export * from './blocked.js';
 export * from './capture-plan.js';
 export * from './compose.js';
 export * from './geometry.js';
+export * from './hints.js';
 export * from './image.js';
 export * from './lazy.js';
 export * from './mutation-log.js';
