@@ -1,4 +1,5 @@
 import {
+  DEFAULT_LIMITS,
   LAZY_SRCSET_ATTRS,
   LAZY_SRC_ATTRS,
   MutationLog,
@@ -63,7 +64,11 @@ async function run(msg: StartCapture): Promise<void> {
     prepare(log, target);
     eagerLoadImages(log);
     if (msg.mode === 'full') {
-      const preload = await preloadPass(target, () => cancelled);
+      const preload = await preloadPass(
+        target,
+        () => cancelled,
+        Math.min(200, msg.limits?.maxScreens ?? DEFAULT_LIMITS.maxScreens),
+      );
       if (preload) warnings.push(preload);
       target.scrollTo(0);
     }
@@ -82,13 +87,16 @@ async function run(msg: StartCapture): Promise<void> {
       const step =
         msg.mode === 'visible' && lastOffset !== null
           ? ({ kind: 'stop', reason: 'done', warning: null } as const)
-          : nextStep({
-              viewportHeight: target.crop.height,
-              scrollHeight: target.scrollHeight,
-              lastOffset,
-              framesTaken: index,
-              initialScrollHeight,
-            });
+          : nextStep(
+              {
+                viewportHeight: target.crop.height,
+                scrollHeight: target.scrollHeight,
+                lastOffset,
+                framesTaken: index,
+                initialScrollHeight,
+              },
+              msg.limits,
+            );
       if (step.kind === 'stop') {
         if (step.warning) warnings.push(step.warning);
         break;
@@ -259,16 +267,22 @@ function eagerLoadImages(log: MutationLog): void {
 
 /**
  * CAPTURE §5 preload pass: scroll through quickly so scroll-triggered loaders fire.
- * Capped at 60 s or 200 screens; returns a warning when the cap cut it short.
+ * Stops at `maxScreens` (no point loading what capture won't reach; capture warns about
+ * that itself) or after 60 s, which returns a warning.
  */
-async function preloadPass(target: Target, cancelled: () => boolean): Promise<string | null> {
+async function preloadPass(
+  target: Target,
+  cancelled: () => boolean,
+  maxScreens: number,
+): Promise<string | null> {
   const started = performance.now();
   const step = Math.max(1, Math.floor(target.crop.height * 0.9));
   for (let y = 0, screens = 0; ; y += step, screens++) {
     if (cancelled()) return null;
     if (y >= target.scrollHeight - target.crop.height) return null;
-    if (screens >= 200 || performance.now() - started > 60_000) {
-      return 'Stopped preloading after 200 screens or 60 s; images further down may be missing.';
+    if (screens >= maxScreens) return null;
+    if (performance.now() - started > 60_000) {
+      return 'Preloading stopped after 60 s; images further down may be missing.';
     }
     target.scrollTo(y);
     await sleep(120);

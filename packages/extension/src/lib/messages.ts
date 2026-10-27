@@ -1,4 +1,4 @@
-import type { Rect } from '@scrollpress/core';
+import type { CaptureLimits, Rect } from '@scrollpress/core';
 
 export type CaptureMode = 'full' | 'visible';
 
@@ -7,6 +7,8 @@ export interface StartCapture {
   type: 'sp:start';
   sessionId: string;
   mode: CaptureMode;
+  /** Defaults to 300 screens / 200,000 px; tests pass lower caps. */
+  limits?: CaptureLimits;
 }
 
 /** Content script → background: grab the visible tab for this frame. */

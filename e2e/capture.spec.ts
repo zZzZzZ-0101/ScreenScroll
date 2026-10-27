@@ -250,3 +250,30 @@ test('a failed frame grab ends with an error warning and restores the page', asy
   expect(result.frames).toHaveLength(2);
   expect(await pageState(page)).toEqual(before);
 });
+
+test('an infinite page stops at the cap with an explicit warning', async ({
+  context,
+  serviceWorker,
+}) => {
+  const page = await context.newPage();
+  const url = `${FIXTURES}/infinite.html`;
+  await page.goto(url);
+  await page.bringToFront();
+  const result = await serviceWorker.evaluate(async (u) => {
+    const hook = (
+      globalThis as unknown as {
+        __spTest: {
+          start(id: number, mode: string, limits: object): Promise<string>;
+          wait(id: string): Promise<CaptureResult>;
+        };
+      }
+    ).__spTest;
+    const [tab] = await chrome.tabs.query({ url: u });
+    return hook.wait(await hook.start(tab!.id!, 'full', { maxScreens: 6, maxHeight: 1e9 }));
+  }, url);
+  expect(result.frames).toHaveLength(6);
+  expect(result.done.status).toBe('complete');
+  expect(result.done.warnings).toEqual([
+    'Page kept loading more content; captured the first 6 screens.',
+  ]);
+});

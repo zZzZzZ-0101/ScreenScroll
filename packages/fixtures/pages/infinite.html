@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Infinite scroll fixture</title>
+<style>
+  body { margin: 0 auto; max-width: 700px; font: 16px/1.5 system-ui, sans-serif; padding: 16px; }
+  .card { border: 1px solid #ccc; border-radius: 6px; padding: 12px; margin: 12px 0; }
+</style>
+</head>
+<body data-expect='{"warning": "kept loading"}'>
+<h1>Infinite scroll fixture</h1>
+<div id="feed"></div>
+<script>
+  // Appends another batch whenever the reader gets near the bottom, forever.
+  const feed = document.getElementById('feed');
+  let n = 0;
+  function batch() {
+    for (let i = 0; i < 10; i++, n++) {
+      const d = document.createElement('div');
+      d.className = 'card';
+      d.textContent = `Item ${n}: more content keeps arriving as you scroll down the page.`;
+      feed.append(d);
+    }
+  }
+  batch(); batch();
+  addEventListener('scroll', () => {
+    if (scrollY + innerHeight > document.documentElement.scrollHeight - 1200) batch();
+  });
+</script>
+</body>
+</html>

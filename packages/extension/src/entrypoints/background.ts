@@ -1,4 +1,4 @@
-import { Pacer, blockedReason } from '@scrollpress/core';
+import { Pacer, blockedReason, type CaptureLimits } from '@scrollpress/core';
 import { db } from '@/lib/db';
 import type { CaptureDone, CaptureMode, GrabFrame, GrabResult, ToBackground } from '@/lib/messages';
 import { dataUrlToBlob, pngSize } from '@/lib/png';
@@ -12,7 +12,11 @@ export default defineBackground(() => {
   const finished = new Map<string, CaptureDone>();
   let failGrabAt: number | null = null;
 
-  async function startCapture(tab: chrome.tabs.Tab, mode: CaptureMode): Promise<string> {
+  async function startCapture(
+    tab: chrome.tabs.Tab,
+    mode: CaptureMode,
+    limits?: CaptureLimits,
+  ): Promise<string> {
     const blocked = blockedReason(tab.url, await chrome.extension.isAllowedFileSchemeAccess());
     if (blocked || tab.id === undefined) throw new Error(blocked?.message ?? 'No tab to capture.');
     const id = crypto.randomUUID();
@@ -31,7 +35,7 @@ export default defineBackground(() => {
       warnings: [],
     });
     await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['/capture.js'] });
-    await chrome.tabs.sendMessage(tab.id, { type: 'sp:start', sessionId: id, mode });
+    await chrome.tabs.sendMessage(tab.id, { type: 'sp:start', sessionId: id, mode, limits });
     return id;
   }
 
@@ -125,8 +129,12 @@ export default defineBackground(() => {
     // Test hook: Playwright cannot click the toolbar button, so it calls this directly.
     Object.assign(globalThis, {
       __spTest: {
-        async start(tabId: number, mode: CaptureMode = 'full'): Promise<string> {
-          return startCapture(await chrome.tabs.get(tabId), mode);
+        async start(
+          tabId: number,
+          mode: CaptureMode = 'full',
+          limits?: CaptureLimits,
+        ): Promise<string> {
+          return startCapture(await chrome.tabs.get(tabId), mode, limits);
         },
         failGrabAt(index: number | null) {
           failGrabAt = index;
@@ -171,6 +179,6 @@ interface PopupCapture {
 }
 
 interface E2EHook {
-  start(tabId: number, mode?: CaptureMode): Promise<string>;
+  start(tabId: number, mode?: CaptureMode, limits?: CaptureLimits): Promise<string>;
   wait(id: string): Promise<unknown>;
 }
