@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tall image fixture</title>
+<style>
+  body { margin: 0 auto; max-width: 720px; font: 16px/1.5 system-ui, sans-serif; padding: 16px; }
+  img { display: block; width: 640px; height: 3200px; margin: 16px 0; }
+</style>
+</head>
+<body data-expect='{"forcedCut": true}'>
+<h1>Tall image fixture</h1>
+<p>An image about three pages tall with no clean row anywhere, like a photo. It has to be split with an overlap and a warning.</p>
+<img id="photo" alt="noise">
+<p>Text after the image.</p>
+<p>End.</p>
+<script>
+  // Noise generated at load (deterministic) so the repo doesn't carry a large binary.
+  const c = document.createElement('canvas');
+  c.width = 320; c.height = 1600;
+  const ctx = c.getContext('2d');
+  const img = ctx.createImageData(c.width, c.height);
+  let s = 12345;
+  for (let i = 0; i < img.data.length; i++) {
+    s ^= s << 13; s ^= s >>> 17; s ^= s << 5;
+    img.data[i] = (i & 3) === 3 ? 255 : (s >>> 0) & 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  document.getElementById('photo').src = c.toDataURL('image/png');
+</script>
+</body>
+</html>

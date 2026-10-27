@@ -15,6 +15,8 @@ const URL_ALLOW = [
   /^http:\/\/www\.w3\.org\//,
   /^https:\/\/react\.dev\/errors\//,
   /^https:\/\/tailwindcss\.com$/,
+  // pdf-lib's default "Producer" metadata string; we overwrite it and never request it.
+  /^https:\/\/github\.com\/Hopding\/pdf-lib$/,
 ];
 
 function files(dir: string): string[] {

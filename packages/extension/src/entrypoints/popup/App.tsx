@@ -1,9 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { PAPERS, type PaperId } from '@scrollpress/core';
+import { loadSettings, saveSettings, type Settings } from '@/lib/settings';
 
 type Mode = 'full' | 'visible';
 
 export function App() {
   const [error, setError] = useState<string | null>(null);
+  const [settings, setSettings] = useState<Settings | null>(null);
+  useEffect(() => {
+    void loadSettings().then(setSettings);
+  }, []);
+  const update = async (patch: Partial<Settings>) => setSettings(await saveSettings(patch));
 
   async function capture(mode: Mode) {
     setError(null);
@@ -34,6 +41,44 @@ export function App() {
         <span>Visible area</span>
         <kbd className="font-sans text-neutral-500">Alt+Shift+V</kbd>
       </button>
+      {settings && (
+        <div className="mt-3 border-t border-neutral-200 pt-2 dark:border-neutral-700">
+          <fieldset>
+            <legend className="mb-1 text-neutral-500">After capture</legend>
+            {(
+              [
+                ['studio', 'Open Studio'],
+                ['pdf', 'Save PDF directly'],
+              ] as const
+            ).map(([value, label]) => (
+              <label key={value} className="mr-3 inline-flex items-center gap-1">
+                <input
+                  type="radio"
+                  name="after"
+                  checked={settings.afterCapture === value}
+                  onChange={() => void update({ afterCapture: value })}
+                  className="accent-[#0e7c7b]"
+                />
+                {label}
+              </label>
+            ))}
+          </fieldset>
+          <label className="mt-2 flex items-center justify-between">
+            <span className="text-neutral-500">Paper</span>
+            <select
+              className="rounded-md border border-neutral-300 bg-white px-2 py-0.5 dark:border-neutral-700 dark:bg-neutral-900"
+              value={typeof settings.page.paper === 'string' ? settings.page.paper : 'A4'}
+              onChange={(e) =>
+                void update({ page: { ...settings.page, paper: e.target.value as PaperId } })
+              }
+            >
+              {Object.keys(PAPERS).map((id) => (
+                <option key={id}>{id}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
       {error && (
         <p
           role="alert"

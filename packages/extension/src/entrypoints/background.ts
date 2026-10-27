@@ -2,6 +2,7 @@ import { Pacer, blockedReason, type CaptureLimits } from '@scrollpress/core';
 import { db } from '@/lib/db';
 import type { CaptureDone, CaptureMode, GrabFrame, GrabResult, ToBackground } from '@/lib/messages';
 import { dataUrlToBlob, pngSize } from '@/lib/png';
+import { loadSettings } from '@/lib/settings';
 
 export default defineBackground(() => {
   const pacer = new Pacer();
@@ -97,9 +98,21 @@ export default defineBackground(() => {
       });
     }
     windowOf.delete(msg.sessionId);
+    // UI §7: whatever was captured opens, even after a cancel or an error; the Studio says why.
+    if (frameCount > 0) await openStudio(msg.sessionId);
     if (__SP_E2E__) finished.set(msg.sessionId, msg);
     waiters.get(msg.sessionId)?.(msg);
     waiters.delete(msg.sessionId);
+  }
+
+  async function openStudio(sessionId: string): Promise<void> {
+    const { afterCapture } = await loadSettings();
+    const direct = afterCapture === 'pdf';
+    const url = chrome.runtime.getURL(
+      `/studio.html?session=${encodeURIComponent(sessionId)}${direct ? '&auto=pdf' : ''}`,
+    );
+    // "Save PDF directly" works in a background tab that closes itself when done.
+    await chrome.tabs.create({ url, active: !direct });
   }
 
   chrome.runtime.onMessage.addListener((msg: ToBackground | PopupCapture, _sender, reply) => {

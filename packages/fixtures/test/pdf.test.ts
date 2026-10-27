@@ -44,9 +44,14 @@ async function pageImages(doc: SynthDoc, slices: PageSlice[]): Promise<PageImage
   );
 }
 
+/** pdf.js needs its own font data to draw the standard 14 fonts (our Helvetica footer). */
+const STANDARD_FONTS = new URL('../../../node_modules/pdfjs-dist/standard_fonts/', import.meta.url)
+  .pathname;
+
 async function renderPdfPage(bytes: Uint8Array, pageNo: number, file: string) {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  const pdf = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+  const pdf = await pdfjs.getDocument({ data: bytes.slice(), standardFontDataUrl: STANDARD_FONTS })
+    .promise;
   const page = await pdf.getPage(pageNo);
   const vp = page.getViewport({ scale: 1.5 });
   const canvas = createCanvas(Math.ceil(vp.width), Math.ceil(vp.height));
