@@ -242,6 +242,16 @@ function prepare(log: MutationLog, target: Target): string[] {
   style.textContent = FREEZE_CSS;
   document.documentElement.append(style);
   log.record(() => style.remove());
+  // The stylesheet only affects animations that start from now on; jump the running ones
+  // (fade-ins, already-started transitions) to their end state. Infinite CSS animations are
+  // finite now (iteration count 1), so finish() works on them; anything else is skipped.
+  for (const a of document.getAnimations()) {
+    try {
+      a.finish();
+    } catch {
+      // Infinite script-driven animations can't be finished.
+    }
+  }
 
   for (const v of document.querySelectorAll('video')) {
     if (!v.paused) {

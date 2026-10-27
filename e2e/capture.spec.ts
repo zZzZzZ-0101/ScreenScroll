@@ -95,7 +95,8 @@ async function stitch(
     ctx.drawImage(images[op.frame]!, op.sx, op.sy, op.sw, op.sh, op.dx, op.dy, op.dw, op.dh);
   }
   mkdirSync('e2e-artifacts', { recursive: true });
-  writeFileSync(`e2e-artifacts/${name}-stitched.png`, canvas.toBuffer('image/png'));
+  const png = canvas.toBuffer('image/png');
+  writeFileSync(`e2e-artifacts/${name}-stitched.png`, png);
   const data = ctx.getImageData(0, 0, width, height).data;
   /** Rows whose pixel at column x is within 12 of the given colour. */
   const rowsWithColour = (x: number, [r, g, b]: [number, number, number]) => {
@@ -111,7 +112,7 @@ async function stitch(
     const i = (y * width + x) * 4;
     return [data[i]!, data[i + 1]!, data[i + 2]!];
   };
-  return { width, height, rowsWithColour, colourAt };
+  return { width, height, rowsWithColour, colourAt, png };
 }
 
 /** Number of separate runs in a sorted list of row numbers. */
@@ -303,4 +304,17 @@ test('virtual list stitched for review', async ({ context, serviceWorker }) => {
   const { result } = await captureFixture(context, serviceWorker, 'virtual-list.html');
   const img = await stitch(serviceWorker, result, 'virtual-list');
   expect(img.height).toBe(60 + 1000 * 30);
+});
+
+test('CSS animations are frozen: two captures give identical pixels', async ({
+  context,
+  serviceWorker,
+}) => {
+  const a = await captureFixture(context, serviceWorker, 'animations.html');
+  const imgA = await stitch(serviceWorker, a.result, 'animations-1');
+  await a.page.close();
+  const b = await captureFixture(context, serviceWorker, 'animations.html');
+  const imgB = await stitch(serviceWorker, b.result, 'animations-2');
+  expect(imgA.height).toBe(imgB.height);
+  expect(imgA.png.equals(imgB.png)).toBe(true);
 });

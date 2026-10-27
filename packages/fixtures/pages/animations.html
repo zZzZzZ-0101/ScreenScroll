@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Animations fixture</title>
+<style>
+  body { margin: 0 auto; max-width: 700px; font: 16px/1.5 system-ui, sans-serif; padding: 16px; }
+  .box { width: 80px; height: 80px; background: #0e7c7b; margin: 24px 0; }
+  .slide { animation: slide 1.7s linear infinite alternate; }
+  .spin { animation: spin 0.9s linear infinite; }
+  .pulse { animation: pulse 1.3s ease-in-out infinite; }
+  .fade { opacity: 0.2; transition: opacity 3s; }
+  .fade.on { opacity: 1; }
+  @keyframes slide { from { transform: translateX(0); } to { transform: translateX(500px); } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulse { 50% { background: #e67e22; } }
+  .spacer { height: 900px; }
+</style>
+</head>
+<body data-expect='{"stable": true}'>
+<h1>Animations fixture</h1>
+<div class="box slide"></div>
+<div class="box spin"></div>
+<div class="spacer"></div>
+<div class="box pulse"></div>
+<div class="box fade" id="fade"></div>
+<p>End.</p>
+<script>
+  // Starts a long transition just before capture would begin.
+  setTimeout(() => document.getElementById('fade').classList.add('on'), 50);
+</script>
+</body>
+</html>
