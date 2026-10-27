@@ -351,3 +351,28 @@ test('capture survives the service worker losing its in-memory state', async ({
   const height = await page.evaluate(() => document.scrollingElement!.scrollHeight);
   expect(result.frames.length).toBe(Math.ceil(height / 800));
 });
+
+test('fixed backgrounds scroll with the page instead of repeating per frame', async ({
+  context,
+  serviceWorker,
+}) => {
+  const { result, page } = await captureFixture(context, serviceWorker, 'fixed-background.html');
+  const hero = await page.evaluate(() => {
+    const r = document.getElementById('hero')!.getBoundingClientRect();
+    return { top: r.top + scrollY, height: r.height };
+  });
+  const img = await stitch(serviceWorker, result, 'fixed-background');
+  // Red falls steadily from top to bottom of the element: one gradient, not one per frame.
+  const reds = Array.from({ length: 9 }, (_, i) => {
+    const y = Math.round(hero.top + 10 + (i * (hero.height - 20)) / 8);
+    return img.colourAt(640, y)[0]!;
+  });
+  for (let i = 1; i < reds.length; i++) expect(reds[i]!).toBeLessThan(reds[i - 1]!);
+  expect(reds[0]!).toBeGreaterThan(240);
+  expect(reds.at(-1)!).toBeLessThan(15);
+  expect(
+    await page.evaluate(
+      () => getComputedStyle(document.getElementById('hero')!).backgroundAttachment,
+    ),
+  ).toBe('fixed');
+});

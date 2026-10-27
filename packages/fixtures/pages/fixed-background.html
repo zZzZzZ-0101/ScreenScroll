@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fixed background fixture</title>
+<style>
+  body { margin: 0; font: 16px/1.5 system-ui, sans-serif; }
+  h1 { margin: 0; padding: 16px; height: 40px; }
+  #hero { height: 2400px; background: linear-gradient(rgb(255, 0, 0), rgb(0, 0, 255)) fixed; }
+  p { padding: 16px; }
+</style>
+</head>
+<body data-expect='{"gradientContinuous": true}'>
+<h1>Fixed background fixture</h1>
+<div id="hero"></div>
+<p>End.</p>
+</body>
+</html>
