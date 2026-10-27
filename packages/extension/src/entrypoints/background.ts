@@ -7,6 +7,10 @@ export default defineBackground(() => {
   const pacer = new Pacer();
   const tabOf = new Map<string, chrome.tabs.Tab>();
   const waiters = new Map<string, (done: CaptureDone) => void>();
+  // e2e only: finished sessions (a test may wait after the capture already ended) and an
+  // injected grab failure, to exercise the error path.
+  const finished = new Map<string, CaptureDone>();
+  let failGrabAt: number | null = null;
 
   async function startCapture(tab: chrome.tabs.Tab, mode: CaptureMode): Promise<string> {
     const blocked = blockedReason(tab.url, await chrome.extension.isAllowedFileSchemeAccess());
@@ -34,6 +38,10 @@ export default defineBackground(() => {
   async function grab(msg: GrabFrame): Promise<GrabResult> {
     const tab = tabOf.get(msg.sessionId);
     if (!tab) return { ok: false, error: 'Unknown capture session.' };
+    if (__SP_E2E__ && failGrabAt === msg.index) {
+      failGrabAt = null;
+      return { ok: false, error: 'Injected test failure' };
+    }
     try {
       const dataUrl = await pacer.run(() =>
         chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' }),
@@ -75,6 +83,7 @@ export default defineBackground(() => {
       });
     }
     tabOf.delete(msg.sessionId);
+    if (__SP_E2E__) finished.set(msg.sessionId, msg);
     waiters.get(msg.sessionId)?.(msg);
     waiters.delete(msg.sessionId);
   }
@@ -116,10 +125,20 @@ export default defineBackground(() => {
     // Test hook: Playwright cannot click the toolbar button, so it calls this directly.
     Object.assign(globalThis, {
       __spTest: {
+        async start(tabId: number, mode: CaptureMode = 'full'): Promise<string> {
+          return startCapture(await chrome.tabs.get(tabId), mode);
+        },
+        failGrabAt(index: number | null) {
+          failGrabAt = index;
+        },
         async capture(tabId: number, mode: CaptureMode = 'full') {
-          const tab = await chrome.tabs.get(tabId);
-          const id = await startCapture(tab, mode);
-          const done = await new Promise<CaptureDone>((resolve) => waiters.set(id, resolve));
+          const hook = (globalThis as unknown as { __spTest: E2EHook }).__spTest;
+          return hook.wait(await hook.start(tabId, mode));
+        },
+        async wait(id: string) {
+          const done =
+            finished.get(id) ??
+            (await new Promise<CaptureDone>((resolve) => waiters.set(id, resolve)));
           const frames = (await (await db()).getAllFromIndex('frames', 'bySession', id))
             .sort((a, b) => a.index - b.index)
             .map(({ blob: _blob, ...rest }) => rest);
@@ -149,4 +168,9 @@ export default defineBackground(() => {
 interface PopupCapture {
   type: 'sp:popup-capture';
   mode: CaptureMode;
+}
+
+interface E2EHook {
+  start(tabId: number, mode?: CaptureMode): Promise<string>;
+  wait(id: string): Promise<unknown>;
 }

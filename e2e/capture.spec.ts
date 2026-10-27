@@ -186,3 +186,67 @@ test('lazy images are loaded in every frame (none blank)', async ({ context, ser
   );
   expect(new Set(loading)).toEqual(new Set(['lazy']));
 });
+
+/** Page state that capture must leave untouched once it has finished, however it ended. */
+async function pageState(page: import('@playwright/test').Page) {
+  return page.evaluate(() => ({
+    scrollTop: document.scrollingElement!.scrollTop,
+    styles: document.querySelectorAll('style').length,
+    inline: [...document.querySelectorAll('[style]')].map(
+      (e) => e.id + ':' + e.getAttribute('style'),
+    ),
+    lastChild: document.documentElement.lastElementChild?.tagName,
+    sticky: getComputedStyle(document.getElementById('sticky')!).position,
+    cookie: getComputedStyle(document.getElementById('cookie')!).visibility,
+  }));
+}
+
+type Hook = {
+  start(tabId: number): Promise<string>;
+  wait(id: string): Promise<CaptureResult>;
+  failGrabAt(i: number | null): void;
+};
+
+test('Esc cancels mid-capture and restores the page', async ({ context, serviceWorker }) => {
+  const page = await context.newPage();
+  await page.goto(`${FIXTURES}/sticky-header.html`);
+  await page.bringToFront();
+  const before = await pageState(page);
+  const url = `${FIXTURES}/sticky-header.html`;
+  const id = await serviceWorker.evaluate(async (u) => {
+    const [tab] = await chrome.tabs.query({ url: u });
+    return (globalThis as unknown as { __spTest: Hook }).__spTest.start(tab!.id!);
+  }, url);
+  // Wait until at least one frame is stored, then cancel.
+  await expect
+    .poll(() => page.evaluate(() => document.scrollingElement!.scrollTop), { timeout: 20_000 })
+    .toBeGreaterThan(0);
+  await page.keyboard.press('Escape');
+  const result = await serviceWorker.evaluate(
+    (i) => (globalThis as unknown as { __spTest: Hook }).__spTest.wait(i),
+    id,
+  );
+  expect(result.done.status).toBe('cancelled');
+  expect(await pageState(page)).toEqual(before);
+});
+
+test('a failed frame grab ends with an error warning and restores the page', async ({
+  context,
+  serviceWorker,
+}) => {
+  const page = await context.newPage();
+  await page.goto(`${FIXTURES}/sticky-header.html`);
+  await page.bringToFront();
+  const before = await pageState(page);
+  const url = `${FIXTURES}/sticky-header.html`;
+  const result = await serviceWorker.evaluate(async (u) => {
+    const hook = (globalThis as unknown as { __spTest: Hook }).__spTest;
+    hook.failGrabAt(2);
+    const [tab] = await chrome.tabs.query({ url: u });
+    return hook.wait(await hook.start(tab!.id!));
+  }, url);
+  expect(result.done.status).toBe('error');
+  expect(result.done.warnings).toEqual(['Capture failed: Injected test failure']);
+  expect(result.frames).toHaveLength(2);
+  expect(await pageState(page)).toEqual(before);
+});

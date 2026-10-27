@@ -8,6 +8,10 @@ export interface StyleLike {
 
 export interface Styled {
   style: StyleLike;
+  /** When present, used to drop a `style` attribute the element did not have before. */
+  hasAttribute?(name: string): boolean;
+  getAttribute?(name: string): string | null;
+  removeAttribute?(name: string): void;
 }
 
 /**
@@ -17,6 +21,9 @@ export interface Styled {
  */
 export class MutationLog {
   private undos: Array<() => void> = [];
+  private touched = new WeakSet<Styled>();
+  /** Elements that had no `style` attribute before we touched them. */
+  private bare: Styled[] = [];
 
   get size(): number {
     return this.undos.length;
@@ -24,6 +31,10 @@ export class MutationLog {
 
   /** Sets an inline style (important by default, to beat page CSS) and logs the old inline value. */
   setStyle(el: Styled, prop: string, value: string, important = true): void {
+    if (!this.touched.has(el)) {
+      this.touched.add(el);
+      if (el.hasAttribute && !el.hasAttribute('style')) this.bare.push(el);
+    }
     const oldValue = el.style.getPropertyValue(prop);
     const oldPriority = el.style.getPropertyPriority(prop);
     this.undos.push(() => {
@@ -43,9 +54,21 @@ export class MutationLog {
     const errors: unknown[] = [];
     const undos = this.undos;
     this.undos = [];
+    const bare = this.bare;
+    this.touched = new WeakSet();
+    this.bare = [];
     for (let i = undos.length - 1; i >= 0; i--) {
       try {
         undos[i]!();
+      } catch (e) {
+        errors.push(e);
+      }
+    }
+    // Undoing every property still leaves `style=""` behind. Removing it last means no later
+    // CSSOM write can bring it back.
+    for (const el of bare) {
+      try {
+        if (el.getAttribute?.('style') === '') el.removeAttribute?.('style');
       } catch (e) {
         errors.push(e);
       }

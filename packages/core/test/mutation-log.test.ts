@@ -64,4 +64,35 @@ describe('MutationLog', () => {
     expect(errors).toHaveLength(1);
     expect(log.size).toBe(0);
   });
+
+  it('removes a style attribute the element did not have before', () => {
+    const attrs = new Set<string>();
+    const el = {
+      style: fakeStyle(),
+      hasAttribute: (n: string) => attrs.has(n),
+      getAttribute: (n: string) => (attrs.has(n) ? '' : null),
+      removeAttribute: (n: string) => void attrs.delete(n),
+    };
+    const log = new MutationLog();
+    log.setStyle(el, 'visibility', 'hidden');
+    attrs.add('style'); // what the browser does when an inline style is set
+    log.setStyle(el, 'position', 'relative');
+    log.restore();
+    expect(attrs.has('style')).toBe(false);
+  });
+
+  it('keeps a style attribute the element already had', () => {
+    const attrs = new Set<string>(['style']);
+    const el = {
+      style: fakeStyle({ color: ['red'] }),
+      hasAttribute: (n: string) => attrs.has(n),
+      getAttribute: (n: string) => (attrs.has(n) ? 'color: red' : null),
+      removeAttribute: (n: string) => void attrs.delete(n),
+    };
+    const log = new MutationLog();
+    log.setStyle(el, 'visibility', 'hidden');
+    log.restore();
+    expect(attrs.has('style')).toBe(true);
+    expect(el.style.dump()).toEqual({ color: 'red' });
+  });
 });
