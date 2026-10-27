@@ -62,6 +62,12 @@ async function run(msg: StartCapture): Promise<void> {
     const t = target;
     log.record(() => t.scrollTo(startOffset));
     prepare(log, target);
+    const iframes = unreadableIframes();
+    if (iframes > 0) {
+      warnings.push(
+        `${iframes} embedded frame(s) from other sites were captured as pictures only; their text and links are not readable.`,
+      );
+    }
     eagerLoadImages(log);
     if (msg.mode === 'full') {
       const preload = await preloadPass(
@@ -287,6 +293,24 @@ async function preloadPass(
     target.scrollTo(y);
     await sleep(120);
   }
+}
+
+/** CAPTURE §13: cross-origin iframes are captured as pixels only; count visible ones to warn. */
+function unreadableIframes(): number {
+  let n = 0;
+  for (const f of document.querySelectorAll('iframe')) {
+    const r = f.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) continue;
+    // Cross-origin frames give null (or throw in some browsers).
+    let readable: boolean;
+    try {
+      readable = !!f.contentDocument;
+    } catch {
+      readable = false;
+    }
+    if (!readable) n++;
+  }
+  return n;
 }
 
 /** Top-anchored fixed headers appear in frame 1 only (CAPTURE §4). */

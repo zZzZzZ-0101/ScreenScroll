@@ -113,6 +113,22 @@ export default defineBackground(() => {
     return false;
   });
 
+  // UI §1 context menu. Clicking an entry grants activeTab, like the toolbar button.
+  const MENU: Array<{ id: string; title: string; mode: CaptureMode }> = [
+    { id: 'sp-full', title: 'Capture full page', mode: 'full' },
+    { id: 'sp-visible', title: 'Capture visible area', mode: 'visible' },
+  ];
+  chrome.runtime.onInstalled.addListener(() => {
+    chrome.contextMenus.removeAll(() => {
+      for (const m of MENU)
+        chrome.contextMenus.create({ id: m.id, title: m.title, contexts: ['page'] });
+    });
+  });
+  chrome.contextMenus.onClicked.addListener((info, tab) => {
+    const mode = MENU.find((m) => m.id === info.menuItemId)?.mode;
+    if (mode && tab) void startCapture(tab, mode).catch(console.warn);
+  });
+
   chrome.commands.onCommand.addListener((command, tab) => {
     const mode =
       command === 'capture-full' ? 'full' : command === 'capture-visible' ? 'visible' : null;

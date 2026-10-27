@@ -277,3 +277,15 @@ test('an infinite page stops at the cap with an explicit warning', async ({
     'Page kept loading more content; captured the first 6 screens.',
   ]);
 });
+
+test('cross-origin iframes produce a warning; same-origin ones do not', async ({
+  context,
+  serviceWorker,
+}) => {
+  const { result } = await captureFixture(context, serviceWorker, 'iframe-xorigin.html');
+  expect(result.done.status).toBe('complete');
+  await stitch(serviceWorker, result, 'iframe-xorigin');
+  expect(result.done.warnings).toEqual([
+    '1 embedded frame(s) from other sites were captured as pictures only; their text and links are not readable.',
+  ]);
+});
