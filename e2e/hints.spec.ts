@@ -108,3 +108,23 @@ test('fixed header text is reported once, where frame 1 shows it', async ({
   expect(hints.textRuns.some((t) => t.text.includes('COOKIE BAR'))).toBe(false);
   expect(hints.textRuns.filter((t) => t.text.includes('STICKY SUBHEADER'))).toHaveLength(1);
 });
+
+test('virtual list: recycled rows are all reported once, at their own positions', async ({
+  context,
+  serviceWorker,
+}) => {
+  test.setTimeout(180_000);
+  const { result, hints } = await capture(context, serviceWorker, 'virtual-list.html');
+  expect(result.done.status).toBe('complete');
+  const rows = new Map<number, number[]>();
+  for (const t of hints.textRuns) {
+    const m = /^Row (\d+) of/.exec(t.text);
+    if (m) rows.set(Number(m[1]), [...(rows.get(Number(m[1])) ?? []), t.rect.y]);
+  }
+  expect(rows.size).toBe(1000);
+  for (const [i, ys] of rows) {
+    expect(ys).toHaveLength(1);
+    // 60 px heading, 30 px rows, text box centred in the row (line-height 30).
+    expect(Math.abs(ys[0]! - (60 + i * 30))).toBeLessThan(8);
+  }
+});

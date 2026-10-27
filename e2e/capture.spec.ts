@@ -297,3 +297,10 @@ test('a mid-viewport modal is left in place with a warning', async ({ context, s
     'A pop-up or overlay was covering the page and appears in the capture. Close it and capture again to remove it.',
   ]);
 });
+
+test('virtual list stitched for review', async ({ context, serviceWorker }) => {
+  test.setTimeout(180_000);
+  const { result } = await captureFixture(context, serviceWorker, 'virtual-list.html');
+  const img = await stitch(serviceWorker, result, 'virtual-list');
+  expect(img.height).toBe(60 + 1000 * 30);
+});

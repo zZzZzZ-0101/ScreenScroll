@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Virtual list fixture</title>
+<style>
+  body { margin: 0; font: 15px/30px system-ui, sans-serif; }
+  h1 { margin: 0; height: 60px; line-height: 60px; padding: 0 16px; font-size: 22px; }
+  #spacer { position: relative; }
+  .row { position: absolute; left: 0; right: 0; height: 30px; padding: 0 16px; box-sizing: border-box; }
+  .row:nth-child(odd) { background: #f3f6f6; }
+</style>
+</head>
+<body data-expect='{"rows": 1000, "rowHeight": 30}'>
+<h1>Virtual list fixture</h1>
+<div id="spacer"></div>
+<script>
+  // Renders only the rows near the viewport and reuses their nodes, like react-window.
+  const ROWS = 1000, H = 30, spacer = document.getElementById('spacer');
+  spacer.style.height = ROWS * H + 'px';
+  const pool = [];
+  function render() {
+    const top = Math.max(0, Math.floor((scrollY - spacer.offsetTop) / H) - 5);
+    const count = Math.ceil(innerHeight / H) + 10;
+    while (pool.length < count) { const d = document.createElement('div'); d.className = 'row'; spacer.append(d); pool.push(d); }
+    pool.forEach((d, k) => {
+      const i = top + k;
+      if (i >= ROWS) { d.hidden = true; return; }
+      d.hidden = false;
+      d.style.top = i * H + 'px';
+      d.textContent = `Row ${i} of the virtual list`;
+    });
+  }
+  addEventListener('scroll', render);
+  render();
+</script>
+</body>
+</html>
