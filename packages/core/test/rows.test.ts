@@ -66,13 +66,25 @@ describe('row uniformity', () => {
   });
 
   it('marks rows with only vertical rules as rule-safe', () => {
-    const c = canvas(400, 30, 255);
-    for (const x of [50, 200, 350]) c.fill(x, 0, x + 1, 30, 0); // table borders
-    c.text(10, 6, 0);
+    const c = canvas(400, 80, 255);
+    for (const x of [50, 200, 350]) c.fill(x, 0, x + 1, 80, 0); // table borders
+    c.fill(0, 40, 400, 41, 0); // a horizontal rule doesn't break the vertical ones
+    c.text(25, 6, 0);
     const p = analyzeRows(c.img);
-    expect(p.safe[5]).toBe(2);
-    expect(p.safe[12]).toBe(0);
-    expect(p.safe[0]).toBe(0); // first row: neighbours unknown
+    expect(p.safe[15]).toBe(2);
+    expect(p.safe[45]).toBe(2);
+    expect(p.safe[27]).toBe(0);
+    expect(p.safe[3]).toBe(0); // too close to the top: the stroke can't be confirmed
+    expect(p.safe[76]).toBe(0); // too close to the bottom
+  });
+
+  it('does not mistake text descenders for table rules', () => {
+    const c = canvas(400, 60, 255);
+    c.text(20, 10, 0);
+    // A few descender stems hanging 4 rows below the line.
+    for (const x of [60, 130, 251]) c.fill(x, 30, x + 2, 34, 0);
+    const p = analyzeRows(c.img);
+    expect(Array.from(p.safe.slice(30, 34))).toEqual([0, 0, 0, 0]);
   });
 });
 
@@ -163,5 +175,31 @@ describe('safety and least damage', () => {
     const y = leastDamage(p, 40, 90);
     expect(y).toBeGreaterThanOrEqual(61);
     expect(y).toBeLessThanOrEqual(64);
+  });
+});
+
+describe('heading heuristic', () => {
+  it('penalises the gap right below a heading-like line', () => {
+    const c = canvas(300, 400, 255);
+    let y = 10;
+    const body = () => {
+      for (let l = 0; l < 4; l++) {
+        c.text(y, 8, 0);
+        y += 14;
+      }
+      y += 8;
+    };
+    body();
+    y += 30;
+    const headingTop = y;
+    c.text(y, 16, 0); // heading: twice as tall as a body line
+    y += 16 + 14;
+    body();
+    body();
+    const cands = pixelCandidates(analyzeRows(c.img));
+    const below = cands.find((k) => k.y0 >= headingTop + 16 && k.y0 < headingTop + 20)!;
+    const above = cands.find((k) => k.y1 === headingTop)!;
+    expect(below.badness).toBeGreaterThanOrEqual(40);
+    expect(above.badness).toBeLessThan(2);
   });
 });

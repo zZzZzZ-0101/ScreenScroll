@@ -35,10 +35,16 @@ export class RowAnalyzer {
   private safe: number[] = [];
   private mode: number[] = [];
   private damage: number[] = [];
-  /** Non-uniform columns of rows that might be rule-only (null when too many). */
-  private cols: Array<Int32Array | null> = [];
   private prev: Uint8Array | null = null;
+  private prevMode = -1;
   private readonly colInk: Uint32Array;
+  /** Per column: rows in a row that were off-mode (vertical stroke length so far). */
+  private readonly vertRun: Uint32Array;
+  /** Rows with few off-mode pixels, waiting to see whether those columns continue below. */
+  private pending: Array<{ row: number; cols: Int32Array }> = [];
+  private ruleRows: number[] = [];
+  /** A rule must run this many rows above and below the row (descender stems don't). */
+  private readonly ruleReach: number;
   private readonly opts: RowOptions;
 
   constructor(
@@ -48,6 +54,8 @@ export class RowAnalyzer {
   ) {
     this.opts = { ...DEFAULT_ROW_OPTIONS, ...opts };
     this.colInk = new Uint32Array(width);
+    this.vertRun = new Uint32Array(width);
+    this.ruleReach = Math.max(2, Math.round(8 * rowsPerPx));
   }
 
   push(img: GreyImage): void {
@@ -78,14 +86,30 @@ export class RowAnalyzer {
       }
       const m = Math.min(255, bestStart + tau);
       const off = x1 - x0 - best;
-      if (off > 0) {
-        for (let x = x0; x < x1; x++) if (Math.abs(row[x]! - m) > tau) this.colInk[x]!++;
+      // Vertical stroke lengths. A row of a different colour (a horizontal rule, a zebra
+      // stripe edge) neither extends nor breaks a stroke; any other clean pixel ends it.
+      const colourChange = this.prevMode >= 0 && Math.abs(m - this.prevMode) > tau;
+      for (let x = x0; x < x1; x++) {
+        if (Math.abs(row[x]! - m) > tau) {
+          this.vertRun[x]!++;
+          this.colInk[x]!++;
+        } else if (!colourChange) this.vertRun[x] = 0;
       }
-      let cols: Int32Array | null = null;
+      const index = this.safe.length;
       if (off > 0 && off <= maxRule) {
-        cols = new Int32Array(off);
+        const cols = new Int32Array(off);
         let k = 0;
         for (let x = x0; x < x1; x++) if (Math.abs(row[x]! - m) > tau) cols[k++] = x;
+        this.pending.push({ row: index, cols });
+      }
+      // Rule-only rows: few off-mode pixels, each part of a stroke that runs ruleReach rows
+      // above and below (table borders, card edges). Text descenders are much shorter.
+      const reach = this.ruleReach;
+      while (this.pending.length && this.pending[0]!.row <= index - reach) {
+        const cand = this.pending.shift()!;
+        if (cand.row === index - reach && this.strokesSpan(cand.cols, 2 * reach + 1)) {
+          this.ruleRows.push(cand.row);
+        }
       }
       let dmg = 0;
       if (this.prev) {
@@ -94,23 +118,25 @@ export class RowAnalyzer {
       this.safe.push(off === 0 ? 1 : 0);
       this.mode.push(m);
       this.damage.push(Math.min(dmg, 0xffff));
-      this.cols.push(cols);
       this.prev = row.slice();
+      this.prevMode = m;
     }
+  }
+
+  /** Every column (±1 px) has a vertical stroke at least `len` rows long ending now. */
+  private strokesSpan(cols: Int32Array, len: number): boolean {
+    for (const x of cols) {
+      const best = Math.max(this.vertRun[x - 1] ?? 0, this.vertRun[x]!, this.vertRun[x + 1] ?? 0);
+      if (best < len) return false;
+    }
+    return true;
   }
 
   finish(): RowProfile {
     const n = this.safe.length;
     const safe = Uint8Array.from(this.safe);
-    // Rule-only rows: few off-mode pixels, in the same columns as the rows above and below
-    // (vertical lines). Rows at the ends never qualify; their neighbours are unknown.
-    for (let y = 1; y < n - 1; y++) {
-      const c = this.cols[y];
-      if (!c) continue;
-      if (sameColumns(c, this.cols[y - 1] ?? null) && sameColumns(c, this.cols[y + 1] ?? null)) {
-        safe[y] = 2;
-      }
-    }
+    // Rows within ruleReach of the end never qualify: what follows them is unknown.
+    for (const r of this.ruleRows) safe[r] = 2;
     return {
       rowsPerPx: this.rowsPerPx,
       width: this.width,
@@ -121,17 +147,6 @@ export class RowAnalyzer {
       colInk: this.colInk.slice(),
     };
   }
-}
-
-/** Same set of columns, allowing each to be off by one pixel (anti-aliasing). */
-function sameColumns(a: Int32Array, b: Int32Array | null): boolean {
-  if (!b || Math.abs(a.length - b.length) > 2) return false;
-  let j = 0;
-  for (const x of a) {
-    while (j < b.length && b[j]! < x - 1) j++;
-    if (j >= b.length || b[j]! > x + 1) return false;
-  }
-  return true;
 }
 
 export function analyzeRows(
@@ -195,6 +210,11 @@ export function estimateLineGap(p: RowProfile, gaps: readonly Gap[] = findGaps(p
 
 export type PixelKind = 'section' | 'paragraph' | 'tableRow' | 'line';
 
+/** Penalty for cutting just below a heading-like line (as keep-with-next in PAGINATION §2). */
+const HEADING_ABOVE = 40;
+/** Penalty for leaving a block's first line alone at the bottom of a page. */
+const ORPHAN = 6;
+
 export interface PixelCandidate {
   /** Cut position in CSS px: the centre of the gap. */
   y: Px;
@@ -214,20 +234,34 @@ export function pixelCandidates(
   gaps: readonly Gap[] = findGaps(p),
 ): PixelCandidate[] {
   const lineGap = estimateLineGap(p, gaps) ?? 4 * p.rowsPerPx;
+  // Typical text line height: median of the ink runs short enough to be single lines.
+  const maxLine = 48 * p.rowsPerPx;
+  const lineRuns: number[] = [];
+  for (let i = 1; i < gaps.length; i++) {
+    const run = gaps[i]!.r0 - gaps[i - 1]!.r1;
+    if (run <= maxLine) lineRuns.push(run);
+  }
+  const typicalLine = lineRuns.length ? median(lineRuns) : 0;
   const out: PixelCandidate[] = [];
-  for (const g of gaps) {
+  for (let gi = 0; gi < gaps.length; gi++) {
+    const g = gaps[gi]!;
     if (g.r0 === 0 || g.r1 === p.height) continue; // page top/bottom margins are not breaks
     const h = g.r1 - g.r0;
     let kind: PixelKind;
     let badness: number;
+    // Inside a ruled structure, a gap next to or containing a horizontal rule (a row of a
+    // clearly different colour) separates table rows. The rule row itself often counts as
+    // ink (the page margin beside the table differs from it), so it bounds the gap.
+    let ruled = false;
     if (g.rule) {
-      // Bounded by horizontal rules (rows of a different colour) → between table rows.
-      const above = p.mode[g.r0 - 1]!;
-      const below = p.mode[g.r1]!;
       const inside = p.mode[(g.r0 + g.r1) >> 1]!;
-      const ruled = Math.abs(above - inside) > 12 && Math.abs(below - inside) > 12;
-      kind = ruled ? 'tableRow' : 'line';
-      badness = ruled ? 2.5 : 4;
+      const differs = (r: number) => Math.abs(p.mode[r]! - inside) > 24;
+      ruled = differs(g.r0 - 1) || differs(g.r1);
+      for (let r = g.r0; r < g.r1 && !ruled; r++) ruled = differs(r);
+    }
+    if (ruled) {
+      kind = 'tableRow';
+      badness = 2.5;
     } else if (h >= 3 * lineGap) {
       kind = 'section';
       badness = 0.5;
@@ -237,6 +271,17 @@ export function pixelCandidates(
     } else {
       kind = 'line';
       badness = 4;
+    }
+    // Without the DOM: a single line that starts a block (more space above it than below)
+    // would be stranded by a cut right under it — an orphan, or, when the line is taller
+    // than body text, a heading cut off from its content.
+    const prevGap = gaps[gi - 1];
+    if (prevGap) {
+      const run = g.r0 - prevGap.r1;
+      const startsBlock = prevGap.r1 - prevGap.r0 > 1.2 * h || prevGap.r0 === 0;
+      if (startsBlock && run <= maxLine) {
+        badness += typicalLine > 0 && run >= 1.3 * typicalLine ? HEADING_ABOVE : ORPHAN;
+      }
     }
     out.push({
       y: (g.r0 + g.r1) / 2 / p.rowsPerPx,

@@ -104,6 +104,18 @@ interface Cand {
  * Deterministic: the same input gives the same slices.
  */
 export function paginate(input: PaginateInput): PageSlice[] {
+  return paginateDebug(input).slices;
+}
+
+/** What pagination considered, for the debug overlay (PAGINATION §9). */
+export interface PaginationDebug {
+  slices: PageSlice[];
+  candidates: Array<{ y: Px; badness: number; kind: BreakKind; forced: boolean }>;
+  forbidden: Interval[];
+  opaque: Interval[];
+}
+
+export function paginateDebug(input: PaginateInput): PaginationDebug {
   const opts = { ...DEFAULT_PAGINATE_OPTIONS, ...input.options };
   const H = input.height;
   const T = input.T;
@@ -113,8 +125,9 @@ export function paginate(input: PaginateInput): PageSlice[] {
   const overlap = Math.min(0.25 * T, opts.overlap === 'auto' ? autoOverlap(input) : opts.overlap);
   const pinned = [...new Set(opts.pinned.filter((y) => y > 0 && y < H))].sort((a, b) => a - b);
 
+  const { forbidden, opaque } = regions(input.hints ?? null, T);
   if (H <= T && pinned.length === 0) {
-    return [slice(0, H, crop, 0, 'end', 0, [])];
+    return { slices: [slice(0, H, crop, 0, 'end', 0, [])], candidates: [], forbidden, opaque };
   }
 
   const base = buildCandidates(input, T);
@@ -159,7 +172,27 @@ export function paginate(input: PaginateInput): PageSlice[] {
     const kind: BreakKind = k === breaks.length - 1 ? 'end' : to.c.pinned ? 'manual' : to.c.kind;
     slices.push(slice(from.c.y - ov, to.c.y, crop, ov, kind, to.cost, warnings));
   }
-  return slices;
+  return {
+    slices,
+    candidates: cands
+      .filter((c) => c.y > 0 && c.y < H && !c.fallback)
+      .map((c) => ({ y: c.y, badness: c.b, kind: c.kind, forced: c.forced })),
+    forbidden,
+    opaque,
+  };
+}
+
+/** Forbidden runs and opaque regions; images taller than half a page count as opaque. */
+function regions(hints: DomHints | null, T: Px): { forbidden: Interval[]; opaque: Interval[] } {
+  const bigImage = (f: { kind: string; y0: number; y1: number }) =>
+    f.kind === 'image' && f.y1 - f.y0 > 0.5 * T;
+  return {
+    opaque: mergeIntervals([
+      ...(hints?.opaque ?? []).map((r) => ({ y0: r.y, y1: r.y + r.height })),
+      ...(hints?.forbidden ?? []).filter(bigImage),
+    ]),
+    forbidden: mergeIntervals((hints?.forbidden ?? []).filter((f) => !bigImage(f))),
+  };
 }
 
 function slice(
@@ -196,13 +229,7 @@ function buildCandidates(input: PaginateInput, T: Px): Cand[] {
   };
 
   // Images taller than half a page are probably pictures of text: let pixels decide.
-  const opaque: Interval[] = mergeIntervals([
-    ...(hints?.opaque ?? []).map((r) => ({ y0: r.y, y1: r.y + r.height })),
-    ...(hints?.forbidden ?? []).filter((f) => f.kind === 'image' && f.y1 - f.y0 > 0.5 * T),
-  ]);
-  const forbidden = mergeIntervals(
-    (hints?.forbidden ?? []).filter((f) => !(f.kind === 'image' && f.y1 - f.y0 > 0.5 * T)),
-  );
+  const { forbidden, opaque } = regions(hints ?? null, T);
   const inside = (y: Px, list: readonly Interval[]) => list.some((iv) => y > iv.y0 && y < iv.y1);
   const opaqueAt = (y: Px) => opaque.find((iv) => y > iv.y0 && y < iv.y1);
 

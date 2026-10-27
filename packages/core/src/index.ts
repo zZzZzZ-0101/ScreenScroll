@@ -2,6 +2,7 @@ export * from './blocked.js';
 export * from './capture-plan.js';
 export * from './compose.js';
 export * from './crop.js';
+export * from './debug.js';
 export * from './filename.js';
 export * from './geometry.js';
 export * from './hints.js';

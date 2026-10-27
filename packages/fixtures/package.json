@@ -5,6 +5,10 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "serve": "node scripts/serve.mjs"
+    "serve": "node scripts/serve.mjs",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@scrollpress/core": "workspace:*"
   }
 }
