@@ -29,10 +29,17 @@ Working and verified:
 - Seam safety net (`core/registration.ts`): row-profile NCC registration with a confidence flag; unit-tested, **not yet wired** into the Studio.
 - Blocked-page detection (`core/blocked.ts`): unit-tested; the popup shows the message, not yet e2e-tested.
 
-Not done yet in M1: preload pass for lazy content and `data-src` eager-ifying; per-frame DOM hints; context menu; `pagehide`/Esc/error restore tests; SW-restart safety; Studio tab opening after capture; fixtures lazy-images, virtual-list, infinite, modal, animations, huge; manual real-site checks.
+Added in session 2:
+- Lazy content: `loading=lazy` → eager, `data-src`/`data-srcset` copied in only over placeholders (`core/lazy.ts`), preload pass (0.9 viewport / 120 ms, capped at the capture's screen limit or 60 s with a warning), one global image wait (≤ 5 s), per-frame visible-image wait (≤ 1.5 s) with a warning if any image was still loading. `lazy-images.html` serves images with a 2.5 s delay; the e2e test samples top/middle/bottom of all 12 images. **The test fails with the new code disabled and passes with it** (checked both ways, 3 stable runs). The first version of the test only sampled image centres and missed a half-blank image at a frame seam; the global wait fixed that.
+- Restore on Esc and on a failed frame grab: e2e tests compare the page with its pre-capture state. They found elements left with an empty `style=""`; `MutationLog` now removes those in a final pass.
+- Infinite scroll: `infinite.html` + e2e test, capture stops at the cap with "Page kept loading more content; captured the first N screens."
+- Cross-origin iframes: explicit warning; `iframe-xorigin.html` + e2e (one warning for the :5178 frame, none for the same-origin one). Stitched output inspected: both frames captured as pixels.
+- Context menu: "Capture full page" / "Capture visible area". Not testable headless (needs a real right-click); needs a manual check.
 
-### Verified (end of session 1)
-`pnpm test` 55/55 (incl. offline guard), `pnpm e2e` 6/6, `pnpm lint` and `pnpm typecheck` clean.
+Not done yet in M1: per-frame DOM hints (the big remaining item, needed by M2 pagination); `pagehide` restore test; SW-restart safety; wiring the seam safety net; modal overlay warning; fixtures virtual-list, modal, animations, huge; Studio tab opening after capture; manual real-site checks.
+
+### Verified (end of session 2)
+`pnpm test` 72/72 (incl. offline guard), `pnpm e2e` 11/11, `pnpm lint` and `pnpm typecheck` clean.
 
 ## Manual site checks
 | Site | Date | Capture | Header once | Images loaded | No text cut | Text searchable | Links | Time | Notes |
@@ -44,4 +51,5 @@ Not done yet in M1: preload pass for lazy content and `data-src` eager-ifying; p
 - The e2e build is a non-production (unminified, React dev) build. Fine for tests; the offline guard checks the production build.
 
 ## Needs from user
+- When you try the extension: check the right-click menu entries and the Alt+Shift+P / Alt+Shift+V hotkeys start a capture (they need a real user gesture, so e2e can't cover them).
 - Run `pnpm install && pnpm dev` on the Windows desktop once to confirm WXT opens Chrome with the extension loaded (or load `packages/extension/.output/chrome-mv3` via chrome://extensions → Load unpacked).
