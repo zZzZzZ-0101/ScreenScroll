@@ -24,6 +24,7 @@ import {
   zipBlobs,
 } from '@/lib/studio/export';
 import { FrameCache, loadSession, type LoadedSession } from '@/lib/studio/session';
+import { composePage, encodePage } from '@/lib/studio/compose';
 import { Panel, type ExportFormat } from './Panel';
 import { PagesView } from './PagesView';
 import { StripView } from './StripView';
@@ -135,6 +136,32 @@ export function App() {
       list.unshift('Capture stopped early; this is what was captured.');
     return list;
   }, [session, result]);
+
+  // Export tab "estimated file size" (UI §3): encode the first and a middle page, extrapolate.
+  const [estimate, setEstimate] = useState<number | null>(null);
+  useEffect(() => {
+    if (!session || !result?.ok || !settings || !frames.current) return;
+    const f = frames.current;
+    let cancelled = false;
+    setEstimate(null);
+    const t = setTimeout(async () => {
+      const sample = [...new Set([0, Math.floor(slices.length / 2)])].filter((i) => slices[i]);
+      let bytes = 0;
+      for (const i of sample) {
+        const img = await encodePage(
+          await composePage(session, f, slices[i]!),
+          slices[i]!,
+          settings.imageMode,
+        );
+        bytes += img.bytes.length;
+      }
+      if (!cancelled && sample.length) setEstimate((bytes / sample.length) * slices.length);
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [session, result, settings, slices]);
 
   const updateSettings = useCallback(async (patch: Partial<Settings>) => {
     setSettings(await saveSettings(patch));
@@ -488,6 +515,7 @@ export function App() {
           onPrint={doPrint}
           onDebug={doDebug}
           cropped={result.ok && result.crop.cropped}
+          estimate={estimate}
         />
       </div>
 

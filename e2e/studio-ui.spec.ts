@@ -39,7 +39,42 @@ test('Studio UI: pages view, long strip with break editing, export panel', async
   await studio.getByRole('button', { name: 'Re-run smart breaks' }).click();
   await expect(breaks).toHaveCount(before);
 
+  // Double-click adds a pinned break; dragging one moves it and pins it.
+  const scrollerBox = (await studio.getByTestId('strip-view').boundingBox())!;
+  const bodyBox = (await studio.getByTestId('strip-body').boundingBox())!;
+  await studio.mouse.dblclick(bodyBox.x + 60, Math.max(bodyBox.y, scrollerBox.y) + 90);
+  await expect(breaks).toHaveCount(before + 1);
+  await studio.getByRole('button', { name: 'Re-run smart breaks' }).click();
+  await expect(breaks).toHaveCount(before);
+  const handle = breaks.nth(1);
+  const hb = (await handle.boundingBox())!;
+  await studio.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
+  await studio.mouse.down();
+  await studio.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2 - 60, { steps: 6 });
+  await studio.mouse.up();
+  await expect(studio.getByText(/📌 manual/)).toBeVisible();
+  await studio.getByRole('button', { name: 'Re-run smart breaks' }).click();
+
+  // Paper controls: landscape holds less per page, so there are more pages.
+  const pagesBefore = await breaks.count();
+  await studio.getByRole('radio', { name: 'Landscape' }).click();
+  await expect.poll(() => breaks.count()).toBeGreaterThan(pagesBefore);
+  await studio.getByRole('radio', { name: 'Portrait' }).click();
+
   await studio.getByRole('tab', { name: 'Export' }).click();
   await expect(studio.getByText(/Article fixture_\d{4}-\d{2}-\d{2}_\d{4}\.pdf/)).toBeVisible();
+  await expect(studio.getByTestId('estimate')).toHaveText(/Estimated size: ≈ \d/, {
+    timeout: 20_000,
+  });
   await studio.screenshot({ path: 'e2e-artifacts/studio-export.png' });
+
+  // Debug overlay export (PAGINATION §9) asks for "<name>-breaks.png" and ".json".
+  await studio.getByRole('button', { name: 'Save break overlay (debug)' }).click();
+  await expect
+    .poll(() =>
+      serviceWorker.evaluate(
+        async () => (await chrome.storage.session.get('lastDownload')).lastDownload as string,
+      ),
+    )
+    .toMatch(/-breaks\.json$/);
 });

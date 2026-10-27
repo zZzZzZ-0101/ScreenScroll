@@ -90,6 +90,7 @@ export function StripView(p: Props) {
         </p>
         <div
           ref={body}
+          data-testid="strip-body"
           className="relative mx-auto bg-white shadow-sm"
           style={{ width, height: p.session.height * k }}
           onDoubleClick={(e) => {

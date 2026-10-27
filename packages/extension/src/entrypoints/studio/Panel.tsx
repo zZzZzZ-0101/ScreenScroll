@@ -27,6 +27,8 @@ interface Props {
   onPrint: () => void;
   onDebug: () => void;
   cropped: boolean;
+  /** Estimated PDF size in bytes, or null while it is computed. */
+  estimate: number | null;
 }
 
 const field = 'flex items-center justify-between gap-2 py-1';
@@ -177,6 +179,13 @@ export function Panel(p: Props) {
             </select>
           </label>
           {(format === 'pdf' || format === 'pdf-long') && (
+            <p className="pb-1 text-neutral-500" data-testid="estimate">
+              {p.estimate === null
+                ? 'Estimating size'
+                : `Estimated size: ${formatBytes(p.estimate)}`}
+            </p>
+          )}
+          {(format === 'pdf' || format === 'pdf-long') && (
             <label className={field}>
               Images
               <select
@@ -243,4 +252,9 @@ export function Panel(p: Props) {
       )}
     </aside>
   );
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024 * 1024) return `≈ ${Math.max(1, Math.round(n / 1024))} KB`;
+  return `≈ ${(n / 1024 / 1024).toFixed(1)} MB`;
 }

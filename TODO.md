@@ -38,20 +38,20 @@ Legend: `[ ]` todo · `(L#)` = lesson from `docs/PRIOR_ART.md` §7 · `→ DOC` 
 
 ## M2 — Smart pagination, Studio v1, export (~4–5 h) ← replaces the paid feature
 
-- [ ] `core/layout.ts`: paper presets, orientation, margins, scale, T. → PAGINATION §1
-- [ ] `core/pixel.ts`: row uniformity vs the row's own mode, edge-ignore, rule-only rows, gaps, line-gap estimate, least-damage row. → PAGINATION §4
-- [ ] `core/paginate.ts`: badness from hints + pixel validation + DP with window, slider mapping α/β, pinned/removed breaks as constraints (L1, L2). → PAGINATION §2–3
-- [ ] Forced cuts for over-tall elements, with overlap + "continued" marker + warning. → PAGINATION §5
-- [ ] Auto side-crop to the content columns (L6). → PAGINATION §6
-- [ ] Readability guard: estimated text pt size with suggestions. → PAGINATION §1
-- [ ] **Debug overlay export** (PNG + JSON). Build it before tuning anything. → PAGINATION §9
-- [ ] Synthetic generator + invariants test suite (all 5 invariants green). → TESTING §1
-- [ ] Studio v1: long-strip view with draggable/addable/removable breaks, snapping, magnifier, colour by kind (L3); pages view; thumbnails rail; warnings chip; break-style slider + "re-run". → UI §3
-- [ ] Paper size / orientation / margins controls always visible in the Pages tab (L4, L5).
-- [ ] Page composition without a giant canvas. PNG/JPEG auto choice with size estimate. → PDF_OUTPUT §1
-- [ ] Export: multi-page PDF (default), single long page (capped), PNG/JPEG/WebP per page (zip), long image (split if huge), copy to clipboard, print. → PDF_OUTPUT §6
-- [ ] Filename template + Windows sanitising + Unicode titles (L15). → PDF_OUTPUT §7
-- [ ] "After capture → Save PDF directly" fast path.
+- [x] `core/layout.ts`: paper presets, orientation, margins, scale, T. → PAGINATION §1
+- [x] `core/pixel.ts` (implemented as `core/rows.ts`): row uniformity vs the row's own mode, edge-ignore, rule-only rows, gaps, line-gap estimate, least-damage row. → PAGINATION §4
+- [x] `core/paginate.ts`: badness from hints + pixel validation + DP with window, slider mapping α/β, pinned/removed breaks as constraints (L1, L2). → PAGINATION §2–3
+- [x] Forced cuts for over-tall elements, with overlap + "continued" marker + warning. → PAGINATION §5
+- [x] Auto side-crop to the content columns (L6). → PAGINATION §6
+- [x] Readability guard: estimated text pt size with suggestions. → PAGINATION §1
+- [x] **Debug overlay export** (PNG + JSON). Build it before tuning anything. → PAGINATION §9
+- [x] Synthetic generator + invariants test suite (all 5 invariants green). → TESTING §1
+- [x] Studio v1: long-strip view with draggable/addable/removable breaks, snapping, magnifier, colour by kind (L3); pages view; thumbnails rail; warnings chip; break-style slider + "re-run". → UI §3
+- [x] Paper size / orientation / margins controls always visible in the Pages tab (L4, L5).
+- [x] Page composition without a giant canvas. PNG/JPEG auto choice with size estimate. → PDF_OUTPUT §1
+- [ ] Export: multi-page PDF (default), single long page (capped), PNG/JPEG/WebP per page (zip), long image (split if huge), copy to clipboard, print. → PDF_OUTPUT §6 _(all built; PDF, long page, PNG zip and long PNG verified by e2e; copy and print need a manual check)_
+- [x] Filename template + Windows sanitising + Unicode titles (L15). → PDF_OUTPUT §7
+- [x] "After capture → Save PDF directly" fast path.
 - [ ] Manual: the 11-site checklist; check PDF pages at 100% zoom on A4 for legibility.
 
 ## M3 — Real-document PDF: text layer, links, headers (~3 h)

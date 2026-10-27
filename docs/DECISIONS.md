@@ -47,3 +47,8 @@ Format: `YYYY-MM-DD — decision — reason — alternatives considered`
 - 2026-10-27 — PDF code is a separate entry point, `@scrollpress/core/pdf` — pdf-lib isn't tree-shakeable and was pulled into the service worker and content script (430 KB each) through the shared index.
 - 2026-10-27 — Default footer drawn in M2 with Helvetica ("{domain} · {date}", "{page}/{pages}", 8 pt grey); non-WinAnsi characters show as "?" until M3's Unicode font support. The "⋯ continued" marker is a small "continued from previous page" note above the page content, outside the image.
 - 2026-10-27 — `@napi-rs/canvas` pinned to pdf.js's 0.1.x line: two native copies (1.x for us, 0.1.x for pdf.js) in one process crashed with SIGSEGV.
+- 2026-10-27 — Studio analysis and page composition run on the main thread with a yield between frames, not in a Web Worker (ARCHITECTURE "where possible") — simpler for v1 and fast on the fixtures; move to a worker if real long pages stall the UI.
+- 2026-10-27 — Previews: the long strip and thumbnails come from the ≤ 320 px strip (ARCHITECTURE); the Pages view repaints each page from full-resolution frames when it scrolls into view, so it matches the export.
+- 2026-10-27 — Long-image export composes parts up to 16,384 device px tall: the one place a canvas taller than a page is allocated, because the user asked for one long image (PDF_OUTPUT §6). Every other path stays at one page.
+- 2026-10-27 — Print opens the generated PDF in a new tab (the browser's PDF viewer has the print dialog), as UI §2 of PRODUCT suggests ("open PDF → browser print").
+- 2026-10-27 — The Studio opens after a cancelled or failed capture too, when frames exist, with a warning that it shows what was captured (UI §7 "Open what was captured").

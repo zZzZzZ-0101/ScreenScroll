@@ -7,13 +7,15 @@ import { expect, test, FIXTURES } from './fixtures';
 
 interface StudioHook {
   slices(): PageSlice[];
+  crop(): { x0: number; x1: number; cropped: boolean };
   warnings(): string[];
   pdfBase64(): Promise<string>;
 }
 
 /** Captures a fixture, waits for the Studio tab it opens, and returns both pages. */
-async function captureToStudio(context: BrowserContext, sw: Worker, path: string) {
+async function captureToStudio(context: BrowserContext, sw: Worker, path: string, width = 1280) {
   const page = await context.newPage();
+  await page.setViewportSize({ width, height: 800 });
   await page.goto(`${FIXTURES}/${path}`);
   await page.bringToFront();
   const studioPromise = context.waitForEvent('page', {
@@ -142,4 +144,33 @@ test('sticky header and inner scroller go through the Studio to a PDF', async ({
     await renderPages(bytes, path.replace('.html', ''), [1, 2]);
     await studio.close();
   }
+});
+
+test('wide margins: a 700 px column in a 1920 px page is cropped and stays readable', async ({
+  context,
+  serviceWorker,
+}) => {
+  const { studio, warnings } = await captureToStudio(
+    context,
+    serviceWorker,
+    'wide-margins.html',
+    1920,
+  );
+  const crop = await studio.evaluate(() =>
+    (window as unknown as { __spStudio: StudioHook }).__spStudio.crop(),
+  );
+  expect(crop.cropped).toBe(true);
+  expect(crop.x1 - crop.x0).toBeLessThan(760);
+  expect(crop.x0).toBeGreaterThan(580);
+  expect(warnings.filter((w) => w.startsWith('Text will be small'))).toEqual([]);
+  // With cropping off, the same page prints too small, and the Studio says so.
+  await studio.getByRole('combobox', { name: 'Crop sides' }).selectOption('off');
+  await expect
+    .poll(() =>
+      studio.evaluate(() =>
+        (window as unknown as { __spStudio: StudioHook }).__spStudio.warnings(),
+      ),
+    )
+    .toContainEqual(expect.stringMatching(/^Text will be small \(≈\d\.\d pt\)/));
+  await studio.getByRole('combobox', { name: 'Crop sides' }).selectOption('auto');
 });

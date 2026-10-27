@@ -1,7 +1,7 @@
 # Progress
 
 ## Current milestone
-M1 — nearly done (see Remaining in M1). Next: M2 (smart pagination, Studio, export). M0 done (tag `m0`, local only; see Known issues), except one unverified item: `pnpm dev` opening Chrome on a desktop (needs user).
+M2 — built and verified except the manual checks (see M2 below). M1 is also complete apart from its manual real-site checks. Neither is tagged yet: tags follow the manual checks. Next: M3 (text layer, links, headers).
 
 ## Done
 ### M0 — Scaffold (2026-10-27)
@@ -41,6 +41,27 @@ Remaining in M1:
 ### Verified (end of session 3)
 `pnpm test` 75/75 (incl. offline guard), `pnpm e2e` 24/24 (4.4 min, incl. the 150,000 px page), `pnpm lint` and `pnpm typecheck` clean.
 
+### M2 — Smart pagination, Studio v1, export (2026-10-27)
+Built:
+- `core/layout.ts` (paper maths, readability advice), `core/filename.ts`, `core/rows.ts` (pixel analysis), `core/paginate.ts` (candidates + DP + forced cuts + fallback), `core/crop.ts`, `core/debug.ts`, `@scrollpress/core/pdf` (pdf-lib assembly; kept out of the service worker and content script).
+- Studio (`studio.html?session=…`): opens after every capture with frames. Pages view with full-resolution previews, Long strip with drag/add/remove breaks, snapping, magnifier and colours by kind, thumbnails rail, warnings chip, Pages and Export panels, keyboard shortcuts (Ctrl+S, Ctrl+Shift+C, Ctrl+P, ←/→).
+- Exports: multi-page PDF, single long page PDF (≤ 14,000 pt), PNG/JPEG/WebP per page (zip), long PNG in ≤ 16,384 px parts, copy page, print (opens the PDF in the browser's viewer), break overlay (PNG + JSON), estimated size.
+- Popup: "After capture: Open Studio / Save PDF directly" and default paper.
+
+Verified:
+- Synthetic suite (TESTING §1): 9 generated captures × A4 portrait/landscape, Letter, A5 × pixel-only and hints+pixels; all five invariants hold. Debug overlays and full-resolution strips around every break were inspected; the suite found and drove fixes for descender stems mistaken for table rules, headings separated from their text in pixel-only mode, and table-row grading.
+- PDFs rendered back to images with pdf.js and inspected: article, sticky header, inner scroller, tall image (forced cut + "continued" note), synthetic Latin/CJK and photo pages. Text is legible at 100% on A4 when the page has margins to crop.
+- e2e: every break on article and tall-image is checked against the page's own text line boxes; forced cuts only inside the tall image with overlap and warning; wide-margins (700 px column at 1920 px) is cropped and readable, and the readability warning appears with cropping off; Studio UI interactions (remove, re-run, double-click add, drag-to-pin, landscape, size estimate, debug export); "Save PDF directly" downloads a PDF and closes its tab; PNG zip, one-long-page PDF and long PNG exports checked on disk.
+
+Suite at the end of M2: `pnpm test` 137/137, `pnpm e2e` 31/31 (5.3 min), lint and typecheck clean.
+
+Not verified automatically (manual): copy page to clipboard, print, how Chrome names the downloaded file (the test browser renames downloads), the 11-site checklist.
+
+Known limitations:
+- Auto crop keeps full-width elements (e.g. a full-width header bar), so such pages print small; the Studio shows the readability warning. Manual crop handles are not built yet.
+- Pixel analysis and composition run on the main thread (no Web Worker yet); fine for the fixtures, unmeasured on very long real pages.
+- The footer uses Helvetica: non-Latin domains would show "?" (Unicode headers/footers are M3).
+
 ## Manual site checks
 | Site | Date | Capture | Header once | Images loaded | No text cut | Text searchable | Links | Time | Notes |
 |---|---|---|---|---|---|---|---|---|---|
@@ -51,5 +72,6 @@ Remaining in M1:
 - The e2e build is a non-production (unminified, React dev) build. Fine for tests; the offline guard checks the production build.
 
 ## Needs from user
+- M2 manual checks: on a few real pages, open the Studio, save the PDF and look at it at 100% on A4: legible? any text cut? Also try Copy page, Print, and check the downloaded file name.
 - When you try the extension: check the right-click menu entries and the Alt+Shift+P / Alt+Shift+V hotkeys start a capture (they need a real user gesture, so e2e can't cover them).
 - Run `pnpm install && pnpm dev` on the Windows desktop once to confirm WXT opens Chrome with the extension loaded (or load `packages/extension/.output/chrome-mv3` via chrome://extensions → Load unpacked).
