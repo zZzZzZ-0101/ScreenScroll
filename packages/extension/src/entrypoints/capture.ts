@@ -61,7 +61,7 @@ async function run(msg: StartCapture): Promise<void> {
     const startOffset = target.offset;
     const t = target;
     log.record(() => t.scrollTo(startOffset));
-    prepare(log, target);
+    warnings.push(...prepare(log, target));
     const iframes = unreadableIframes();
     if (iframes > 0) {
       warnings.push(
@@ -213,7 +213,9 @@ function pickTarget(): Target {
 }
 
 /** CAPTURE §4, §6: freeze motion, flatten sticky, drop bottom bars and fixed backgrounds. */
-function prepare(log: MutationLog, target: Target): void {
+/** Returns warnings, e.g. for overlays it deliberately leaves in place. */
+function prepare(log: MutationLog, target: Target): string[] {
+  let overlays = 0;
   const style = document.createElement('style');
   style.textContent = FREEZE_CSS;
   document.documentElement.append(style);
@@ -237,6 +239,9 @@ function prepare(log: MutationLog, target: Target): void {
     if (cs.position === 'sticky') {
       log.setStyle(el, 'position', 'relative');
       for (const side of ['top', 'right', 'bottom', 'left']) log.setStyle(el, side, 'auto');
+    } else if (isMidViewportOverlay(r, cs)) {
+      // Modals and pop-ups are content the user may want; leave them, but say so (CAPTURE §4).
+      overlays++;
     } else if (r.top >= innerHeight / 2) {
       // Bottom-anchored bars (cookie notices, chat bubbles) are hidden in every frame.
       log.setStyle(el, 'visibility', 'hidden');
@@ -245,6 +250,17 @@ function prepare(log: MutationLog, target: Target): void {
       log.record(() => delete el.dataset.spFixedTop);
     }
   }
+  return overlays > 0
+    ? [
+        'A pop-up or overlay was covering the page and appears in the capture. Close it and capture again to remove it.',
+      ]
+    : [];
+}
+
+/** A visible fixed box floating in the middle band of the viewport, not anchored to an edge. */
+function isMidViewportOverlay(r: DOMRect, cs: CSSStyleDeclaration): boolean {
+  if (cs.visibility === 'hidden' || cs.display === 'none' || Number(cs.opacity) === 0) return false;
+  return r.top > 0.1 * innerHeight && r.bottom < 0.9 * innerHeight && r.height > 0.15 * innerHeight;
 }
 
 /**

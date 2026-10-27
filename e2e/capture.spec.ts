@@ -289,3 +289,11 @@ test('cross-origin iframes produce a warning; same-origin ones do not', async ({
     '1 embedded frame(s) from other sites were captured as pictures only; their text and links are not readable.',
   ]);
 });
+
+test('a mid-viewport modal is left in place with a warning', async ({ context, serviceWorker }) => {
+  const { result } = await captureFixture(context, serviceWorker, 'modal.html');
+  expect(result.done.status).toBe('complete');
+  expect(result.done.warnings).toEqual([
+    'A pop-up or overlay was covering the page and appears in the capture. Close it and capture again to remove it.',
+  ]);
+});
