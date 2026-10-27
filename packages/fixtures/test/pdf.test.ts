@@ -46,11 +46,12 @@ async function pageImages(doc: SynthDoc, slices: PageSlice[]): Promise<PageImage
 
 async function renderPdfPage(bytes: Uint8Array, pageNo: number, file: string) {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  const pdf = await pdfjs.getDocument({ data: bytes.slice(), isEvalSupported: false }).promise;
+  const pdf = await pdfjs.getDocument({ data: bytes.slice() }).promise;
   const page = await pdf.getPage(pageNo);
   const vp = page.getViewport({ scale: 1.5 });
   const canvas = createCanvas(Math.ceil(vp.width), Math.ceil(vp.height));
-  await page.render({ canvas: canvas as unknown as HTMLCanvasElement, viewport: vp }).promise;
+  // pdf.js types expect a DOM canvas; in Node it uses @napi-rs/canvas, which this is.
+  await page.render({ canvas: canvas as never, viewport: vp }).promise;
   writeFileSync(new URL(file, OUT), canvas.toBuffer('image/png'));
   return pdf.numPages;
 }

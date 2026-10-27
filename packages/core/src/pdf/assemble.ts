@@ -148,5 +148,8 @@ function drawFooter(
 
 /** Helvetica only covers WinAnsi; anything else becomes "?" (Unicode footers come in M3). */
 function winAnsiSafe(s: string): string {
-  return s.replace(/[^ -~ -ÿ]/g, '?');
+  return Array.from(s, (ch) => {
+    const c = ch.codePointAt(0)!;
+    return (c >= 0x20 && c <= 0x7e) || (c >= 0xa0 && c <= 0xff) ? ch : '?';
+  }).join('');
 }
