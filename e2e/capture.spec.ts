@@ -107,7 +107,11 @@ async function stitch(
     }
     return rows;
   };
-  return { width, height, rowsWithColour };
+  const colourAt = (x: number, y: number) => {
+    const i = (y * width + x) * 4;
+    return [data[i]!, data[i + 1]!, data[i + 2]!];
+  };
+  return { width, height, rowsWithColour, colourAt };
 }
 
 /** Number of separate runs in a sorted list of row numbers. */
@@ -157,4 +161,28 @@ test('inner scroller: only the panel is captured, whole content, no repeated chr
   expect(img.width).toBe(panel.clientWidth);
   expect(img.rowsWithColour(5, [0x34, 0x49, 0x5e])).toEqual([]); // top bar
   expect(img.rowsWithColour(5, [0xec, 0xf0, 0xf1])).toEqual([]); // sidebar
+});
+
+test('lazy images are loaded in every frame (none blank)', async ({ context, serviceWorker }) => {
+  const { result, page } = await captureFixture(context, serviceWorker, 'lazy-images.html');
+  expect(result.done.warnings).toEqual([]);
+  const rects = await page.evaluate(() =>
+    [...document.querySelectorAll<HTMLImageElement>('img.t')].map((img) => {
+      const r = img.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + scrollY, h: r.height };
+    }),
+  );
+  expect(rects).toHaveLength(12);
+  const img = await stitch(serviceWorker, result, 'lazy-images');
+  // Sample near the top, middle and bottom: a frame seam can cut through an image.
+  for (const r of rects) {
+    for (const f of [0.1, 0.5, 0.9]) {
+      expect(img.colourAt(Math.round(r.x), Math.round(r.y + f * r.h))).toEqual([0x8e, 0x44, 0xad]);
+    }
+  }
+  // Restored: data-src images are back to their placeholder only if the page had not loaded them.
+  const loading = await page.evaluate(() =>
+    [...document.querySelectorAll('img[loading]')].map((i) => i.getAttribute('loading')),
+  );
+  expect(new Set(loading)).toEqual(new Set(['lazy']));
 });

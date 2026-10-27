@@ -17,6 +17,9 @@ const types = {
 
 export function serve(port) {
   const server = createServer(async (req, res) => {
+    // ?delay=ms slows a response down, to make lazy loading observable in fixtures.
+    const delay = Number(new URL(req.url, 'http://x').searchParams.get('delay') ?? 0);
+    if (delay > 0) await new Promise((r) => setTimeout(r, Math.min(delay, 5000)));
     const path = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname));
     const file = join(root, path.endsWith('/') ? `${path}index.html` : path);
     if (!file.startsWith(root)) return res.writeHead(403).end();

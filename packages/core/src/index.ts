@@ -3,6 +3,7 @@ export * from './capture-plan.js';
 export * from './compose.js';
 export * from './geometry.js';
 export * from './image.js';
+export * from './lazy.js';
 export * from './mutation-log.js';
 export * from './pixel.js';
 export * from './rate-limit.js';

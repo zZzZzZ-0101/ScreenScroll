@@ -1,7 +1,10 @@
 import {
+  LAZY_SRCSET_ATTRS,
+  LAZY_SRC_ATTRS,
   MutationLog,
   STUCK_WARNING,
   chooseScrollTarget,
+  isPlaceholderSrc,
   isStuck,
   nextStep,
   type Rect,
@@ -58,10 +61,19 @@ async function run(msg: StartCapture): Promise<void> {
     const t = target;
     log.record(() => t.scrollTo(startOffset));
     prepare(log, target);
+    eagerLoadImages(log);
+    if (msg.mode === 'full') {
+      const preload = await preloadPass(target, () => cancelled);
+      if (preload) warnings.push(preload);
+      target.scrollTo(0);
+    }
+    // One global wait so slow images requested by the preload pass can finish (CAPTURE §5).
+    await waitForImages([...document.images], 5000);
     await document.fonts.ready;
 
     const initialScrollHeight = target.scrollHeight;
     let lastOffset: number | null = null;
+    let warnedImages = false;
     for (let index = 0; ; index++) {
       if (cancelled) {
         status = 'cancelled';
@@ -82,7 +94,11 @@ async function run(msg: StartCapture): Promise<void> {
         break;
       }
       if (msg.mode === 'full') target.scrollTo(step.y);
-      await settle();
+      const stillLoading = await settle();
+      if (stillLoading > 0 && !warnedImages) {
+        warnedImages = true;
+        warnings.push('Some images had not finished loading when captured and may appear blank.');
+      }
       const measured = target.offset;
       if (msg.mode === 'full' && isStuck(step.y, measured, lastOffset)) {
         warnings.push(STUCK_WARNING);
@@ -217,6 +233,48 @@ function prepare(log: MutationLog, target: Target): void {
   }
 }
 
+/**
+ * CAPTURE §5: lazy images load eagerly; `data-src` style URLs are copied in only when the
+ * current `src` is empty or a placeholder.
+ */
+function eagerLoadImages(log: MutationLog): void {
+  const setAttr = (el: Element, name: string, value: string) => {
+    const old = el.getAttribute(name);
+    log.record(() => (old === null ? el.removeAttribute(name) : el.setAttribute(name, old)));
+    el.setAttribute(name, value);
+  };
+  for (const img of document.querySelectorAll('img')) {
+    if (img.loading === 'lazy') setAttr(img, 'loading', 'eager');
+    if (isPlaceholderSrc(img.getAttribute('src'))) {
+      const real = LAZY_SRC_ATTRS.map((a) => img.getAttribute(a)).find((v) => v);
+      if (real) setAttr(img, 'src', real);
+    }
+  }
+  for (const el of document.querySelectorAll('img, picture > source')) {
+    if (el.getAttribute('srcset')) continue;
+    const real = LAZY_SRCSET_ATTRS.map((a) => el.getAttribute(a)).find((v) => v);
+    if (real) setAttr(el, 'srcset', real);
+  }
+}
+
+/**
+ * CAPTURE §5 preload pass: scroll through quickly so scroll-triggered loaders fire.
+ * Capped at 60 s or 200 screens; returns a warning when the cap cut it short.
+ */
+async function preloadPass(target: Target, cancelled: () => boolean): Promise<string | null> {
+  const started = performance.now();
+  const step = Math.max(1, Math.floor(target.crop.height * 0.9));
+  for (let y = 0, screens = 0; ; y += step, screens++) {
+    if (cancelled()) return null;
+    if (y >= target.scrollHeight - target.crop.height) return null;
+    if (screens >= 200 || performance.now() - started > 60_000) {
+      return 'Stopped preloading after 200 screens or 60 s; images further down may be missing.';
+    }
+    target.scrollTo(y);
+    await sleep(120);
+  }
+}
+
 /** Top-anchored fixed headers appear in frame 1 only (CAPTURE §4). */
 function hideFixedTop(log: MutationLog): void {
   for (const el of document.querySelectorAll<HTMLElement>('[data-sp-fixed-top]')) {
@@ -224,18 +282,29 @@ function hideFixedTop(log: MutationLog): void {
   }
 }
 
-/** CAPTURE §7: two frames, visible images decoded (1.5 s cap), then a short dwell. */
-async function settle(): Promise<void> {
+/**
+ * CAPTURE §7: two frames, visible images loaded and decoded (1.5 s cap), then a short dwell.
+ * Returns how many visible images were still incomplete, so the caller can warn.
+ */
+async function settle(): Promise<number> {
   await frames(2);
   const visible = [...document.images].filter((img) => {
     const r = img.getBoundingClientRect();
     return r.bottom > 0 && r.top < innerHeight && r.width > 0;
   });
-  await Promise.race([
-    Promise.all(visible.map((img) => img.decode().catch(() => undefined))),
-    sleep(1500),
-  ]);
+  const pending = await waitForImages(visible, 1500);
   await sleep(150);
+  return pending;
+}
+
+/** Waits until the images are loaded and decoded or the timeout passes; returns how many are not. */
+async function waitForImages(images: HTMLImageElement[], timeoutMs: number): Promise<number> {
+  const isPending = (img: HTMLImageElement) => !!img.currentSrc && !img.complete;
+  await Promise.race([
+    Promise.all(images.map((img) => img.decode().catch(() => undefined))),
+    sleep(timeoutMs),
+  ]);
+  return images.filter(isPending).length;
 }
 
 function frames(n: number): Promise<void> {
