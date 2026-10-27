@@ -27,7 +27,9 @@ export default defineConfig({
       'clipboardWrite',
       'contextMenus',
     ],
-    host_permissions: env.mode === 'e2e' ? ['http://localhost/*', 'http://127.0.0.1/*'] : [],
+    // captureVisibleTab accepts only <all_urls> or an activeTab grant, so the e2e build
+    // (which cannot click the toolbar) needs <all_urls>. Production asks for nothing.
+    host_permissions: env.mode === 'e2e' ? ['<all_urls>'] : [],
     commands: {
       _execute_action: {
         suggested_key: { default: 'Alt+Shift+O' },
