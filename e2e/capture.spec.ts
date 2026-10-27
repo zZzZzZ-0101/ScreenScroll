@@ -376,3 +376,35 @@ test('fixed backgrounds scroll with the page instead of repeating per frame', as
     ),
   ).toBe('fixed');
 });
+
+test('playing videos are paused for the capture and resumed afterwards', async ({
+  context,
+  serviceWorker,
+}) => {
+  const page = await context.newPage();
+  const url = `${FIXTURES}/video.html`;
+  await page.goto(url);
+  await page.bringToFront();
+  await page.waitForFunction(() => {
+    const v = document.getElementById('v') as HTMLVideoElement;
+    return !v.paused && v.currentTime > 0.2;
+  });
+  await page.evaluate(() => {
+    const v = document.getElementById('v') as HTMLVideoElement;
+    const log: string[] = ((window as unknown as { __ev: string[] }).__ev = []);
+    v.addEventListener('pause', () => log.push('pause'));
+    v.addEventListener('play', () => log.push('play'));
+  });
+  const result = await serviceWorker.evaluate(async (u) => {
+    const [tab] = await chrome.tabs.query({ url: u });
+    return (
+      globalThis as unknown as { __spTest: { capture(id: number): Promise<CaptureResult> } }
+    ).__spTest.capture(tab!.id!);
+  }, url);
+  expect(result.done.status).toBe('complete');
+  const after = await page.evaluate(() => ({
+    events: (window as unknown as { __ev: string[] }).__ev,
+    paused: (document.getElementById('v') as HTMLVideoElement).paused,
+  }));
+  expect(after).toEqual({ events: ['pause', 'play'], paused: false });
+});

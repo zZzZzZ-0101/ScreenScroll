@@ -23,7 +23,7 @@ Everything below is covered by e2e tests in headless Chromium with the extension
 - **Pipeline**: popup / hotkey / context menu → background injects `capture.js` → content script scrolls, settles, collects hints → background paces `captureVisibleTab` (550 ms, quota backoff) → PNG frame + `docY` + real DPR + hints into IndexedDB. The session record holds tab and window ids, so a service-worker restart mid-capture is survived (tested by wiping in-memory state).
 - **Scroll target**: document vs largest inner scroller, cropped to the panel. `overflow: hidden` scroll locks on html/body are undone when nothing else scrolls (`scroll-lock.html`); app layouts keep their panel (`inner-scroll.html`).
 - **Fixed/sticky**: sticky → relative; fixed top hidden from frame 2 (before settling, because of the freeze stylesheet's 1 ms transitions); fixed bottom hidden; > 80% elements skipped; `background-attachment: fixed` → scroll (`fixed-background.html`, test fails with the conversion disabled); mid-viewport modals left in place with a warning (`modal.html`).
-- **Motion**: freeze stylesheet plus finishing already-running animations/transitions; two captures of `animations.html` are pixel-identical. Video pause is in place but untested (no video fixture).
+- **Motion**: freeze stylesheet plus finishing already-running animations/transitions; two captures of `animations.html` are pixel-identical. Playing videos are paused for the capture and resumed after (`video.html` with a 4 s generated test clip).
 - **Lazy content**: eager images, `data-src` over placeholders, preload pass, global and per-frame image waits with a warning (`lazy-images.html` with 2.5 s image delay; test fails with the feature disabled).
 - **Restore**: `MutationLog` (reverse, idempotent, error-tolerant, removes empty `style=""`). Tested after success, Esc and an injected grab failure, comparing the page with its pre-capture state.
 - **Limits and warnings**: growth/caps (`infinite.html`), cross-origin iframes (`iframe-xorigin.html`), stuck scrolling, slow hints, images still loading, blocked pages (chrome:// tested; the message explains browser pages because Chrome hides their URL).
@@ -34,12 +34,12 @@ Speed: `huge.html` (150,000 px, 189 screens) captured in 2.1 minutes in headless
 
 Remaining in M1:
 - Seam safety net wiring (needs the Studio's compositor — M2).
-- `pagehide` restore test; video pause test.
+- `pagehide` restore test (needs a reliable back/forward-cache setup in the test browser).
 - Popup/hotkey/context-menu item stays unticked until the manual check (needs a real user gesture).
 - Manual real-site checks (Wikipedia, Gmail, Notion, Drive preview, MDN) — needs the user's browser.
 
 ### Verified (end of session 3)
-`pnpm test` 75/75 (incl. offline guard), `pnpm e2e` 23/23 (4.4 min, incl. the 150,000 px page), `pnpm lint` and `pnpm typecheck` clean.
+`pnpm test` 75/75 (incl. offline guard), `pnpm e2e` 24/24 (4.4 min, incl. the 150,000 px page), `pnpm lint` and `pnpm typecheck` clean.
 
 ## Manual site checks
 | Site | Date | Capture | Header once | Images loaded | No text cut | Text searchable | Links | Time | Notes |

@@ -23,7 +23,7 @@ Legend: `[ ]` todo · `(L#)` = lesson from `docs/PRIOR_ART.md` §7 · `→ DOC` 
 - [x] Content-script injection on demand. Blocked-page detection with clear messages. → CAPTURE §13
 - [x] Scroll-target detection (document vs largest inner scroller), with crop rect for inner scrollers (L9). → CAPTURE §3
 - [ ] Mutation log + bulletproof restore (success, error, Esc, pagehide) (L13). → CAPTURE §10
-- [ ] Freeze animations/transitions; pause videos. → CAPTURE §6
+- [x] Freeze animations/transitions; pause videos. → CAPTURE §6
 - [x] Sticky → relative; fixed top → hide after frame 1; fixed bottom → hide always; skip >80%-viewport fixed elements; `background-attachment: fixed` → scroll (L8). → CAPTURE §4
 - [x] Unlock `overflow:hidden` scroll locks during capture, then restore.
 - [x] Preload pass for lazy content; eager-ify lazy images; per-frame image `decode()` wait; `document.fonts.ready` (L10). → CAPTURE §5

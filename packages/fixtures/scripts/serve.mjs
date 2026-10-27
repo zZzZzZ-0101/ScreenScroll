@@ -13,6 +13,7 @@ const types = {
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
+  '.webm': 'video/webm',
 };
 
 export function serve(port) {
