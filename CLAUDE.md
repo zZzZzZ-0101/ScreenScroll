@@ -1,6 +1,6 @@
 # CLAUDE.md — instructions for the coding agent
 
-You are building **ScreenScroll**: an offline, ad-free desktop browser extension (Chrome/Edge first) that captures web pages and exports smart multi-page PDFs whose page breaks never cut through text, plus a FireShot-Pro-level feature set. Read `README.md` first, then `TODO.md`. The `docs/` folder is the spec.
+You are building **ScreenScroll**: an offline, ad-free desktop browser extension (Chrome/Edge first) that captures web pages and exports smart multi-page PDFs whose page breaks never cut through text, plus a FireShot-Pro-level feature set. Read `README.md` first, then `docs/product/ROADMAP.md`. The `docs/` folder is the spec.
 
 ## Hard constraints (never violate)
 
@@ -16,10 +16,10 @@ You are building **ScreenScroll**: an offline, ad-free desktop browser extension
 
 ## How to work
 
-- Follow `TODO.md` milestone by milestone, top to bottom. Don't start a milestone before the previous one's exit criteria are met, unless the user says otherwise.
-- At the start of each session: read `docs/PROGRESS.md` and the unchecked items in `TODO.md`.
+- Follow `docs/product/ROADMAP.md` milestone by milestone, top to bottom. Don't start a milestone before the previous one's exit criteria are met, unless the user says otherwise.
+- At the start of each session: read `docs/project/PROGRESS.md` and the unchecked items in `docs/product/ROADMAP.md`.
 - Make small, reviewable commits with messages like `m1: sticky header handling`. Tag each finished milestone (`m1`, `m2`, …).
-- Tick TODO items only when implemented **and verified**. Record manual-check results and known issues in `docs/PROGRESS.md`. Record any deviation from the spec, and why, in `docs/DECISIONS.md` (append-only, dated).
+- Tick TODO items only when implemented **and verified**. Record manual-check results and known issues in `docs/project/PROGRESS.md`. Record any deviation from the spec, and why, in `docs/project/DECISIONS.md` (append-only, dated).
 - If the spec is ambiguous, pick the option that best serves the principles in `README.md`, write it in `DECISIONS.md` and continue. Ask the user only for things you can't do yourself (see below).
 - Prefer simple, readable code. Pure logic goes in `packages/core` with unit tests. Extension glue stays thin.
 

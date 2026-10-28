@@ -30,11 +30,11 @@ export default defineConfig({
     // captureVisibleTab accepts only <all_urls> or an activeTab grant, so the e2e build
     // (which cannot click the toolbar) needs <all_urls>. Production asks for nothing.
     host_permissions: env.mode === 'e2e' ? ['<all_urls>'] : [],
+    // No popup: a click on the icon captures (UI §1); right-click the icon for more.
+    action: {
+      default_title: 'ScreenScroll: click to capture the full page, right-click for more',
+    },
     commands: {
-      _execute_action: {
-        suggested_key: { default: 'Alt+Shift+O' },
-        description: 'Open ScreenScroll',
-      },
       'capture-full': {
         suggested_key: { default: 'Alt+Shift+P' },
         description: 'Capture full page',
@@ -43,8 +43,10 @@ export default defineConfig({
         suggested_key: { default: 'Alt+Shift+S' },
         description: 'Capture a selection',
       },
-      // Chrome allows four suggested keys; this one is unassigned until the user sets it.
-      'capture-element': { description: 'Capture an element' },
+      'capture-element': {
+        suggested_key: { default: 'Alt+Shift+E' },
+        description: 'Capture an element',
+      },
       'capture-visible': {
         suggested_key: { default: 'Alt+Shift+V' },
         description: 'Capture visible area',

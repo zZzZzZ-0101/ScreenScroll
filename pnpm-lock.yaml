@@ -56,7 +56,7 @@ importers:
 
   packages/extension:
     dependencies:
-      '@scrollpress/core':
+      '@screenscroll/core':
         specifier: workspace:*
         version: link:../core
       fflate:
@@ -99,7 +99,7 @@ importers:
 
   packages/fixtures:
     dependencies:
-      '@scrollpress/core':
+      '@screenscroll/core':
         specifier: workspace:*
         version: link:../core
     devDependencies:

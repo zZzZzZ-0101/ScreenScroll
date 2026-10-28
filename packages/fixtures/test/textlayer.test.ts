@@ -6,8 +6,8 @@ import {
   buildPdf,
   chooseImageFormat,
   type PageImage,
-} from '@scrollpress/core/pdf';
-import { computeLayout, DEFAULT_PAGE_SETTINGS, paginate, type PageSlice } from '@scrollpress/core';
+} from '@screenscroll/core/pdf';
+import { computeLayout, DEFAULT_PAGE_SETTINGS, paginate, type PageSlice } from '@screenscroll/core';
 import { synthFixtures, type SynthDoc } from '../src/synth.js';
 
 const OUT = new URL('../out/', import.meta.url);

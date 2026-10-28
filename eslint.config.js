@@ -12,7 +12,7 @@ export default tseslint.config(
       '**/.wxt/**',
       'test-results/**',
       'playwright-report/**',
-      'reference/**',
+      'docs/reference/**',
     ],
   },
   js.configs.recommended,

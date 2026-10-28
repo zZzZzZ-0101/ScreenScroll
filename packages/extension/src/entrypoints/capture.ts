@@ -13,11 +13,11 @@ import {
   type Rect,
   type Region,
   type ScrollCandidate,
-} from '@scrollpress/core';
-import { collectHints, type CollectContext } from '@/lib/hints-collector';
-import type { CaptureDone, GrabFrame, GrabResult, StartCapture } from '@/lib/messages';
-import { elementRegion, pickElement, pickScrollArea, selectRegion } from '@/lib/page-ui';
-import { documentTarget, elementTarget, isScroller, type Target } from '@/lib/targets';
+} from '@screenscroll/core';
+import { collectHints, type CollectContext } from '@/content/hints-collector';
+import type { CaptureDone, GrabFrame, GrabResult, StartCapture } from '@/shared/messages';
+import { elementRegion, pickElement, pickScrollArea, selectRegion } from '@/content/page-ui';
+import { documentTarget, elementTarget, isScroller, type Target } from '@/content/targets';
 
 // Injected on demand into the page (CAPTURE §2). All page changes go through `log` so they
 // are undone on success, error, Esc and pagehide (CAPTURE §10).

@@ -1,5 +1,5 @@
 import { createCanvas, loadImage, type SKRSContext2D } from '@napi-rs/canvas';
-import { emptyHints, type DomHints, type Interval } from '@scrollpress/core';
+import { emptyHints, type DomHints, type Interval } from '@screenscroll/core';
 
 /**
  * Synthetic long captures with known ground truth (TESTING §1). Every text line's ink box is
