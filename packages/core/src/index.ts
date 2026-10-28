@@ -13,6 +13,7 @@ export * from './mutation-log.js';
 export * from './paginate.js';
 export * from './pixel.js';
 export * from './rate-limit.js';
+export * from './region.js';
 export * from './registration.js';
 export * from './rows.js';
 export * from './scroll-target.js';

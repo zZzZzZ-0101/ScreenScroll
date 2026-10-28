@@ -1,4 +1,4 @@
-import { Pacer, blockedReason, type CaptureLimits } from '@scrollpress/core';
+import { Pacer, blockedReason, type CaptureLimits, type Region } from '@scrollpress/core';
 import { db } from '@/lib/db';
 import type { CaptureDone, CaptureMode, GrabFrame, GrabResult, ToBackground } from '@/lib/messages';
 import { dataUrlToBlob, pngSize } from '@/lib/png';
@@ -18,7 +18,7 @@ export default defineBackground(() => {
   async function startCapture(
     tab: chrome.tabs.Tab,
     mode: CaptureMode,
-    limits?: CaptureLimits,
+    opts: CaptureOptions = {},
   ): Promise<string> {
     const blocked = blockedReason(tab.url, await chrome.extension.isAllowedFileSchemeAccess());
     if (blocked || tab.id === undefined) throw new Error(blocked?.message ?? 'No tab to capture.');
@@ -40,7 +40,7 @@ export default defineBackground(() => {
       windowId: tab.windowId,
     });
     await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['/capture.js'] });
-    await chrome.tabs.sendMessage(tab.id, { type: 'sp:start', sessionId: id, mode, limits });
+    await chrome.tabs.sendMessage(tab.id, { type: 'sp:start', sessionId: id, mode, ...opts });
     return id;
   }
 
@@ -126,7 +126,7 @@ export default defineBackground(() => {
     }
     if (msg.type === 'sp:popup-capture') {
       void activeTab()
-        .then((tab) => startCapture(tab, msg.mode))
+        .then((tab) => startCapture(tab, msg.mode, { delayMs: msg.delayMs }))
         .then(
           () => reply({ ok: true }),
           (e: unknown) => reply({ ok: false, error: e instanceof Error ? e.message : String(e) }),
@@ -140,6 +140,9 @@ export default defineBackground(() => {
   const MENU: Array<{ id: string; title: string; mode: CaptureMode }> = [
     { id: 'sp-full', title: 'Capture full page', mode: 'full' },
     { id: 'sp-visible', title: 'Capture visible area', mode: 'visible' },
+    { id: 'sp-selection', title: 'Capture a selection', mode: 'selection' },
+    { id: 'sp-element', title: 'Capture an element', mode: 'element' },
+    { id: 'sp-pick-scroller', title: 'Capture a scroll area', mode: 'pick-scroller' },
   ];
   chrome.runtime.onInstalled.addListener(() => {
     chrome.contextMenus.removeAll(() => {
@@ -152,9 +155,14 @@ export default defineBackground(() => {
     if (mode && tab) void startCapture(tab, mode).catch(console.warn);
   });
 
+  const COMMANDS: Record<string, CaptureMode> = {
+    'capture-full': 'full',
+    'capture-visible': 'visible',
+    'capture-selection': 'selection',
+    'capture-element': 'element',
+  };
   chrome.commands.onCommand.addListener((command, tab) => {
-    const mode =
-      command === 'capture-full' ? 'full' : command === 'capture-visible' ? 'visible' : null;
+    const mode = COMMANDS[command];
     if (mode && tab) void startCapture(tab, mode).catch(console.warn);
   });
 
@@ -171,9 +179,9 @@ export default defineBackground(() => {
         async start(
           tabId: number,
           mode: CaptureMode = 'full',
-          limits?: CaptureLimits,
+          opts: CaptureOptions = {},
         ): Promise<string> {
-          return startCapture(await chrome.tabs.get(tabId), mode, limits);
+          return startCapture(await chrome.tabs.get(tabId), mode, opts);
         },
         failGrabAt(index: number | null) {
           failGrabAt = index;
@@ -219,9 +227,16 @@ export default defineBackground(() => {
 interface PopupCapture {
   type: 'sp:popup-capture';
   mode: CaptureMode;
+  delayMs?: number;
+}
+
+interface CaptureOptions {
+  limits?: CaptureLimits;
+  delayMs?: number;
+  region?: Region;
 }
 
 interface E2EHook {
-  start(tabId: number, mode?: CaptureMode, limits?: CaptureLimits): Promise<string>;
+  start(tabId: number, mode?: CaptureMode, opts?: CaptureOptions): Promise<string>;
   wait(id: string): Promise<unknown>;
 }

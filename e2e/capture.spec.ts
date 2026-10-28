@@ -270,7 +270,9 @@ test('an infinite page stops at the cap with an explicit warning', async ({
       }
     ).__spTest;
     const [tab] = await chrome.tabs.query({ url: u });
-    return hook.wait(await hook.start(tab!.id!, 'full', { maxScreens: 6, maxHeight: 1e9 }));
+    return hook.wait(
+      await hook.start(tab!.id!, 'full', { limits: { maxScreens: 6, maxHeight: 1e9 } }),
+    );
   }, url);
   expect(result.frames).toHaveLength(6);
   expect(result.done.status).toBe('complete');

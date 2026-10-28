@@ -2,7 +2,15 @@ import { useEffect, useState } from 'react';
 import { PAPERS, type PaperId } from '@scrollpress/core';
 import { loadSettings, saveSettings, type Settings } from '@/lib/settings';
 
-type Mode = 'full' | 'visible';
+import type { CaptureMode } from '@/lib/messages';
+
+const SECONDARY: Array<[CaptureMode, string, string]> = [
+  ['visible', 'Visible area', 'Alt+Shift+V'],
+  ['selection', 'Select area', 'Alt+Shift+S'],
+  ['element', 'Pick element', ''],
+  ['pick-scroller', 'Pick scroll area', ''],
+];
+const DELAYS = [0, 3, 5, 10];
 
 export function App() {
   const [error, setError] = useState<string | null>(null);
@@ -11,10 +19,14 @@ export function App() {
     void loadSettings().then(setSettings);
   }, []);
   const update = async (patch: Partial<Settings>) => setSettings(await saveSettings(patch));
+  const [delay, setDelay] = useState(0);
 
-  async function capture(mode: Mode) {
+  async function capture(mode: CaptureMode) {
     setError(null);
-    const res = (await chrome.runtime.sendMessage({ type: 'sp:popup-capture', mode })) as {
+    // The delay is for menus and tooltips on full-page and visible captures; the pickers wait
+    // for the user anyway.
+    const delayMs = mode === 'full' || mode === 'visible' ? delay * 1000 : 0;
+    const res = (await chrome.runtime.sendMessage({ type: 'sp:popup-capture', mode, delayMs })) as {
       ok: boolean;
       error?: string;
     };
@@ -33,14 +45,31 @@ export function App() {
         <span>Capture full page</span>
         <kbd className="font-sans opacity-80">Alt+Shift+P</kbd>
       </button>
-      <button
-        type="button"
-        onClick={() => void capture('visible')}
-        className="mt-1 flex w-full justify-between rounded-md px-3 py-2 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:hover:bg-neutral-800"
-      >
-        <span>Visible area</span>
-        <kbd className="font-sans text-neutral-500">Alt+Shift+V</kbd>
-      </button>
+      {SECONDARY.map(([mode, label, key]) => (
+        <button
+          key={mode}
+          type="button"
+          onClick={() => void capture(mode)}
+          className="mt-1 flex w-full justify-between rounded-md px-3 py-1.5 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:hover:bg-neutral-800"
+        >
+          <span>{label}</span>
+          {key && <kbd className="font-sans text-neutral-500">{key}</kbd>}
+        </button>
+      ))}
+      <label className="mt-1 flex items-center justify-between px-3 py-1">
+        <span>Delay</span>
+        <select
+          value={delay}
+          onChange={(e) => setDelay(Number(e.target.value))}
+          className="rounded-md border border-neutral-300 bg-white px-2 py-0.5 dark:border-neutral-700 dark:bg-neutral-900"
+        >
+          {DELAYS.map((d) => (
+            <option key={d} value={d}>
+              {d ? `${d} s` : 'Off'}
+            </option>
+          ))}
+        </select>
+      </label>
       {settings && (
         <div className="mt-3 border-t border-neutral-200 pt-2 dark:border-neutral-700">
           <fieldset>

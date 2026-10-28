@@ -8,11 +8,16 @@ import {
   isPlaceholderSrc,
   isStuck,
   nextStep,
+  regionFrame,
+  regionScroll,
   type Rect,
+  type Region,
   type ScrollCandidate,
 } from '@scrollpress/core';
-import { collectHints } from '@/lib/hints-collector';
+import { collectHints, type CollectContext } from '@/lib/hints-collector';
 import type { CaptureDone, GrabFrame, GrabResult, StartCapture } from '@/lib/messages';
+import { elementRegion, pickElement, pickScrollArea, selectRegion } from '@/lib/page-ui';
+import { documentTarget, elementTarget, isScroller, type Target } from '@/lib/targets';
 
 // Injected on demand into the page (CAPTURE §2). All page changes go through `log` so they
 // are undone on success, error, Esc and pagehide (CAPTURE §10).
@@ -32,19 +37,44 @@ const FREEZE_CSS = `*, *::before, *::after {
   scroll-behavior: auto !important;
 }`;
 
-interface Target {
-  el: Element | null; // null = document
-  crop: Rect;
-  get offset(): number;
-  scrollTo(y: number): void;
-  get scrollHeight(): number;
+/** What to capture once the user has picked (or nothing needed picking). */
+type Plan =
+  | { kind: 'scroll'; target: Target | null; visibleOnly: boolean } // null = choose automatically
+  | { kind: 'region'; target: Target; region: Region };
+
+/** The picker step of selection, element and scroll-area modes (UI §2). Null = cancelled. */
+async function plan(msg: StartCapture): Promise<Plan | null> {
+  switch (msg.mode) {
+    case 'full':
+    case 'visible':
+      if (msg.region) return { kind: 'region', target: documentTarget(), region: msg.region };
+      return { kind: 'scroll', target: null, visibleOnly: msg.mode === 'visible' };
+    case 'selection': {
+      const sel = msg.region
+        ? { target: documentTarget(), region: msg.region }
+        : await selectRegion();
+      return sel && { kind: 'region', ...sel };
+    }
+    case 'element': {
+      const el = await pickElement();
+      if (!el) return null;
+      // An element that scrolls is captured whole, like a page (CAPTURE §14).
+      if (isScroller(el)) return { kind: 'scroll', target: elementTarget(el), visibleOnly: false };
+      return { kind: 'region', ...elementRegion(el) };
+    }
+    case 'pick-scroller': {
+      const el = await pickScrollArea();
+      return el && { kind: 'scroll', target: elementTarget(el), visibleOnly: false };
+    }
+  }
 }
 
 async function run(msg: StartCapture): Promise<void> {
   const log = new MutationLog();
   const warnings: string[] = [];
   let cancelled = false;
-  let status: CaptureDone['status'] = 'complete';
+  let status: CaptureDone['status'];
+  let size = { width: 0, height: 0 };
   const onKey = (e: KeyboardEvent) => {
     if (e.key === 'Escape') cancelled = true;
   };
@@ -52,16 +82,36 @@ async function run(msg: StartCapture): Promise<void> {
     cancelled = true;
     log.restore();
   };
-  addEventListener('keydown', onKey, true);
-  addEventListener('pagehide', onHide);
   const pill = makePill();
-  let target: Target | null = null;
 
   try {
-    target = pickTarget();
+    if (msg.delayMs) {
+      // UI §1 delayed capture: time to open a menu or hover a tooltip.
+      addEventListener('keydown', onKey, true);
+      for (let left = Math.ceil(msg.delayMs / 1000); left > 0 && !cancelled; left--) {
+        pill.set(`Capturing in ${left} s · Esc to cancel`);
+        await sleep(1000);
+      }
+      removeEventListener('keydown', onKey, true);
+      if (cancelled) throw new Cancelled();
+    }
+    pill.hide();
+    const p = await plan(msg);
+    if (!p) throw new Cancelled();
+    pill.show();
+    addEventListener('keydown', onKey, true);
+    addEventListener('pagehide', onHide);
+
+    let target = p.target ?? pickTarget();
     // A dialog-style scroll lock (overflow hidden on html/body) leaves nothing to scroll.
     // Only unlock when no inner scroller was found, so app layouts keep their panel.
-    if (!target.el && target.scrollHeight <= innerHeight + 2 && unlockScroll(log)) {
+    if (
+      p.kind === 'scroll' &&
+      !p.target &&
+      !target.el &&
+      target.scrollHeight <= innerHeight + 2 &&
+      unlockScroll(log)
+    ) {
       target = pickTarget();
     }
     const startOffset = target.offset;
@@ -75,98 +125,51 @@ async function run(msg: StartCapture): Promise<void> {
       );
     }
     eagerLoadImages(log);
-    if (msg.mode === 'full') {
+    if (p.kind === 'region' || !p.visibleOnly) {
+      const from = p.kind === 'region' ? p.region.y0 : 0;
+      const to = p.kind === 'region' ? p.region.y1 : Infinity;
       const preload = await preloadPass(
         target,
         () => cancelled,
         Math.min(200, msg.limits?.maxScreens ?? DEFAULT_LIMITS.maxScreens),
+        from,
+        to,
       );
       if (preload) warnings.push(preload);
-      target.scrollTo(0);
+      target.scrollTo(from);
     }
     // One global wait so slow images requested by the preload pass can finish (CAPTURE §5).
     await waitForImages([...document.images], 5000);
     await document.fonts.ready;
 
-    const initialScrollHeight = target.scrollHeight;
-    let lastOffset: number | null = null;
-    let warnedImages = false;
-    const hintCtx = {
-      root: target.el ?? document.body,
-      crop: target.crop,
-      offset: 0,
-      seen: new Set<string>(),
-      skipTextRuns: false,
-      order: new WeakMap<Node, number>(),
-      nextOrder: 0,
-    };
-    for (let index = 0; ; index++) {
-      if (cancelled) {
-        status = 'cancelled';
-        break;
-      }
-      const step =
-        msg.mode === 'visible' && lastOffset !== null
-          ? ({ kind: 'stop', reason: 'done', warning: null } as const)
-          : nextStep(
-              {
-                viewportHeight: target.crop.height,
-                scrollHeight: target.scrollHeight,
-                lastOffset,
-                framesTaken: index,
-                initialScrollHeight,
-              },
-              msg.limits,
-            );
-      if (step.kind === 'stop') {
-        if (step.warning) warnings.push(step.warning);
-        break;
-      }
-      if (msg.mode === 'full') target.scrollTo(step.y);
-      // Before settling: the freeze stylesheet gives every property a 1 ms transition, so
-      // `visibility: hidden` only takes effect a frame later.
-      if (index === 1) hideFixedTop(log);
-      const stillLoading = await settle();
-      if (stillLoading > 0 && !warnedImages) {
-        warnedImages = true;
-        warnings.push('Some images had not finished loading when captured and may appear blank.');
-      }
-      const measured = target.offset;
-      if (msg.mode === 'full' && isStuck(step.y, measured, lastOffset)) {
-        warnings.push(STUCK_WARNING);
-        break;
-      }
-      // The pill hangs off <html>, outside the walk root, so it never appears in hints.
-      hintCtx.offset = measured;
-      const t0 = performance.now();
-      const hints = collectHints(hintCtx);
-      const hintsMs = performance.now() - t0;
-      if (hintsMs > 50 && !hintCtx.skipTextRuns) {
-        // CAPTURE §11 budget: keep line boxes, drop text runs for the rest of the capture.
-        hintCtx.skipTextRuns = true;
-        warnings.push('Page text was too slow to read; the PDF may not be fully searchable.');
-      }
-      pill.set(`Capturing ${index + 1} · Esc to cancel`);
-      pill.hide();
-      await frames(2);
-      const grab: GrabFrame = {
-        type: 'sp:grab',
-        sessionId: msg.sessionId,
-        index,
-        docY: measured,
+    const ctx: LoopContext = {
+      msg,
+      log,
+      warnings,
+      pill,
+      cancelled: () => cancelled,
+      hints: {
+        root: target.el ?? document.body,
         crop: target.crop,
-        viewportWidth: innerWidth,
-        hints,
-        hintsMs,
-      };
-      const res = (await chrome.runtime.sendMessage(grab)) as GrabResult;
-      pill.show();
-      if (!res.ok) throw new Error(res.error);
-      lastOffset = measured;
-    }
+        offset: 0,
+        seen: new Set<string>(),
+        skipTextRuns: false,
+        order: new WeakMap<Node, number>(),
+        nextOrder: 0,
+      },
+    };
+    const result =
+      p.kind === 'region'
+        ? await captureRegion(ctx, target, p.region)
+        : await captureScroll(ctx, target, p.visibleOnly);
+    status = result.status;
+    size = result.size;
   } catch (e) {
-    status = 'error';
-    warnings.push(`Capture failed: ${e instanceof Error ? e.message : String(e)}`);
+    if (e instanceof Cancelled) status = 'cancelled';
+    else {
+      status = 'error';
+      warnings.push(`Capture failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
   } finally {
     pill.remove();
     const errors = log.restore();
@@ -179,23 +182,151 @@ async function run(msg: StartCapture): Promise<void> {
     type: 'sp:done',
     sessionId: msg.sessionId,
     status,
-    docWidth: target?.crop.width ?? 0,
-    docHeight: target?.scrollHeight ?? 0,
+    docWidth: size.width,
+    docHeight: size.height,
     warnings,
   };
   await chrome.runtime.sendMessage(done);
 }
 
+class Cancelled extends Error {}
+
+interface LoopContext {
+  msg: StartCapture;
+  log: MutationLog;
+  warnings: string[];
+  pill: ReturnType<typeof makePill>;
+  cancelled: () => boolean;
+  hints: CollectContext;
+}
+
+interface LoopResult {
+  status: CaptureDone['status'];
+  size: { width: number; height: number };
+}
+
+/** Settle, collect hints, hide the pill and grab one frame (CAPTURE §2 step 5). */
+async function grabFrame(ctx: LoopContext, index: number, docY: number, crop: Rect): Promise<void> {
+  const stillLoading = await settle();
+  if (stillLoading > 0 && !ctx.warnings.includes(IMAGES_WARNING)) ctx.warnings.push(IMAGES_WARNING);
+  // The pill hangs off <html>, outside the walk root, so it never appears in hints.
+  ctx.hints.crop = crop;
+  ctx.hints.offset = docY;
+  const t0 = performance.now();
+  const hints = collectHints(ctx.hints);
+  const hintsMs = performance.now() - t0;
+  if (hintsMs > 50 && !ctx.hints.skipTextRuns) {
+    // CAPTURE §11 budget: keep line boxes, drop text runs for the rest of the capture.
+    ctx.hints.skipTextRuns = true;
+    ctx.warnings.push('Page text was too slow to read; the PDF may not be fully searchable.');
+  }
+  ctx.pill.set(`Capturing ${index + 1} · Esc to cancel`);
+  ctx.pill.hide();
+  await frames(2);
+  const grab: GrabFrame = {
+    type: 'sp:grab',
+    sessionId: ctx.msg.sessionId,
+    index,
+    docY,
+    crop,
+    viewportWidth: innerWidth,
+    hints,
+    hintsMs,
+  };
+  const res = (await chrome.runtime.sendMessage(grab)) as GrabResult;
+  ctx.pill.show();
+  if (!res.ok) throw new Error(res.error);
+}
+
+const IMAGES_WARNING = 'Some images had not finished loading when captured and may appear blank.';
+
+/** Full page or visible area of a scroll target (CAPTURE §2, §9). */
+async function captureScroll(
+  ctx: LoopContext,
+  target: Target,
+  visibleOnly: boolean,
+): Promise<LoopResult> {
+  const initialScrollHeight = target.scrollHeight;
+  let lastOffset: number | null = null;
+  for (let index = 0; ; index++) {
+    if (ctx.cancelled())
+      return {
+        status: 'cancelled',
+        size: { width: target.crop.width, height: target.scrollHeight },
+      };
+    const step =
+      visibleOnly && lastOffset !== null
+        ? ({ kind: 'stop', reason: 'done', warning: null } as const)
+        : nextStep(
+            {
+              viewportHeight: target.crop.height,
+              scrollHeight: target.scrollHeight,
+              lastOffset,
+              framesTaken: index,
+              initialScrollHeight,
+            },
+            ctx.msg.limits,
+          );
+    if (step.kind === 'stop') {
+      if (step.warning) ctx.warnings.push(step.warning);
+      break;
+    }
+    if (!visibleOnly) target.scrollTo(step.y);
+    // Before settling: the freeze stylesheet gives every property a 1 ms transition, so
+    // `visibility: hidden` only takes effect a frame later.
+    if (index === 1) hideFixedTop(ctx.log);
+    const measured = target.offset;
+    if (!visibleOnly && isStuck(step.y, measured, lastOffset)) {
+      ctx.warnings.push(STUCK_WARNING);
+      break;
+    }
+    await grabFrame(ctx, index, measured, target.crop);
+    lastOffset = measured;
+  }
+  return { status: 'complete', size: { width: target.crop.width, height: target.scrollHeight } };
+}
+
+/** Selection and element modes: only the region, stitched across as many frames as needed. */
+async function captureRegion(
+  ctx: LoopContext,
+  target: Target,
+  region: Region,
+): Promise<LoopResult> {
+  const size = { width: region.x1 - region.x0, height: region.y1 - region.y0 };
+  // A fixed header would cover the region's top in every frame unless the region starts at
+  // the very top of the page, where the header is part of what was selected.
+  if (region.y0 > 0) hideFixedTop(ctx.log);
+  let covered = region.y0;
+  const maxFrames = ctx.msg.limits?.maxScreens ?? DEFAULT_LIMITS.maxScreens;
+  for (let index = 0; covered < region.y1 - 0.5; index++) {
+    if (ctx.cancelled()) return { status: 'cancelled', size };
+    if (index >= maxFrames) {
+      ctx.warnings.push(
+        `The selection is longer than the capture limit; captured the first ${index} screens.`,
+      );
+      break;
+    }
+    target.scrollTo(regionScroll(covered, target.maxScroll));
+    await frames(2);
+    const f = regionFrame(region, target.crop, target.offset, covered);
+    if (!f) {
+      ctx.warnings.push(STUCK_WARNING);
+      break;
+    }
+    await grabFrame(ctx, index, f.docY, f.crop);
+    covered = f.coveredTo;
+  }
+  return { status: 'complete', size };
+}
+
+/** CAPTURE §3: the document, or the largest inner scroller when that is what scrolls. */
 function pickTarget(): Target {
   const se = document.scrollingElement ?? document.documentElement;
   const candidates: ScrollCandidate[] = [];
   const els: Element[] = [];
   for (const el of document.querySelectorAll('body *')) {
-    if (el.scrollHeight <= el.clientHeight + 2) continue;
-    const oy = getComputedStyle(el).overflowY;
-    if (oy !== 'auto' && oy !== 'scroll' && oy !== 'overlay') continue;
+    if (!isScroller(el)) continue;
     const r = el.getBoundingClientRect();
-    // clientLeft/Top skip borders; clientWidth excludes the scrollbar.
     candidates.push({
       id: els.length,
       rect: {
@@ -214,31 +345,7 @@ function pickTarget(): Target {
     docScrollHeight: se.scrollHeight,
     candidates,
   });
-  if (choice.kind === 'element') {
-    const el = els[choice.id]!;
-    return {
-      el,
-      crop: choice.crop,
-      get offset() {
-        return el.scrollTop;
-      },
-      scrollTo: (y) => void (el.scrollTop = y),
-      get scrollHeight() {
-        return el.scrollHeight;
-      },
-    };
-  }
-  return {
-    el: null,
-    crop: { x: 0, y: 0, width: document.documentElement.clientWidth, height: innerHeight },
-    get offset() {
-      return se.scrollTop;
-    },
-    scrollTo: (y) => void (se.scrollTop = y),
-    get scrollHeight() {
-      return se.scrollHeight;
-    },
-  };
+  return choice.kind === 'element' ? elementTarget(els[choice.id]!) : documentTarget();
 }
 
 /** CAPTURE §4, §6: freeze motion, flatten sticky, drop bottom bars and fixed backgrounds. */
@@ -335,12 +442,14 @@ async function preloadPass(
   target: Target,
   cancelled: () => boolean,
   maxScreens: number,
+  from = 0,
+  to = Infinity,
 ): Promise<string | null> {
   const started = performance.now();
   const step = Math.max(1, Math.floor(target.crop.height * 0.9));
-  for (let y = 0, screens = 0; ; y += step, screens++) {
+  for (let y = from, screens = 0; ; y += step, screens++) {
     if (cancelled()) return null;
-    if (y >= target.scrollHeight - target.crop.height) return null;
+    if (y >= target.scrollHeight - target.crop.height || y >= to) return null;
     if (screens >= maxScreens) return null;
     if (performance.now() - started > 60_000) {
       return 'Preloading stopped after 60 s; images further down may be missing.';

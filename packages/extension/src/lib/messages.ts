@@ -1,6 +1,7 @@
-import type { CaptureLimits, DomHints, Rect } from '@scrollpress/core';
+import type { CaptureLimits, DomHints, Rect, Region } from '@scrollpress/core';
 
-export type CaptureMode = 'full' | 'visible';
+/** CAPTURE §14. Selection, element and scroll-area modes start with an in-page picker. */
+export type CaptureMode = 'full' | 'visible' | 'selection' | 'element' | 'pick-scroller';
 
 /** Background → content script. */
 export interface StartCapture {
@@ -9,6 +10,10 @@ export interface StartCapture {
   mode: CaptureMode;
   /** Defaults to 300 screens / 200,000 px; tests pass lower caps. */
   limits?: CaptureLimits;
+  /** Delayed capture (UI §1): count down this long before capturing. */
+  delayMs?: number;
+  /** A region of the document to capture without the picker (tests, scripted use). */
+  region?: Region;
 }
 
 /** Content script → background: grab the visible tab for this frame. */

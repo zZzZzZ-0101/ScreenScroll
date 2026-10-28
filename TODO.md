@@ -65,10 +65,10 @@ Legend: `[ ]` todo · `(L#)` = lesson from `docs/PRIOR_ART.md` §7 · `→ DOC` 
 
 ## M4 — More capture modes & annotation editor (~4–5 h)
 
-- [ ] Selection capture with auto-scroll past the edges, size readout, handles. → UI §2, CAPTURE §14
-- [ ] Element capture: hover outline, ↑/↓ parent/child, captures full content if the element scrolls.
-- [ ] Manual "Pick scroll area" mode (L9 fallback).
-- [ ] Delayed capture (3/5/10 s).
+- [x] Selection capture with auto-scroll past the edges, size readout, handles. → UI §2, CAPTURE §14
+- [x] Element capture: hover outline, ↑/↓ parent/child, captures full content if the element scrolls.
+- [x] Manual "Pick scroll area" mode (L9 fallback).
+- [x] Delayed capture (3/5/10 s).
 - [ ] Editor (Konva) in document coordinates: select, crop, arrow, rect, ellipse, line, pen, highlighter, text, step numbers, blur, pixelate; colours/stroke/font; unlimited undo/redo; shortcuts. → UI §3
 - [ ] Annotations survive re-pagination; they're flattened into page images at export.
 - [ ] Projects persisted (re-editable later from History).

@@ -39,6 +39,12 @@ export default defineConfig({
         suggested_key: { default: 'Alt+Shift+P' },
         description: 'Capture full page',
       },
+      'capture-selection': {
+        suggested_key: { default: 'Alt+Shift+S' },
+        description: 'Capture a selection',
+      },
+      // Chrome allows four suggested keys; this one is unassigned until the user sets it.
+      'capture-element': { description: 'Capture an element' },
       'capture-visible': {
         suggested_key: { default: 'Alt+Shift+V' },
         description: 'Capture visible area',
