@@ -132,3 +132,74 @@ describe('links, outline, header and footer', () => {
     expect(text).toContain('example.org · 2026-10-28');
   });
 });
+
+describe('merged PDF', () => {
+  it('numbers pages across parts and gives each part a bookmark with its headings', async () => {
+    const { buildMergedPdf } = await import('@scrollpress/core/pdf');
+    const settings = { ...DEFAULT_PAGE_SETTINGS, footerPt: 14 };
+    const layout = computeLayout(settings, doc.width);
+    const slices = paginate({
+      height: doc.height,
+      width: doc.width,
+      T: layout.T,
+      hints: doc.hints,
+    });
+    const part = (title: string) => ({
+      pageCount: slices.length,
+      layout,
+      meta: { title, url: `https://example.org/${title}`, capturedAt: new Date(2026, 9, 28) },
+      content: { textRuns: doc.hints.textRuns, headings: doc.hints.headings },
+    });
+    const bytes = await buildMergedPdf(
+      [
+        { ...part('First'), pages: await pageImages(doc, slices) },
+        { ...part('Second'), pages: await pageImages(doc, slices) },
+      ],
+      { title: 'Merged', url: '', capturedAt: new Date(2026, 9, 28) },
+      { footer: { left: '{title}', center: '', right: '{page}/{pages}' } },
+    );
+    writeFileSync(new URL('merged.pdf', OUT), bytes);
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const pdf = await pdfjs.getDocument({
+      data: bytes.slice(),
+      standardFontDataUrl: STANDARD_FONTS,
+    }).promise;
+    const total = 2 * slices.length;
+    expect(pdf.numPages).toBe(total);
+    const text = async (i: number) =>
+      (await (await pdf.getPage(i)).getTextContent()).items
+        .map((it) => ('str' in it ? it.str : ''))
+        .join('');
+    expect(await text(1)).toContain(`1/${total}`);
+    expect(await text(1)).toContain('First');
+    expect(await text(total)).toContain(`${total}/${total}`);
+    expect(await text(total)).toContain('Second');
+    const outline = await pdf.getOutline();
+    expect(outline.map((o) => o.title)).toEqual(['First', 'Second']);
+    expect(outline[0]!.items.length).toBeGreaterThan(0);
+    expect(outline[1]!.items.map((o) => o.title)).toEqual(outline[0]!.items.map((o) => o.title));
+    const dest = outline[1]!.dest as unknown[];
+    expect(await pdf.getPageIndex(dest[0] as never)).toBe(slices.length);
+  });
+
+  it('skips empty parts without breaking the outline', async () => {
+    const { buildMergedPdf } = await import('@scrollpress/core/pdf');
+    const layout = computeLayout(DEFAULT_PAGE_SETTINGS, doc.width);
+    const slices = paginate({ height: doc.height, width: doc.width, T: layout.T });
+    const meta = { title: 'A', url: '', capturedAt: new Date(2026, 9, 28) };
+    const bytes = await buildMergedPdf(
+      [
+        { pages: [], pageCount: 0, layout, meta: { ...meta, title: 'Empty' } },
+        { pages: (await pageImages(doc, slices)).slice(0, 1), pageCount: 1, layout, meta },
+      ],
+      meta,
+    );
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const pdf = await pdfjs.getDocument({
+      data: bytes.slice(),
+      standardFontDataUrl: STANDARD_FONTS,
+    }).promise;
+    expect(pdf.numPages).toBe(1);
+    expect((await pdf.getOutline())?.map((o) => o.title)).toEqual(['A']);
+  });
+});

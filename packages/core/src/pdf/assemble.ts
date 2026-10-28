@@ -11,7 +11,7 @@ import {
   type TextRenderer,
 } from './bands.js';
 import { addLinks } from './links.js';
-import { addOutline } from './outline.js';
+import { addOutline, outlineItems, writeOutline, type OutlineItem } from './outline.js';
 import { drawTextRuns, placeRuns, TextLayerFont } from './textlayer.js';
 
 /** One composed page image (never taller than one page plus overlap, PDF_OUTPUT §1). */
@@ -71,7 +71,7 @@ const BAND_GAP = 4;
  * PDF_OUTPUT §1: one PDF page per slice, the image top-aligned in the printable box at
  * scale s. Images are embedded at native pixels; the PDF scale sets their size.
  */
-export async function buildPdf(
+export function buildPdf(
   pages: Iterable<PageImage> | AsyncIterable<PageImage>,
   pageCount: number,
   layout: PageLayout,
@@ -79,68 +79,92 @@ export async function buildPdf(
   options: Partial<PdfOptions> = {},
   content: PdfContent = {},
 ): Promise<Uint8Array> {
+  return buildMergedPdf([{ pages, pageCount, layout, meta, content }], meta, options);
+}
+
+/** One capture's pages in a merged PDF (UI §5). */
+export interface PdfPart {
+  pages: Iterable<PageImage> | AsyncIterable<PageImage>;
+  pageCount: number;
+  /** Same paper for every part (L12); the scale may differ with each capture's width. */
+  layout: PageLayout;
+  meta: PdfMeta;
+  content?: PdfContent;
+}
+
+/**
+ * Several captures in one PDF. Header and footer tokens use each part's title and URL with
+ * page numbers across the whole document; with more than one part, each gets a top-level
+ * bookmark holding its own headings.
+ */
+export async function buildMergedPdf(
+  parts: readonly PdfPart[],
+  meta: PdfMeta,
+  options: Partial<PdfOptions> = {},
+): Promise<Uint8Array> {
   const opts = { ...DEFAULT_PDF_OPTIONS, ...options };
   // updateMetadata: false, or pdf-lib stamps its own producer over ours.
   const doc = await PDFDocument.create({ updateMetadata: false });
   setMeta(doc, meta);
   const font = await doc.embedFont(StandardFonts.Helvetica);
-  const runs = opts.textLayer ? (content.textRuns ?? []) : [];
   let textFont: TextLayerFont | null = null;
   const getTextFont = () => (textFont ??= new TextLayerFont(doc));
-  const added: PDFPage[] = [];
-  const slices: PageSlice[] = [];
+  const total = parts.reduce((n, p) => n + p.pageCount, 0);
+  const bookmarks: OutlineItem[] = [];
   let n = 0;
-  for await (const p of pages) {
-    n++;
-    const page = doc.addPage([layout.paperW, layout.paperH]);
-    added.push(page);
-    slices.push(p.slice);
-    const img = await embed(doc, p);
-    const w = (p.slice.x1 - p.slice.x0) * layout.s;
-    const h = (p.slice.y1 - p.slice.y0) * layout.s;
-    const top = layout.paperH - layout.box.y; // pdf-lib's origin is bottom-left
-    page.drawImage(img, { x: layout.box.x, y: top - h, width: w, height: h });
-    if (runs.length) drawTextRuns(page, getTextFont(), placeRuns(runs, p.slice, layout));
-    if (opts.continuedMarker && p.slice.overlapTop > 0) {
-      const text = 'continued from previous page';
-      const size = 6.5;
-      page.drawText(text, {
-        x: layout.box.x + layout.box.w - font.widthOfTextAtSize(text, size),
-        y: top + 3,
-        size,
-        font,
-        color: GREY,
+  for (const part of parts) {
+    const { layout, content = {} } = part;
+    const runs = opts.textLayer ? (content.textRuns ?? []) : [];
+    const added: PDFPage[] = [];
+    const slices: PageSlice[] = [];
+    for await (const p of part.pages) {
+      n++;
+      const page = doc.addPage([layout.paperW, layout.paperH]);
+      added.push(page);
+      slices.push(p.slice);
+      const img = await embed(doc, p);
+      const w = (p.slice.x1 - p.slice.x0) * layout.s;
+      const h = (p.slice.y1 - p.slice.y0) * layout.s;
+      const top = layout.paperH - layout.box.y; // pdf-lib's origin is bottom-left
+      page.drawImage(img, { x: layout.box.x, y: top - h, width: w, height: h });
+      if (runs.length) drawTextRuns(page, getTextFont(), placeRuns(runs, p.slice, layout));
+      if (opts.continuedMarker && p.slice.overlapTop > 0) {
+        const text = 'continued from previous page';
+        const size = 6.5;
+        page.drawText(text, {
+          x: layout.box.x + layout.box.w - font.widthOfTextAtSize(text, size),
+          y: top + 3,
+          size,
+          font,
+          color: GREY,
+        });
+      }
+      const tokens = bandTokens(part.meta, n, total);
+      const footerY = layout.paperH - (layout.box.y + layout.box.h) - BAND_GAP - 8;
+      const headerY = layout.paperH - layout.box.y + BAND_GAP;
+      for (const [band, y] of [
+        [opts.header, headerY],
+        [opts.footer, footerY],
+      ] as const) {
+        await drawBand(doc, page, font, getTextFont, layout, band, tokens, y, opts.renderText);
+      }
+    }
+    if (opts.links && content.links?.length) addLinks(doc, added, slices, layout, content.links);
+    const headings =
+      opts.outline && content.headings?.length
+        ? outlineItems(added, slices, layout, content.headings)
+        : [];
+    if (parts.length === 1) bookmarks.push(...headings);
+    else if (added.length) {
+      bookmarks.push({
+        title: part.meta.title || part.meta.url,
+        page: added[0]!.ref,
+        top: layout.paperH,
+        children: headings,
       });
     }
-    const tokens = bandTokens(meta, n, pageCount);
-    const footerY = layout.paperH - (layout.box.y + layout.box.h) - BAND_GAP - 8;
-    const headerY = layout.paperH - layout.box.y + BAND_GAP;
-    await drawBand(
-      doc,
-      page,
-      font,
-      getTextFont,
-      layout,
-      opts.header,
-      tokens,
-      headerY,
-      opts.renderText,
-    );
-    await drawBand(
-      doc,
-      page,
-      font,
-      getTextFont,
-      layout,
-      opts.footer,
-      tokens,
-      footerY,
-      opts.renderText,
-    );
   }
-  if (opts.links && content.links?.length) addLinks(doc, added, slices, layout, content.links);
-  if (opts.outline && content.headings?.length)
-    addOutline(doc, added, slices, layout, content.headings);
+  writeOutline(doc, bookmarks);
   (textFont as TextLayerFont | null)?.finish();
   return doc.save();
 }
