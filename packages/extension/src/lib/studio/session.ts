@@ -1,5 +1,12 @@
 import { mergeHints, ownedBands, type DomHints, type FrameGeom } from '@scrollpress/core';
-import { db, framesOf, type FrameRecord, type SessionRecord } from '@/lib/db';
+import {
+  db,
+  EMPTY_PROJECT,
+  framesOf,
+  type FrameRecord,
+  type Project,
+  type SessionRecord,
+} from '@/lib/db';
 
 /** Everything the Studio needs about one capture, minus the pixels (decoded lazily). */
 export interface LoadedSession {
@@ -12,6 +19,8 @@ export interface LoadedSession {
   height: number;
   /** Output device px per CSS px: the capture's own resolution, never upscaled. */
   dpr: number;
+  /** Annotations and crop saved from an earlier Studio visit. */
+  project: Project;
 }
 
 export async function loadSession(id: string): Promise<LoadedSession> {
@@ -35,6 +44,7 @@ export async function loadSession(id: string): Promise<LoadedSession> {
     width: frames[0]!.crop.width,
     height: bands.at(-1)!.y1,
     dpr: Math.max(...frames.map((f) => f.dpr)),
+    project: session.project ?? EMPTY_PROJECT,
   };
 }
 

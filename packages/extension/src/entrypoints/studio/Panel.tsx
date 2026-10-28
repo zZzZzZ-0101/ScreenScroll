@@ -1,8 +1,10 @@
-import { PAPERS, type PaperId } from '@scrollpress/core';
+import { PAPERS, TOOL_KEYS, type PaperId, type Style, type Tool } from '@scrollpress/core';
 import { useState } from 'react';
 import type { Settings } from '@/lib/settings';
 import type { ImageMode } from '@/lib/studio/compose';
 import type { Edits } from './App';
+
+export type PanelTab = 'pages' | 'annotate' | 'export';
 
 export type ExportFormat = 'pdf' | 'pdf-long' | 'png' | 'jpeg' | 'webp' | 'long-png';
 
@@ -15,7 +17,27 @@ const FORMATS: Array<[ExportFormat, string]> = [
   ['long-png', 'One long PNG'],
 ];
 
+export interface AnnotateControls {
+  tool: Tool;
+  onTool: (t: Tool) => void;
+  style: Style;
+  onStyle: (s: Style) => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
+  selected: boolean;
+  onDelete: () => void;
+  count: number;
+  onClear: () => void;
+  cropped: boolean;
+  onResetCrop: () => void;
+}
+
 interface Props {
+  tab: PanelTab;
+  onTab: (t: PanelTab) => void;
+  annotate: AnnotateControls;
   settings: Settings;
   onSettings: (patch: Partial<Settings>) => void;
   edits: Edits;
@@ -38,7 +60,7 @@ const button =
   'rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-60 dark:border-neutral-700 dark:hover:bg-neutral-800';
 
 export function Panel(p: Props) {
-  const [tab, setTab] = useState<'pages' | 'export'>('pages');
+  const { tab, onTab: setTab } = p;
   const [format, setFormat] = useState<ExportFormat>('pdf');
   const page = p.settings.page;
   const paperId = typeof page.paper === 'string' ? page.paper : 'custom';
@@ -48,7 +70,7 @@ export function Panel(p: Props) {
   return (
     <aside className="w-72 shrink-0 overflow-y-auto border-l border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900">
       <div role="tablist" aria-label="Panel" className="mb-3 flex gap-1">
-        {(['pages', 'export'] as const).map((t) => (
+        {(['pages', 'annotate', 'export'] as const).map((t) => (
           <button
             key={t}
             role="tab"
@@ -57,12 +79,14 @@ export function Panel(p: Props) {
             onClick={() => setTab(t)}
             className={`flex-1 rounded-md px-2 py-1 focus-visible:outline-2 focus-visible:outline-accent ${tab === t ? 'bg-neutral-200 dark:bg-neutral-800' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
           >
-            {t === 'pages' ? 'Pages' : 'Export'}
+            {TAB_LABELS[t]}
           </button>
         ))}
       </div>
 
-      {tab === 'pages' ? (
+      {tab === 'annotate' ? (
+        <AnnotatePanel {...p.annotate} />
+      ) : tab === 'pages' ? (
         <div>
           <label className={field}>
             Paper
@@ -254,6 +278,155 @@ export function Panel(p: Props) {
         </div>
       )}
     </aside>
+  );
+}
+
+const TAB_LABELS: Record<PanelTab, string> = {
+  pages: 'Pages',
+  annotate: 'Annotate',
+  export: 'Export',
+};
+
+const TOOL_LABELS: Record<Tool, string> = {
+  select: 'Select',
+  crop: 'Crop',
+  arrow: 'Arrow',
+  rect: 'Rectangle',
+  ellipse: 'Ellipse',
+  line: 'Line',
+  pen: 'Pen',
+  highlighter: 'Highlighter',
+  text: 'Text',
+  step: 'Step number',
+  blur: 'Blur',
+  pixelate: 'Pixelate',
+};
+
+const SWATCHES = ['#d93025', '#f29900', '#188038', '#1a73e8', '#202124', '#ffffff'];
+
+/** UI §3 Annotate tab: tools with single-key shortcuts, style, undo/redo. */
+function AnnotatePanel(a: AnnotateControls) {
+  const keyOf = Object.fromEntries(Object.entries(TOOL_KEYS).map(([k, t]) => [t, k]));
+  return (
+    <div>
+      <div
+        role="toolbar"
+        aria-label="Tools"
+        aria-orientation="vertical"
+        className="flex flex-col gap-0.5"
+      >
+        {(Object.keys(TOOL_LABELS) as Tool[]).map((t) => (
+          <button
+            key={t}
+            type="button"
+            aria-pressed={a.tool === t}
+            onClick={() => a.onTool(t)}
+            className={`flex items-center justify-between rounded-md px-2 py-1 text-left focus-visible:outline-2 focus-visible:outline-accent ${a.tool === t ? 'bg-neutral-200 dark:bg-neutral-800' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
+          >
+            {TOOL_LABELS[t]}
+            <kbd className="text-[11px] text-neutral-500">{keyOf[t]?.toUpperCase()}</kbd>
+          </button>
+        ))}
+      </div>
+      <div className="mt-3 border-t border-neutral-200 pt-2 dark:border-neutral-800">
+        <div className={field}>
+          <span id="colour">Colour</span>
+          <div role="radiogroup" aria-labelledby="colour" className="flex items-center gap-1">
+            {SWATCHES.map((c) => (
+              <button
+                key={c}
+                type="button"
+                role="radio"
+                aria-checked={a.style.color === c}
+                aria-label={c}
+                onClick={() => a.onStyle({ ...a.style, color: c })}
+                className={`h-5 w-5 rounded-full border focus-visible:outline-2 focus-visible:outline-accent ${a.style.color === c ? 'ring-2 ring-accent ring-offset-1' : 'border-neutral-300'}`}
+                style={{ background: c }}
+              />
+            ))}
+            <input
+              type="color"
+              aria-label="Custom colour"
+              value={a.style.color}
+              onChange={(e) => a.onStyle({ ...a.style, color: e.target.value })}
+              className="h-5 w-6 cursor-pointer border-0 bg-transparent p-0"
+            />
+          </div>
+        </div>
+        <label className={field}>
+          Stroke
+          <input
+            type="range"
+            min={1}
+            max={12}
+            value={a.style.width}
+            onChange={(e) => a.onStyle({ ...a.style, width: Number(e.target.value) })}
+            className="w-28 accent-[#0e7c7b]"
+          />
+        </label>
+        <label className={field}>
+          Font size
+          <input
+            type="number"
+            min={8}
+            max={96}
+            value={a.style.fontSize}
+            onChange={(e) =>
+              a.onStyle({
+                ...a.style,
+                fontSize: Math.max(8, Math.min(96, Number(e.target.value) || 18)),
+              })
+            }
+            className={`${control} w-20`}
+          />
+        </label>
+        {a.selected && <p className="text-neutral-500">Changes apply to the selected item.</p>}
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-1">
+        <button
+          type="button"
+          className={button}
+          disabled={!a.canUndo}
+          onClick={a.onUndo}
+          title="Ctrl+Z"
+        >
+          Undo
+        </button>
+        <button
+          type="button"
+          className={button}
+          disabled={!a.canRedo}
+          onClick={a.onRedo}
+          title="Ctrl+Y"
+        >
+          Redo
+        </button>
+        <button
+          type="button"
+          className={button}
+          disabled={!a.selected}
+          onClick={a.onDelete}
+          title="Delete"
+        >
+          Delete
+        </button>
+        <button type="button" className={button} disabled={!a.count} onClick={a.onClear}>
+          Clear all
+        </button>
+      </div>
+      <button
+        type="button"
+        className={`${button} mt-1 w-full`}
+        disabled={!a.cropped}
+        onClick={a.onResetCrop}
+      >
+        Reset crop
+      </button>
+      <p className="pt-2 text-neutral-500">
+        {a.count} {a.count === 1 ? 'annotation' : 'annotations'}. Blur and pixelate also remove the
+        text and links underneath from the PDF.
+      </p>
+    </div>
   );
 }
 

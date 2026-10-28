@@ -1,6 +1,7 @@
-import type { PageSlice } from '@scrollpress/core';
+import type { Annotation, PageSlice } from '@scrollpress/core';
 import { useEffect, useRef } from 'react';
 import type { Analysis } from '@/lib/studio/analysis';
+import { paintAnnotations } from '@/lib/studio/compose';
 import { drawFromStrip } from './strip';
 
 const W = 72;
@@ -11,6 +12,7 @@ export function Thumbnails(p: {
   slices: PageSlice[];
   page: number;
   onSelect: (i: number) => void;
+  annotations: Annotation[];
 }) {
   return (
     <nav
@@ -28,7 +30,7 @@ export function Thumbnails(p: {
               className={`flex w-full items-start gap-1.5 rounded-md p-1 focus-visible:outline-2 focus-visible:outline-accent ${i === p.page ? 'bg-neutral-200 dark:bg-neutral-800' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
             >
               <span className="w-4 text-right text-neutral-500">{i + 1}</span>
-              <Thumb analysis={p.analysis} slice={s} />
+              <Thumb analysis={p.analysis} slice={s} annotations={p.annotations} />
             </button>
           </li>
         ))}
@@ -37,7 +39,15 @@ export function Thumbnails(p: {
   );
 }
 
-function Thumb({ analysis, slice }: { analysis: Analysis; slice: PageSlice }) {
+function Thumb({
+  analysis,
+  slice,
+  annotations,
+}: {
+  analysis: Analysis;
+  slice: PageSlice;
+  annotations: Annotation[];
+}) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const c = ref.current!;
@@ -48,7 +58,8 @@ function Thumb({ analysis, slice }: { analysis: Analysis; slice: PageSlice }) {
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, W, h);
     drawFromStrip(ctx, analysis, slice, W);
-  }, [analysis, slice]);
+    paintAnnotations(ctx, annotations, slice, W / (slice.x1 - slice.x0));
+  }, [analysis, slice, annotations]);
   return (
     <canvas
       ref={ref}

@@ -1,4 +1,5 @@
 import type { Px, Rect } from './geometry.js';
+import type { Forbidden } from './hints.js';
 
 /**
  * Annotations (UI §3 Annotate tab) live in document coordinates, so they survive
@@ -57,6 +58,37 @@ export const isRedaction = (a: Annotation): boolean => a.kind === 'blur' || a.ki
 /** Areas whose content must not leak into the PDF's text layer or links. */
 export function redactions(anns: readonly Annotation[]): Rect[] {
   return anns.filter(isRedaction).map(bounds);
+}
+
+/** Annotations up to this tall are kept whole by pagination, like an image. */
+export const KEEP_WHOLE_MAX: Px = 300;
+
+/**
+ * Page breaks avoid cutting through small annotations (an arrow, a step marker, a note).
+ * Tall frames and redactions may be cut: they still draw on both pages.
+ */
+export function annotationForbidden(anns: readonly Annotation[]): Forbidden[] {
+  return anns
+    .filter((a) => !isRedaction(a))
+    .map(paintBounds)
+    .filter((b) => b.height <= KEEP_WHOLE_MAX)
+    .map((b) => ({ y0: b.y, y1: b.y + b.height, kind: 'atomic' as const }));
+}
+
+/** Widens an automatic side crop so annotations drawn in the margins stay on the page. */
+export function cropAround(
+  crop: { x0: Px; x1: Px; cropped: boolean },
+  anns: readonly Annotation[],
+  width: Px,
+): { x0: Px; x1: Px; cropped: boolean } {
+  if (!crop.cropped || !anns.length) return crop;
+  let { x0, x1 } = crop;
+  for (const a of anns) {
+    const b = paintBounds(a);
+    x0 = Math.min(x0, Math.max(0, b.x));
+    x1 = Math.max(x1, Math.min(width, b.x + b.width));
+  }
+  return { x0, x1, cropped: x0 > 0 || x1 < width };
 }
 
 export function nextStepNumber(anns: readonly Annotation[]): number {
@@ -197,29 +229,29 @@ export function moveBy(a: Annotation, dx: Px, dy: Px): Annotation {
   }
 }
 
-/** Unlimited undo/redo over immutable snapshots of the annotation list. */
-export interface History {
-  past: Annotation[][];
-  present: Annotation[];
-  future: Annotation[][];
+/** Unlimited undo/redo over immutable snapshots (the annotations, plus the crop). */
+export interface History<T = Annotation[]> {
+  past: T[];
+  present: T;
+  future: T[];
 }
 
-export const emptyHistory = (present: Annotation[] = []): History => ({
+export const emptyHistory = <T = Annotation[]>(present: T = [] as unknown as T): History<T> => ({
   past: [],
   present,
   future: [],
 });
 
-export function commit(h: History, next: Annotation[]): History {
+export function commit<T>(h: History<T>, next: T): History<T> {
   return { past: [...h.past, h.present], present: next, future: [] };
 }
 
-export function undo(h: History): History {
+export function undo<T>(h: History<T>): History<T> {
   if (!h.past.length) return h;
   return { past: h.past.slice(0, -1), present: h.past.at(-1)!, future: [h.present, ...h.future] };
 }
 
-export function redo(h: History): History {
+export function redo<T>(h: History<T>): History<T> {
   if (!h.future.length) return h;
   return { past: [...h.past, h.present], present: h.future[0]!, future: h.future.slice(1) };
 }

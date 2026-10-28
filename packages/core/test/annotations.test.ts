@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { paginate } from '../src/paginate.js';
 import {
   annotationAt,
+  annotationForbidden,
   bounds,
+  cropAround,
   commit,
   DEFAULT_STYLE,
   drawAnnotations,
@@ -61,6 +64,44 @@ describe('annotation model', () => {
 
   it('lists redaction areas', () => {
     expect(redactions([rect, blur])).toEqual([{ x: 400, y: 0, width: 100, height: 50 }]);
+  });
+});
+
+describe('annotations and pagination', () => {
+  it('keeps small annotations whole, not tall frames or redactions', () => {
+    const tall: Annotation = { ...rect, id: 't', h: 900 };
+    const f = annotationForbidden([step(1, 50, 1000), tall, blur]);
+    expect(f).toHaveLength(1);
+    expect(f[0]!.kind).toBe('atomic');
+    expect(f[0]!.y0).toBeLessThan(1000 - 14);
+    expect(f[0]!.y1).toBeGreaterThan(1000 + 14);
+  });
+
+  it('moves a break off a step marker', () => {
+    // Blank page, breaks every 1000 px; a marker straddling y = 1000 pushes the break up.
+    const input = { height: 3000, width: 800, T: 1000 };
+    expect(paginate(input)[0]!.y1).toBe(1000);
+    const hints = {
+      forbidden: annotationForbidden([step(1, 50, 990)]),
+      blockEnds: [],
+      keepWithNext: [],
+      opaque: [],
+      tables: [],
+      textRuns: [],
+      links: [],
+      headings: [],
+    };
+    const y1 = paginate({ ...input, hints })[0]!.y1;
+    expect(y1).toBeLessThan(990 - 14);
+  });
+
+  it('widens an automatic crop to annotations in the margin', () => {
+    const crop = { x0: 200, x1: 900, cropped: true };
+    expect(cropAround(crop, [step(1, 180, 50)], 1200).x0).toBeLessThan(180 - 14);
+    expect(cropAround(crop, [], 1200)).toEqual(crop);
+    expect(cropAround({ x0: 0, x1: 1200, cropped: false }, [step(1, 5, 5)], 1200).x0).toBe(0);
+    const wide = cropAround(crop, [{ ...arrow, x1: 0, x2: 1200 }], 1200);
+    expect(wide).toEqual({ x0: 0, x1: 1200, cropped: false });
   });
 });
 

@@ -1,4 +1,10 @@
-import type { PageLayout, PageSlice } from '@scrollpress/core';
+import {
+  redactions,
+  type Annotation,
+  type PageLayout,
+  type PageSlice,
+  type Rect,
+} from '@scrollpress/core';
 import {
   buildPdf,
   buildSingleLongPagePdf,
@@ -21,9 +27,10 @@ async function* pageImages(
   slices: PageSlice[],
   mode: ImageMode,
   onProgress?: Progress,
+  annotations: readonly Annotation[] = [],
 ): AsyncGenerator<PageImage> {
   for (let i = 0; i < slices.length; i++) {
-    const canvas = await composePage(s, frames, slices[i]!);
+    const canvas = await composePage(s, frames, slices[i]!, 1, annotations);
     yield await encodePage(canvas, slices[i]!, mode);
     onProgress?.(i + 1, slices.length);
   }
@@ -37,9 +44,22 @@ function pdfOptions(pdf: PdfSettings): Partial<PdfOptions> {
   return { ...pdf, renderText: renderBandText };
 }
 
-/** What the DOM told us: text for the invisible layer, links, headings for bookmarks. */
-function contentOf(s: LoadedSession): PdfContent {
-  return { textRuns: s.hints.textRuns, links: s.hints.links, headings: s.hints.headings };
+/**
+ * What the DOM told us: text for the invisible layer, links, headings for bookmarks. Anything
+ * under a blur or pixelate area is left out, or the redacted text would still be searchable.
+ */
+function contentOf(s: LoadedSession, annotations: readonly Annotation[]): PdfContent {
+  const hidden = redactions(annotations);
+  const visible = (r: Rect) =>
+    !hidden.some(
+      (h) =>
+        r.x < h.x + h.width && r.x + r.width > h.x && r.y < h.y + h.height && r.y + r.height > h.y,
+    );
+  return {
+    textRuns: s.hints.textRuns.filter((t) => visible(t.rect)),
+    links: s.hints.links.filter((l) => visible(l.rect)),
+    headings: s.hints.headings.filter((h) => visible({ x: 0, y: h.y, width: s.width, height: 1 })),
+  };
 }
 
 /** PDF_OUTPUT §6 default: multi-page PDF, pages composed and encoded one at a time. */
@@ -51,14 +71,15 @@ export function exportPdf(
   mode: ImageMode,
   pdf: PdfSettings,
   onProgress?: Progress,
+  annotations: readonly Annotation[] = [],
 ): Promise<Uint8Array> {
   return buildPdf(
-    pageImages(s, frames, slices, mode, onProgress),
+    pageImages(s, frames, slices, mode, onProgress, annotations),
     slices.length,
     layout,
     metaOf(s),
     pdfOptions(pdf),
-    contentOf(s),
+    contentOf(s, annotations),
   );
 }
 
@@ -70,15 +91,16 @@ export function exportLongPagePdf(
   mode: ImageMode,
   pdf: PdfSettings,
   onProgress?: Progress,
+  annotations: readonly Annotation[] = [],
 ): Promise<Uint8Array> {
   const total = slices.reduce((h, sl) => h + sl.y1 - sl.y0 - sl.overlapTop, 0);
   return buildSingleLongPagePdf(
-    pageImages(s, frames, slices, mode, onProgress),
+    pageImages(s, frames, slices, mode, onProgress, annotations),
     total,
     layout,
     metaOf(s),
     pdfOptions(pdf),
-    contentOf(s),
+    contentOf(s, annotations),
   );
 }
 
@@ -97,11 +119,12 @@ export async function exportPageImagesZip(
   format: RasterFormat,
   baseName: string,
   onProgress?: Progress,
+  annotations: readonly Annotation[] = [],
 ): Promise<Uint8Array> {
   const files: Record<string, [Uint8Array, { level: 0 }]> = {};
   const digits = String(slices.length).length;
   for (let i = 0; i < slices.length; i++) {
-    const canvas = await composePage(s, frames, slices[i]!);
+    const canvas = await composePage(s, frames, slices[i]!, 1, annotations);
     const blob = await canvas.convertToBlob({ type: MIME[format], quality: 0.92 });
     files[`${baseName}-${String(i + 1).padStart(digits, '0')}.${ext(format)}`] = [
       new Uint8Array(await blob.arrayBuffer()),
@@ -125,14 +148,16 @@ export async function exportLongImage(
   crop: { x0: number; x1: number },
   format: RasterFormat,
   onProgress?: Progress,
+  annotations: readonly Annotation[] = [],
+  range: { y0: number; y1: number } = { y0: 0, y1: s.height },
 ): Promise<Blob[]> {
   const partCss = Math.floor(LONG_IMAGE_MAX / s.dpr);
   const parts: Blob[] = [];
-  const count = Math.ceil(s.height / partCss);
+  const count = Math.ceil((range.y1 - range.y0) / partCss);
   for (let k = 0; k < count; k++) {
-    const y0 = k * partCss;
-    const y1 = Math.min(s.height, y0 + partCss);
-    const canvas = await composePage(s, frames, { ...crop, y0, y1 });
+    const y0 = range.y0 + k * partCss;
+    const y1 = Math.min(range.y1, y0 + partCss);
+    const canvas = await composePage(s, frames, { ...crop, y0, y1 }, 1, annotations);
     parts.push(await canvas.convertToBlob({ type: MIME[format], quality: 0.92 }));
     onProgress?.(k + 1, count);
   }
@@ -170,8 +195,9 @@ export async function copyPageImage(
   s: LoadedSession,
   frames: FrameCache,
   slice: PageSlice,
+  annotations: readonly Annotation[] = [],
 ): Promise<void> {
-  const canvas = await composePage(s, frames, slice);
+  const canvas = await composePage(s, frames, slice, 1, annotations);
   const blob = await canvas.convertToBlob({ type: 'image/png' });
   await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
 }

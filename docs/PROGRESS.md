@@ -1,7 +1,7 @@
 # Progress
 
 ## Current milestone
-M3 — built and verified except the manual viewer checks (see M3 below). M1 and M2 are complete apart from their manual real-site checks; no milestone is tagged yet (tags follow the manual checks). Next: M4 (selection/element capture, annotation editor).
+M4 — built and verified except manual checks (see M4 below). M1–M3 are complete apart from their manual real-site and viewer checks; no milestone is tagged yet (tags follow the manual checks). Next: M5 (history, merge, batch).
 
 ## Done
 ### M0 — Scaffold (2026-10-27)
@@ -76,16 +76,34 @@ Verified:
 
 Manual: Ctrl+F for an English word and a Chinese phrase in Chrome's PDF viewer UI and in Acrobat Reader; select text and copy-paste.
 
+### M4 — Capture modes and annotation editor (2026-10-28)
+Built:
+- Selection (drag, auto-scroll at the edges, size readout, corner handles, Enter/Esc), element (hover outline, ↑/↓ parent/child, SVG shapes pick the whole drawing), "Pick scroll area", delayed capture (3/5/10 s with a countdown). Regions are content coordinates of whatever scrolls (`core/region.ts`), so the compositor stitches them unchanged.
+- Studio Annotate view and tab: Select V, Crop C, Arrow A, Rectangle R, Ellipse O, Line L, Pen P, Highlighter H, Text T, Step number N, Blur B, Pixelate X; colour swatches and picker, stroke, font size (applied to the selection too); move by dragging, double-click to edit text, Delete; unlimited undo/redo (Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z); Clear all, Reset crop.
+- Annotations live in document coordinates (`core/annotations.ts`) and are drawn by one renderer into every output: PDF pages, one-long-page PDF, image zips, long PNG, copy page, print, Pages previews and thumbnails. Blur/pixelate also drop the text-layer runs, links and bookmarks underneath.
+- Crop tool: x becomes the export crop, y the pagination range. Automatic side crop widens to keep annotations in the margins; page breaks avoid cutting annotations up to 300 px tall.
+- Projects (annotations + crop) are saved with the capture in IndexedDB and come back when the Studio reopens.
+
+Verified:
+- Unit: annotation model, hit tests, history, renderer, annotation-aware breaks and crop (159 tests total).
+- e2e `modes.spec.ts`: selection dragged past the bottom edge, a region near the page bottom and an element picked with ↑ match Playwright screenshots of the same area (mean difference < 2/255); a scrolling element and the scroll-area picker capture the whole panel; delayed capture waits; Esc cancels.
+- e2e `annotate.spec.ts` on `article.html`: draws with every main tool via mouse and keyboard, undo/redo, select/delete/move, style change, crop (slices follow the crop exactly), reset; reload restores the project; the exported PDF has the red rectangle where drawn, no dark pixels under the blur, flat blocks under the pixelate, and the redacted heading, paragraph, link and bookmark are absent in pdf.js and poppler.
+- Looked at: Annotate view, crop shading, Pages previews with annotations, PDF page 1 rendered by pdf.js.
+
+Manual: draw on a real capture with a mouse/trackpad (feel of pen and highlighter, text editing), and copy a page with annotations.
+
+Not built yet: re-opening a project from History (History is M5); auto-redact (M6); resize handles on existing shapes (move, restyle and redraw instead).
+
 ## Manual site checks
 | Site | Date | Capture | Header once | Images loaded | No text cut | Text searchable | Links | Time | Notes |
 |---|---|---|---|---|---|---|---|---|---|
 
 ## Known issues
 - Git tag `m0` exists locally but could not be pushed: the session's git proxy dropped the tag push (only the branch push is allowed). Push it from a normal clone with `git push origin m0`, or re-create it there.
-- After a capture nothing opens yet (the Studio is M2). Frames sit in IndexedDB.
 - The e2e build is a non-production (unminified, React dev) build. Fine for tests; the offline guard checks the production build.
 
 ## Needs from user
+- M4 manual checks: capture a selection and an element on a real site; annotate it (pen, highlighter, text), save the PDF, reopen the capture's Studio tab later and check the annotations are still there.
 - M3 manual checks: open an exported PDF of a Chinese page in Chrome and in Acrobat Reader; Ctrl+F an English word and a Chinese phrase; select a paragraph and paste it somewhere. Click a link and a bookmark.
 - M2 manual checks: on a few real pages, open the Studio, save the PDF and look at it at 100% on A4: legible? any text cut? Also try Copy page, Print, and check the downloaded file name.
 - When you try the extension: check the right-click menu entries and the Alt+Shift+P / Alt+Shift+V hotkeys start a capture (they need a real user gesture, so e2e can't cover them).

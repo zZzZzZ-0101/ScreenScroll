@@ -1,5 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { DomHints, Rect } from '@scrollpress/core';
+import type { Annotation, DomHints, Rect, Region } from '@scrollpress/core';
 
 export interface SessionRecord {
   id: string;
@@ -14,6 +14,24 @@ export interface SessionRecord {
   /** Where the capture runs, so a restarted service worker can carry on. */
   tabId: number;
   windowId: number;
+  /** The Studio's edits (TODO M4: projects are re-editable later). */
+  project?: Project;
+}
+
+export interface Project {
+  annotations: Annotation[];
+  /** Crop tool region in document coordinates, or null for the whole capture. */
+  crop: Region | null;
+}
+
+export const EMPTY_PROJECT: Project = { annotations: [], crop: null };
+
+export async function saveProject(sessionId: string, project: Project): Promise<void> {
+  const d = await db();
+  const tx = d.transaction('sessions', 'readwrite');
+  const session = await tx.store.get(sessionId);
+  if (session) await tx.store.put({ ...session, project });
+  await tx.done;
 }
 
 export interface FrameRecord {

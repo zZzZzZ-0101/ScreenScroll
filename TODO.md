@@ -69,9 +69,9 @@ Legend: `[ ]` todo · `(L#)` = lesson from `docs/PRIOR_ART.md` §7 · `→ DOC` 
 - [x] Element capture: hover outline, ↑/↓ parent/child, captures full content if the element scrolls.
 - [x] Manual "Pick scroll area" mode (L9 fallback).
 - [x] Delayed capture (3/5/10 s).
-- [ ] Editor (Konva) in document coordinates: select, crop, arrow, rect, ellipse, line, pen, highlighter, text, step numbers, blur, pixelate; colours/stroke/font; unlimited undo/redo; shortcuts. → UI §3
-- [ ] Annotations survive re-pagination; they're flattened into page images at export.
-- [ ] Projects persisted (re-editable later from History).
+- [x] Editor (Konva) in document coordinates: select, crop, arrow, rect, ellipse, line, pen, highlighter, text, step numbers, blur, pixelate; colours/stroke/font; unlimited undo/redo; shortcuts. → UI §3
+- [x] Annotations survive re-pagination; they're flattened into page images at export.
+- [x] Projects persisted (re-editable later from History). *(Saved with the capture and restored by the Studio; the History entry point is M5.)*
 
 ## M5 — History, merge, batch (~3 h)
 

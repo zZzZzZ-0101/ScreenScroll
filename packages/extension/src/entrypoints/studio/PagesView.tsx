@@ -1,7 +1,7 @@
-import type { PageLayout, PageSlice } from '@scrollpress/core';
+import type { Annotation, PageLayout, PageSlice } from '@scrollpress/core';
 import { useEffect, useRef } from 'react';
 import type { Analysis } from '@/lib/studio/analysis';
-import { composePage } from '@/lib/studio/compose';
+import { composePage, paintAnnotations } from '@/lib/studio/compose';
 import type { FrameCache, LoadedSession } from '@/lib/studio/session';
 import { drawFromStrip } from './strip';
 
@@ -16,6 +16,7 @@ export function PagesView(p: {
   layout: PageLayout;
   page: number;
   onSelect: (i: number) => void;
+  annotations: Annotation[];
 }) {
   const refs = useRef<Array<HTMLDivElement | null>>([]);
   useEffect(() => {
@@ -43,6 +44,7 @@ export function PagesView(p: {
               analysis={p.analysis}
               slice={s}
               layout={p.layout}
+              annotations={p.annotations}
             />
             <span className="absolute bottom-1 right-2 text-[11px] text-neutral-400">{i + 1}</span>
           </div>
@@ -58,12 +60,14 @@ function PageCanvas({
   analysis,
   slice,
   layout,
+  annotations,
 }: {
   session: LoadedSession;
   frames: FrameCache;
   analysis: Analysis;
   slice: PageSlice;
   layout: PageLayout;
+  annotations: Annotation[];
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const k = PAGE_W / layout.paperW; // preview px per pt
@@ -79,6 +83,7 @@ function PageCanvas({
     ctx.fillRect(0, 0, c.width, c.height);
     // Quick, blurry first paint from the thumbnail strip...
     drawFromStrip(ctx, analysis, slice, c.width);
+    paintAnnotations(ctx, annotations, slice, c.width / (slice.x1 - slice.x0));
     // ...then the real pixels once the page is on screen, at the preview's own size.
     let cancelled = false;
     const io = new IntersectionObserver(
@@ -86,7 +91,7 @@ function PageCanvas({
         if (!entries.some((e) => e.isIntersecting)) return;
         io.disconnect();
         const scale = Math.min(1, c.width / ((slice.x1 - slice.x0) * session.dpr));
-        const img = await composePage(session, frames, slice, scale);
+        const img = await composePage(session, frames, slice, scale, annotations);
         if (!cancelled) ctx.drawImage(img, 0, 0, c.width, c.height);
       },
       { rootMargin: '400px' },
@@ -96,7 +101,7 @@ function PageCanvas({
       cancelled = true;
       io.disconnect();
     };
-  }, [session, frames, analysis, slice, w, h]);
+  }, [session, frames, analysis, slice, w, h, annotations]);
   return (
     <canvas
       ref={ref}

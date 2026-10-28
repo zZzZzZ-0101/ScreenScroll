@@ -1,15 +1,29 @@
 import {
+  annotationForbidden,
   buildFilename,
+  commit,
+  cropAround,
   computeLayout,
+  DEFAULT_STYLE,
+  emptyHistory,
+  redo,
+  TOOL_KEYS,
+  undo,
   contentCrop,
   medianFontPx,
   paginateDebug,
   readabilityAdvice,
   sliderWeights,
+  type Annotation,
+  type History,
   type PageLayout,
   type PaginationDebug,
+  type Region,
+  type Style,
+  type Tool,
 } from '@scrollpress/core';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { EMPTY_PROJECT, saveProject, type Project } from '@/lib/db';
 import { bandHeight, loadSettings, saveSettings, type Settings } from '@/lib/settings';
 import { analyze, type Analysis } from '@/lib/studio/analysis';
 import {
@@ -25,7 +39,8 @@ import {
 } from '@/lib/studio/export';
 import { FrameCache, loadSession, type LoadedSession } from '@/lib/studio/session';
 import { composePage, encodePage } from '@/lib/studio/compose';
-import { Panel, type ExportFormat } from './Panel';
+import { AnnotateView } from './AnnotateView';
+import { Panel, type ExportFormat, type PanelTab } from './Panel';
 import { PagesView } from './PagesView';
 import { StripView } from './StripView';
 import { Thumbnails } from './Thumbnails';
@@ -46,6 +61,14 @@ type PageResult =
       debug: PaginationDebug;
     };
 
+type View = 'pages' | 'strip' | 'annotate';
+
+const VIEW_LABELS: Record<View, string> = {
+  pages: 'Pages',
+  strip: 'Long strip',
+  annotate: 'Annotate',
+};
+
 export interface Edits {
   pinned: number[];
   removed: number[];
@@ -61,7 +84,14 @@ export function App() {
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [edits, setEdits] = useState<Edits>({ pinned: [], removed: [] });
-  const [view, setView] = useState<'pages' | 'strip'>('pages');
+  const [view, setViewState] = useState<View>('pages');
+  const [panelTab, setPanelTab] = useState<PanelTab>('pages');
+  const [history, setHistory] = useState<History<Project>>(() => emptyHistory(EMPTY_PROJECT));
+  const [tool, setTool] = useState<Tool>('rect');
+  const [style, setStyle] = useState<Style>(DEFAULT_STYLE);
+  const [selected, setSelected] = useState<string | null>(null);
+  const project = history.present;
+  const annotations = project.annotations;
   const [page, setPage] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -76,6 +106,7 @@ export function App() {
         if (cancelled) return;
         document.title = `${s.session.title || 'Capture'} · ScrollPress`;
         frames.current = new FrameCache(s.frames);
+        setHistory(emptyHistory(s.project));
         setSession(s);
         setSettings(st);
         const a = await analyze(s, frames.current, (done, total) =>
@@ -95,9 +126,16 @@ export function App() {
 
   const result = useMemo((): PageResult | null => {
     if (!session || !analysis || !settings) return null;
-    const crop =
-      settings.crop === 'auto'
-        ? contentCrop(session.width, { rows: analysis.rows, hints: session.hints })
+    // A crop drawn in the Annotate view wins over automatic side cropping.
+    const manual = project.crop;
+    const crop = manual
+      ? { x0: manual.x0, x1: manual.x1, cropped: true }
+      : settings.crop === 'auto'
+        ? cropAround(
+            contentCrop(session.width, { rows: analysis.rows, hints: session.hints }),
+            annotations,
+            session.width,
+          )
         : { x0: 0, x1: session.width, cropped: false };
     let layout: PageLayout;
     try {
@@ -115,13 +153,89 @@ export function App() {
       height: session.height,
       width: session.width,
       T: layout.T,
-      hints: session.hints,
+      hints: {
+        ...session.hints,
+        forbidden: [...session.hints.forbidden, ...annotationForbidden(annotations)],
+      },
       rows: analysis.rows,
       crop,
+      range: manual ? { y0: manual.y0, y1: manual.y1 } : undefined,
       options: { ...sliderWeights(settings.breakStyle), ...edits },
     });
     return { ok: true, crop, layout, debug };
-  }, [session, analysis, settings, edits]);
+  }, [session, analysis, settings, edits, project.crop, annotations]);
+
+  // Projects are saved as they change, so they can be re-edited later (TODO M4).
+  const loaded = useRef<Project | null>(null);
+  useEffect(() => {
+    if (!session) return;
+    if (loaded.current === null) {
+      loaded.current = project;
+      return;
+    }
+    const t = setTimeout(() => void saveProject(SESSION_ID, project), 250);
+    const flush = () => void saveProject(SESSION_ID, project);
+    addEventListener('pagehide', flush);
+    return () => {
+      clearTimeout(t);
+      removeEventListener('pagehide', flush);
+    };
+  }, [session, project]);
+
+  const changeProject = useCallback(
+    (patch: Partial<Project>) => setHistory((h) => commit(h, { ...h.present, ...patch })),
+    [],
+  );
+  const setAnnotations = useCallback(
+    (next: Annotation[]) => changeProject({ annotations: next }),
+    [changeProject],
+  );
+  const setCrop = useCallback((crop: Region | null) => changeProject({ crop }), [changeProject]);
+  const doUndo = useCallback(() => {
+    setHistory(undo);
+    setSelected(null);
+  }, []);
+  const doRedo = useCallback(() => {
+    setHistory(redo);
+    setSelected(null);
+  }, []);
+  const deleteSelected = useCallback(() => {
+    if (!selected) return;
+    setHistory((h) =>
+      commit(h, {
+        ...h.present,
+        annotations: h.present.annotations.filter((a) => a.id !== selected),
+      }),
+    );
+    setSelected(null);
+  }, [selected]);
+  const changeStyle = useCallback(
+    (next: Style) => {
+      setStyle(next);
+      if (selected)
+        setHistory((h) =>
+          commit(h, {
+            ...h.present,
+            annotations: h.present.annotations.map((a) =>
+              a.id === selected ? { ...a, style: next } : a,
+            ),
+          }),
+        );
+    },
+    [selected],
+  );
+  const setView = useCallback((v: View) => {
+    setViewState(v);
+    if (v === 'annotate') setPanelTab('annotate');
+  }, []);
+  const changePanelTab = useCallback(
+    (t: PanelTab) => {
+      setPanelTab(t);
+      if (t === 'annotate') setViewState('annotate');
+      else if (view === 'annotate') setViewState('pages');
+    },
+    [view],
+  );
 
   const slices = result && result.ok ? result.debug.slices : [];
 
@@ -155,7 +269,7 @@ export function App() {
       let bytes = 0;
       for (const i of sample) {
         const img = await encodePage(
-          await composePage(session, f, slices[i]!),
+          await composePage(session, f, slices[i]!, 1, annotations),
           slices[i]!,
           settings.imageMode,
         );
@@ -167,7 +281,7 @@ export function App() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [session, result, settings, slices]);
+  }, [session, result, settings, slices, annotations]);
 
   const updateSettings = useCallback(async (patch: Partial<Settings>) => {
     setSettings(await saveSettings(patch));
@@ -223,6 +337,7 @@ export function App() {
               settings.imageMode,
               settings.pdf,
               progress,
+              annotations,
             );
             await download(bytes, filename('pdf'), 'application/pdf');
             return `Saved ${filename('pdf')}`;
@@ -236,6 +351,7 @@ export function App() {
               settings.imageMode,
               settings.pdf,
               progress,
+              annotations,
             );
             await download(bytes, filename('pdf'), 'application/pdf');
             return `Saved ${filename('pdf')}`;
@@ -244,12 +360,23 @@ export function App() {
           case 'jpeg':
           case 'webp': {
             const base = filename('zip').replace(/\.zip$/, '');
-            const bytes = await exportPageImagesZip(session, f, slices, format, base, progress);
+            const bytes = await exportPageImagesZip(
+              session,
+              f,
+              slices,
+              format,
+              base,
+              progress,
+              annotations,
+            );
             await download(bytes, filename('zip'), 'application/zip');
             return `Saved ${filename('zip')}`;
           }
           case 'long-png': {
-            const parts = await exportLongImage(session, f, crop, 'png', progress);
+            const parts = await exportLongImage(session, f, crop, 'png', progress, annotations, {
+              y0: slices[0]!.y0,
+              y1: slices.at(-1)!.y1,
+            });
             if (parts.length === 1) {
               await download(parts[0]!, filename('png'), 'image/png');
               return `Saved ${filename('png')}`;
@@ -269,7 +396,7 @@ export function App() {
         }
       });
     },
-    [session, result, settings, slices, filename, run],
+    [session, result, settings, slices, filename, run, annotations],
   );
 
   const doPrint = useCallback(async () => {
@@ -285,19 +412,20 @@ export function App() {
           settings.imageMode,
           settings.pdf,
           progress,
+          annotations,
         ),
       );
     });
-  }, [session, result, settings, slices, run]);
+  }, [session, result, settings, slices, run, annotations]);
 
   const doCopy = useCallback(async () => {
     if (!session || !frames.current || !slices[page]) return;
     const f = frames.current;
     await run('Copying', async () => {
-      await copyPageImage(session, f, slices[page]!);
+      await copyPageImage(session, f, slices[page]!, annotations);
       return `Page ${page + 1} copied as an image`;
     });
-  }, [session, slices, page, run]);
+  }, [session, slices, page, run, annotations]);
 
   const doDebug = useCallback(async () => {
     if (!session || !analysis || !result || !result.ok) return;
@@ -334,7 +462,21 @@ export function App() {
       const target = e.target as HTMLElement;
       if (target.closest('input, select, textarea')) return;
       const mod = e.ctrlKey || e.metaKey;
-      if (mod && e.key.toLowerCase() === 's') {
+      const key = e.key.toLowerCase();
+      if (mod && (key === 'y' || (key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        doRedo();
+      } else if (mod && key === 'z') {
+        e.preventDefault();
+        doUndo();
+      } else if (view === 'annotate' && !mod && !e.altKey && TOOL_KEYS[key]) {
+        setTool(TOOL_KEYS[key]);
+      } else if (view === 'annotate' && (e.key === 'Delete' || e.key === 'Backspace')) {
+        e.preventDefault();
+        deleteSelected();
+      } else if (view === 'annotate' && e.key === 'Escape') {
+        setSelected(null);
+      } else if (mod && e.key.toLowerCase() === 's') {
         e.preventDefault();
         void doExport('pdf');
       } else if (mod && e.shiftKey && e.key.toLowerCase() === 'c') {
@@ -343,12 +485,13 @@ export function App() {
       } else if (mod && e.key.toLowerCase() === 'p') {
         e.preventDefault();
         void doPrint();
-      } else if (e.key === 'ArrowRight') setPage((p) => Math.min(slices.length - 1, p + 1));
-      else if (e.key === 'ArrowLeft') setPage((p) => Math.max(0, p - 1));
+      } else if (view !== 'annotate' && e.key === 'ArrowRight')
+        setPage((p) => Math.min(slices.length - 1, p + 1));
+      else if (view !== 'annotate' && e.key === 'ArrowLeft') setPage((p) => Math.max(0, p - 1));
     };
     addEventListener('keydown', onKey);
     return () => removeEventListener('keydown', onKey);
-  }, [doExport, doCopy, doPrint, slices.length]);
+  }, [doExport, doCopy, doPrint, doUndo, doRedo, deleteSelected, view, slices.length]);
 
   // e2e hook (stripped from production builds).
   useEffect(() => {
@@ -360,6 +503,8 @@ export function App() {
         layout: () => result.layout,
         crop: () => result.crop,
         warnings: () => warnings,
+        project: () => project,
+        size: () => ({ width: session.width, height: session.height }),
         async pdfBase64() {
           const bytes = await exportPdf(
             session,
@@ -368,6 +513,8 @@ export function App() {
             result.layout,
             settings.imageMode,
             settings.pdf,
+            undefined,
+            project.annotations,
           );
           let bin = '';
           for (let i = 0; i < bytes.length; i += 0x8000)
@@ -376,7 +523,7 @@ export function App() {
         },
       },
     });
-  }, [session, result, settings, warnings]);
+  }, [session, result, settings, warnings, project]);
 
   if (stage.kind === 'error') {
     return (
@@ -478,14 +625,23 @@ export function App() {
       <div className="flex min-h-0 flex-1">
         {result.ok ? (
           <>
-            <Thumbnails analysis={analysis} slices={slices} page={page} onSelect={setPage} />
+            <Thumbnails
+              analysis={analysis}
+              slices={slices}
+              page={page}
+              onSelect={(i) => {
+                setPage(i);
+                if (view === 'annotate') setView('pages');
+              }}
+              annotations={annotations}
+            />
             <main className="flex min-w-0 flex-1 flex-col">
               <div
                 role="tablist"
                 aria-label="View"
                 className="flex gap-1 border-b border-neutral-200 bg-white px-3 py-1.5 dark:border-neutral-800 dark:bg-neutral-900"
               >
-                {(['pages', 'strip'] as const).map((v) => (
+                {(['pages', 'strip', 'annotate'] as const).map((v) => (
                   <button
                     key={v}
                     role="tab"
@@ -494,7 +650,7 @@ export function App() {
                     onClick={() => setView(v)}
                     className={`rounded-md px-2 py-1 focus-visible:outline-2 focus-visible:outline-accent ${view === v ? 'bg-neutral-200 dark:bg-neutral-800' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
                   >
-                    {v === 'pages' ? 'Pages' : 'Long strip'}
+                    {VIEW_LABELS[v]}
                   </button>
                 ))}
               </div>
@@ -507,6 +663,23 @@ export function App() {
                   layout={result.layout}
                   page={page}
                   onSelect={setPage}
+                  annotations={annotations}
+                />
+              ) : view === 'annotate' ? (
+                <AnnotateView
+                  session={session}
+                  frames={frames.current!}
+                  annotations={annotations}
+                  crop={project.crop}
+                  tool={tool}
+                  style={style}
+                  selected={selected}
+                  onSelect={setSelected}
+                  onAnnotations={setAnnotations}
+                  onCrop={(c) => {
+                    setCrop(c);
+                    setTool('select');
+                  }}
                 />
               ) : (
                 <StripView
@@ -528,6 +701,27 @@ export function App() {
           </main>
         )}
         <Panel
+          tab={panelTab}
+          onTab={changePanelTab}
+          annotate={{
+            tool,
+            onTool: setTool,
+            style,
+            onStyle: changeStyle,
+            canUndo: history.past.length > 0,
+            canRedo: history.future.length > 0,
+            onUndo: doUndo,
+            onRedo: doRedo,
+            selected: !!selected && annotations.some((a) => a.id === selected),
+            onDelete: deleteSelected,
+            count: annotations.length,
+            onClear: () => {
+              setAnnotations([]);
+              setSelected(null);
+            },
+            cropped: !!project.crop,
+            onResetCrop: () => setCrop(null),
+          }}
           settings={settings}
           onSettings={updateSettings}
           edits={edits}
