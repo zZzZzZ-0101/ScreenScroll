@@ -16,6 +16,7 @@ import {
 } from '@screenscroll/core';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { composePage } from '@/studio/engine/compose';
+import { stepZoom, type Zoom } from './ZoomControl';
 import type { FrameCache, LoadedSession } from '@/studio/engine/session';
 
 /** Document CSS px per tile: small canvases, rendered only when on screen. */
@@ -36,6 +37,9 @@ interface Props {
   /** Replaces the annotation list as one undo step. */
   onAnnotations: (next: Annotation[]) => void;
   onCrop: (crop: Region | null) => void;
+  zoom: Zoom;
+  onZoom: (z: Zoom) => void;
+  onEffective: (scale: number) => void;
 }
 
 type Draft =
@@ -70,7 +74,28 @@ export function AnnotateView(p: Props) {
     return () => ro.disconnect();
   }, []);
 
-  const z = Math.min(1, Math.max(0.1, avail / p.session.width)); // screen px per CSS px
+  // Screen px per CSS px: fit the width (never enlarging), or the zoom chosen.
+  const fit = Math.min(1, Math.max(0.1, avail / p.session.width));
+  const z =
+    typeof p.zoom === 'number'
+      ? p.zoom
+      : p.zoom === 'width'
+        ? Math.max(0.1, avail / p.session.width)
+        : fit;
+  const { onEffective } = p;
+  useEffect(() => onEffective(z), [z, onEffective]);
+  const latest = useRef({ z, onZoom: p.onZoom });
+  latest.current = { z, onZoom: p.onZoom };
+  useEffect(() => {
+    const el = scroller.current!;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      latest.current.onZoom(stepZoom(latest.current.z, e.deltaY < 0 ? 1 : -1));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
   const W = p.session.width;
   const H = p.session.height;
 

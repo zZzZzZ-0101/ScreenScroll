@@ -1,4 +1,10 @@
-import { Pacer, blockedReason, type CaptureLimits, type Region } from '@screenscroll/core';
+import {
+  CAPTURE_PACING,
+  Pacer,
+  blockedReason,
+  type CaptureLimits,
+  type Region,
+} from '@screenscroll/core';
 import { db, deleteOlderThan } from '@/shared/db';
 import type {
   CaptureDone,
@@ -8,10 +14,12 @@ import type {
   ToBackground,
 } from '@/shared/messages';
 import { dataUrlToBlob, pngSize } from '@/shared/png';
-import { loadSettings } from '@/shared/settings';
+import { loadSettings, RESOLUTION_SCALE, SPEED_TIMING } from '@/shared/settings';
 
 export default defineBackground(() => {
-  const pacer = new Pacer();
+  let pacer = new Pacer();
+  // Captures rendered at a higher pixel density through the debugger (Settings → Sharpness).
+  const sharp = new Map<string, { tabId: number; failed: boolean }>();
   // Window of each running capture. Only a cache: the service worker can be stopped at any
   // time, so the session record in IndexedDB is the source of truth.
   const windowOf = new Map<string, number>();
@@ -45,9 +53,68 @@ export default defineBackground(() => {
       tabId: tab.id,
       windowId: tab.windowId,
     });
+    const settings = await loadSettings();
+    const timing = SPEED_TIMING[settings.capture.speed];
+    pacer = new Pacer({ ...CAPTURE_PACING, minIntervalMs: timing.intervalMs });
+    const warnings: string[] = [];
+    const scale = RESOLUTION_SCALE[settings.capture.resolution];
+    if (scale > 1) {
+      const why = await startSharp(id, tab.id, scale);
+      if (why) warnings.push(why);
+    }
+    if (warnings.length) {
+      const d = await db();
+      const rec = await d.get('sessions', id);
+      if (rec) await d.put('sessions', { ...rec, warnings });
+    }
     await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['/capture.js'] });
-    await chrome.tabs.sendMessage(tab.id, { type: 'sp:start', sessionId: id, mode, ...opts });
+    await chrome.tabs.sendMessage(tab.id, {
+      type: 'sp:start',
+      sessionId: id,
+      mode,
+      startAt: settings.capture.start,
+      timing,
+      ...opts,
+    });
     return id;
+  }
+
+  /**
+   * Renders the tab at `scale` device pixels per CSS px (layout unchanged) through the
+   * debugger. Returns a warning when that isn't possible; the capture then uses the screen's
+   * own resolution.
+   */
+  async function startSharp(
+    sessionId: string,
+    tabId: number,
+    scale: number,
+  ): Promise<string | null> {
+    if (!(await chrome.permissions.contains({ permissions: ['debugger'] })))
+      return 'Sharp capture needs permission; open Settings → Sharpness to allow it. Captured at screen resolution.';
+    try {
+      await chrome.debugger.attach({ tabId }, '1.3');
+      await chrome.debugger.sendCommand({ tabId }, 'Emulation.setDeviceMetricsOverride', {
+        width: 0,
+        height: 0,
+        deviceScaleFactor: scale,
+        mobile: false,
+      });
+      sharp.set(sessionId, { tabId, failed: false });
+      return null;
+    } catch (e) {
+      await chrome.debugger.detach({ tabId }).catch(() => undefined);
+      return `Sharp capture was not possible (${e instanceof Error ? e.message : String(e)}); captured at screen resolution.`;
+    }
+  }
+
+  async function stopSharp(sessionId: string): Promise<void> {
+    const s = sharp.get(sessionId);
+    if (!s) return;
+    sharp.delete(sessionId);
+    await chrome.debugger
+      .sendCommand({ tabId: s.tabId }, 'Emulation.clearDeviceMetricsOverride')
+      .catch(() => undefined);
+    await chrome.debugger.detach({ tabId: s.tabId }).catch(() => undefined);
   }
 
   async function grab(msg: GrabFrame): Promise<GrabResult> {
@@ -62,9 +129,18 @@ export default defineBackground(() => {
       return { ok: false, error: 'Injected test failure' };
     }
     try {
-      const dataUrl = await pacer.run(() =>
-        chrome.tabs.captureVisibleTab(windowId, { format: 'png' }),
-      );
+      const hi = sharp.get(msg.sessionId);
+      const dataUrl =
+        hi && !hi.failed
+          ? await chrome.debugger
+              .sendCommand({ tabId: hi.tabId }, 'Page.captureScreenshot', { format: 'png' })
+              .then((r) => `data:image/png;base64,${(r as { data: string }).data}`)
+              .catch(async () => {
+                // The user closed the debugging bar: carry on at screen resolution.
+                hi.failed = true;
+                return pacer.run(() => chrome.tabs.captureVisibleTab(windowId, { format: 'png' }));
+              })
+          : await pacer.run(() => chrome.tabs.captureVisibleTab(windowId, { format: 'png' }));
       const blob = dataUrlToBlob(dataUrl);
       const size = await pngSize(blob);
       // Real DPR from the pixels: browser zoom changes it (CAPTURE §9).
@@ -90,6 +166,12 @@ export default defineBackground(() => {
   }
 
   async function finish(msg: CaptureDone): Promise<void> {
+    const hi = sharp.get(msg.sessionId);
+    if (hi?.failed)
+      msg.warnings.push(
+        'Sharp capture stopped part-way (the debugging bar was closed); the rest is at screen resolution.',
+      );
+    await stopSharp(msg.sessionId);
     const d = await db();
     const session = await d.get('sessions', msg.sessionId);
     const frameCount = await d.countFromIndex('frames', 'bySession', msg.sessionId);
@@ -100,7 +182,7 @@ export default defineBackground(() => {
         docWidth: msg.docWidth,
         docHeight: msg.docHeight,
         frameCount,
-        warnings: msg.warnings,
+        warnings: [...session.warnings, ...msg.warnings],
       });
     }
     windowOf.delete(msg.sessionId);

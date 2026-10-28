@@ -106,7 +106,8 @@ async function run(msg: StartCapture): Promise<void> {
       if (cancelled) throw new Cancelled();
     }
     pill.hide();
-    const p = await plan(msg);
+    if (msg.timing) timing = msg.timing;
+    let p = await plan(msg);
     if (!p) throw new Cancelled();
     // A zero-size selection or a hidden element: say so rather than produce nothing.
     if (p.kind === 'region' && (p.region.x1 - p.region.x0 < 1 || p.region.y1 - p.region.y0 < 1))
@@ -130,6 +131,19 @@ async function run(msg: StartCapture): Promise<void> {
     const startOffset = target.offset;
     const t = target;
     log.record(() => t.scrollTo(startOffset));
+    // Settings → "Where I am now": a full-page capture from the current position to the end.
+    if (msg.startAt === 'here' && p.kind === 'scroll' && !p.visibleOnly && startOffset > 0) {
+      p = {
+        kind: 'region',
+        target,
+        region: {
+          x0: target.crop.x,
+          x1: target.crop.x + target.crop.width,
+          y0: startOffset,
+          y1: target.scrollHeight,
+        },
+      };
+    }
     warnings.push(...prepare(log, target));
     // Viewers that live in an embedded frame (some document previews) can't be scrolled from
     // here: say so instead of quietly returning one screen.
@@ -164,7 +178,7 @@ async function run(msg: StartCapture): Promise<void> {
       target.scrollTo(from);
     }
     // One global wait so slow images requested by the preload pass can finish (CAPTURE §5).
-    await waitForImages([...document.images], 5000);
+    await waitForImages([...document.images], timing.pageImageWaitMs);
     await document.fonts.ready;
 
     const ctx: LoopContext = {
@@ -532,14 +546,17 @@ function hideFixedTop(log: MutationLog): void {
  * CAPTURE §7: two frames, visible images loaded and decoded (1.5 s cap), then a short dwell.
  * Returns how many visible images were still incomplete, so the caller can warn.
  */
+/** Settings → Capture speed (set when a capture starts). */
+let timing = { settleMs: 150, frameImageWaitMs: 1500, pageImageWaitMs: 5000 };
+
 async function settle(): Promise<number> {
   await frames(2);
   const visible = [...document.images].filter((img) => {
     const r = img.getBoundingClientRect();
     return r.bottom > 0 && r.top < innerHeight && r.width > 0;
   });
-  const pending = await waitForImages(visible, 1500);
-  await sleep(150);
+  const pending = await waitForImages(visible, timing.frameImageWaitMs);
+  await sleep(timing.settleMs);
   return pending;
 }
 

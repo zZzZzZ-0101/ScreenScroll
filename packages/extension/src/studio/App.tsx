@@ -24,7 +24,15 @@ import {
   type Style,
   type Tool,
 } from '@screenscroll/core';
-import { FileText, PenLine, SeparatorHorizontal, TriangleAlert } from 'lucide-react';
+import {
+  FileText,
+  Monitor,
+  Moon,
+  PenLine,
+  SeparatorHorizontal,
+  Sun,
+  TriangleAlert,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EMPTY_PROJECT, saveProject, type Project } from '@/shared/db';
 import { bandHeight, loadSettings, saveSettings, type Settings } from '@/shared/settings';
@@ -44,6 +52,10 @@ import { FrameCache, loadSession, type LoadedSession } from '@/studio/engine/ses
 import { composePage, encodePage } from '@/studio/engine/compose';
 import { AnnotateView } from './components/AnnotateView';
 import { MarkupToolbar, type MarkupControls } from './components/MarkupToolbar';
+import { DEFAULT_PANEL, SidePanel, type PanelPrefs } from './components/SidePanel';
+import { ZoomControl, stepZoom, type Zoom } from './components/ZoomControl';
+import { useTheme } from '@/shared/theme';
+import type { Theme } from '@/shared/settings';
 import { BreaksPanel, PagesPanel } from './components/Panel';
 import { SaveMenu, type ExportFormat } from './components/SaveMenu';
 import { PagesView } from './components/PagesView';
@@ -93,6 +105,22 @@ export function App() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [edits, setEdits] = useState<Edits>({ pinned: [], removed: [] });
   const [view, setViewState] = useState<View>('pages');
+  // Per-viewer UI memory (zoom, panel); nothing here needs to sync or persist reliably.
+  const [zoom, setZoom] = useState<Zoom>(() => readPref('ss-zoom', 'page' as Zoom));
+  const [effective, setEffective] = useState(1);
+  const changeZoom = useCallback((z: Zoom) => {
+    setZoom(z);
+    writePref('ss-zoom', z);
+  }, []);
+  const [panelPrefs, setPanelPrefs] = useState<PanelPrefs>(() => ({
+    ...DEFAULT_PANEL,
+    ...readPref('ss-panel', DEFAULT_PANEL),
+  }));
+  const changePanel = useCallback((p: PanelPrefs) => {
+    setPanelPrefs(p);
+    writePref('ss-panel', p);
+  }, []);
+  const [theme, setTheme] = useTheme();
   const [history, setHistory] = useState<History<Project>>(() => emptyHistory(EMPTY_PROJECT));
   const [tool, setTool] = useState<Tool>('rect');
   const [style, setStyle] = useState<Style>(DEFAULT_STYLE);
@@ -509,6 +537,12 @@ export function App() {
         deleteSelected();
       } else if (view === 'markup' && e.key === 'Escape') {
         setSelected(null);
+      } else if (!mod && (e.key === '+' || e.key === '=')) {
+        changeZoom(stepZoom(effective, 1));
+      } else if (!mod && e.key === '-') {
+        changeZoom(stepZoom(effective, -1));
+      } else if (!mod && e.key === '0') {
+        changeZoom(view === 'markup' ? 'width' : 'page');
       } else if (mod && e.shiftKey && key === 'd') {
         // Developer aid (PAGINATION §9): the break overlay, kept out of the visible UI.
         e.preventDefault();
@@ -528,7 +562,19 @@ export function App() {
     };
     addEventListener('keydown', onKey);
     return () => removeEventListener('keydown', onKey);
-  }, [doExport, doCopy, doPrint, doDebug, doUndo, doRedo, deleteSelected, view, slices.length]);
+  }, [
+    doExport,
+    doCopy,
+    doPrint,
+    doDebug,
+    doUndo,
+    doRedo,
+    deleteSelected,
+    view,
+    slices.length,
+    effective,
+    changeZoom,
+  ]);
 
   // e2e hook (stripped from production builds).
   useEffect(() => {
@@ -596,6 +642,29 @@ export function App() {
     hour: '2-digit',
     minute: '2-digit',
   });
+
+  const panelBody =
+    view === 'pages' || !result.ok ? (
+      <PagesPanel
+        settings={settings}
+        onSettings={updateSettings}
+        filename={filename('pdf')}
+        cropped={result.ok && result.crop.cropped}
+        sheetCount={analysis.sheets?.sheets.length ?? null}
+        estimate={estimate}
+      />
+    ) : view === 'breaks' ? (
+      <BreaksPanel
+        edits={edits}
+        onReset={() => setEdits({ pinned: [], removed: [] })}
+        locked={result.ok && result.sheets}
+      />
+    ) : null;
+  const panel = panelBody && (
+    <SidePanel prefs={panelPrefs} onPrefs={changePanel} label="panel">
+      {panelBody}
+    </SidePanel>
+  );
 
   const markup: MarkupControls = {
     tool,
@@ -698,6 +767,7 @@ export function App() {
               )}
             </div>
           )}
+          <ThemeButton theme={theme} onTheme={setTheme} />
           <SaveMenu
             disabled={!!busy || !result.ok}
             onExport={doExport}
@@ -708,6 +778,7 @@ export function App() {
       </header>
 
       <div className="flex min-h-0 flex-1">
+        {panel && panelPrefs.side === 'left' && panel}
         {result.ok ? (
           <>
             {view !== 'markup' && (
@@ -719,7 +790,17 @@ export function App() {
                 annotations={annotations}
               />
             )}
-            <main className="flex min-w-0 flex-1 flex-col">
+            <main className="relative flex min-w-0 flex-1 flex-col">
+              {view !== 'breaks' && (
+                <div className="absolute right-4 bottom-4 z-20">
+                  <ZoomControl
+                    zoom={zoom}
+                    effective={effective}
+                    onZoom={changeZoom}
+                    pageFit={view === 'pages'}
+                  />
+                </div>
+              )}
               {view === 'pages' ? (
                 <PagesView
                   session={session}
@@ -730,6 +811,9 @@ export function App() {
                   page={page}
                   onSelect={setPage}
                   annotations={annotations}
+                  zoom={zoom}
+                  onZoom={changeZoom}
+                  onEffective={setEffective}
                 />
               ) : view === 'markup' ? (
                 <>
@@ -748,6 +832,9 @@ export function App() {
                       setCrop(c);
                       setTool('select');
                     }}
+                    zoom={zoom}
+                    onZoom={changeZoom}
+                    onEffective={setEffective}
                   />
                 </>
               ) : (
@@ -770,22 +857,7 @@ export function App() {
             <p role="alert">{result.error}</p>
           </main>
         )}
-        {view === 'pages' || !result.ok ? (
-          <PagesPanel
-            settings={settings}
-            onSettings={updateSettings}
-            filename={filename('pdf')}
-            cropped={result.ok && result.crop.cropped}
-            sheetCount={analysis.sheets?.sheets.length ?? null}
-            estimate={estimate}
-          />
-        ) : view === 'breaks' ? (
-          <BreaksPanel
-            edits={edits}
-            onReset={() => setEdits({ pinned: [], removed: [] })}
-            locked={result.ok && result.sheets}
-          />
-        ) : null}
+        {panel && panelPrefs.side === 'right' && panel}
       </div>
 
       {(busy || toast) && (
@@ -800,6 +872,46 @@ export function App() {
       )}
     </div>
   );
+}
+
+const THEMES: Array<[Theme, string, typeof Sun]> = [
+  ['system', 'System', Monitor],
+  ['light', 'Light', Sun],
+  ['dark', 'Dark', Moon],
+];
+
+/** One button that cycles system → light → dark; its label says which is on. */
+function ThemeButton({ theme, onTheme }: { theme: Theme; onTheme: (t: Theme) => void }) {
+  const i = THEMES.findIndex(([t]) => t === theme);
+  const [, label, Icon] = THEMES[i]!;
+  const next = THEMES[(i + 1) % THEMES.length]!;
+  return (
+    <button
+      type="button"
+      aria-label={`Theme: ${label}`}
+      title={`Theme: ${label}. Click for ${next[1].toLowerCase()}.`}
+      onClick={() => onTheme(next[0])}
+      className="rounded-md p-1.5 text-neutral-600 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:text-neutral-300 dark:hover:bg-neutral-800"
+    >
+      <Icon aria-hidden size={17} />
+    </button>
+  );
+}
+
+function readPref<T>(key: string, fallback: T): T {
+  try {
+    const v = localStorage.getItem(key);
+    return v === null ? fallback : (JSON.parse(v) as T);
+  } catch {
+    return fallback;
+  }
+}
+function writePref(key: string, value: unknown): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* not essential */
+  }
 }
 
 /** Toast text for a finished save, explaining a changed file name. */

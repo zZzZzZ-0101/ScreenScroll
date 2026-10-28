@@ -26,10 +26,14 @@ export default defineConfig({
       'downloads',
       'clipboardWrite',
       'contextMenus',
+      ...(env.mode === 'e2e' ? ['debugger'] : []),
     ],
     // captureVisibleTab accepts only <all_urls> or an activeTab grant, so the e2e build
     // (which cannot click the toolbar) needs <all_urls>. Production asks for nothing.
     host_permissions: env.mode === 'e2e' ? ['<all_urls>'] : [],
+    // Sharp capture (Settings → Sharpness) renders the page at 2–3× through the debugger. It
+    // is asked for only when the user picks High or Maximum; the e2e build has it granted.
+    optional_permissions: env.mode === 'e2e' ? [] : ['debugger'],
     // The icon opens the small panel in entrypoints/popup (UI §1).
     action: { default_title: 'ScreenScroll' },
     commands: {

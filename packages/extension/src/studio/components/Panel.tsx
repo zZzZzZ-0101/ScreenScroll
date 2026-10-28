@@ -18,8 +18,7 @@ const control =
   'rounded-md border border-neutral-300 bg-white px-2 py-1 focus-visible:outline-2 focus-visible:outline-accent dark:border-neutral-700 dark:bg-neutral-900';
 export const button =
   'rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800';
-const aside =
-  'w-64 shrink-0 overflow-y-auto border-l border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900';
+const aside = 'h-full overflow-y-auto p-3';
 
 interface PagesProps {
   settings: Settings;
@@ -209,6 +208,13 @@ export function PagesPanel(p: PagesProps) {
           <p className="pt-1 text-[12px] text-neutral-500">
             {'{title} {domain} {date} {time} {url}'}
           </p>
+          <button
+            type="button"
+            onClick={() => void chrome.runtime.openOptionsPage()}
+            className="mt-2 text-accent underline-offset-2 hover:underline"
+          >
+            All settings, with defaults and recommendations
+          </button>
         </div>
       )}
     </aside>

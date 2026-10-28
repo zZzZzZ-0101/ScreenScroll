@@ -14,6 +14,10 @@ export interface StartCapture {
   delayMs?: number;
   /** A region of the document to capture without the picker (tests, scripted use). */
   region?: Region;
+  /** Settings → Capture: start at the top, or where the user is now. */
+  startAt?: 'top' | 'here';
+  /** Settings → Capture speed: how long to let each screen settle. */
+  timing?: { settleMs: number; frameImageWaitMs: number; pageImageWaitMs: number };
 }
 
 /** Content script → background: grab the visible tab for this frame. */

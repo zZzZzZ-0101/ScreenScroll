@@ -24,6 +24,7 @@
     "@screenscroll/core": "workspace:*",
     "fflate": "^0.8.3",
     "idb": "^8.0.4",
+    "lucide": "0.468.0",
     "lucide-react": "0.468.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"

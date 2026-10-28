@@ -10,7 +10,7 @@ import { contentY, isScroller, nearestScroller, targetFor, type Target } from '.
 const ACCENT = '#0e7c7b';
 const EDGE = 36; // px from the viewport edge where dragging auto-scrolls
 
-function overlay(interactive: boolean) {
+export function overlay(interactive: boolean) {
   const host = document.createElement('div');
   host.style.cssText = `all: initial; position: fixed; inset: 0; z-index: 2147483647; pointer-events: ${interactive ? 'auto' : 'none'};`;
   const root = host.attachShadow({ mode: 'closed' });
@@ -46,7 +46,7 @@ function overlay(interactive: boolean) {
 }
 
 /** Resolves on Enter/Esc; returns a remover for the listener. */
-function onKeys(handlers: Record<string, (e: KeyboardEvent) => void>) {
+export function onKeys(handlers: Record<string, (e: KeyboardEvent) => void>) {
   const listener = (e: KeyboardEvent) => {
     const h = handlers[e.key];
     if (h) {

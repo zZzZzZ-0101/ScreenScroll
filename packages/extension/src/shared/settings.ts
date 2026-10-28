@@ -8,6 +8,26 @@ import {
   type PageSettings,
 } from '@screenscroll/core';
 
+/** Where a full-page capture starts: the top of the page, or where you are now. */
+export type CaptureStart = 'top' | 'here';
+/** Pacing and waiting per screen; faster is less patient with slow images. */
+export type CaptureSpeed = 'careful' | 'normal' | 'fast';
+/** Pixels per CSS px captured: the screen's own, or 2× / 3× for sharper output. */
+export type Resolution = 'standard' | 'high' | 'max';
+/** Text recognition in images: where the page has no text of its own, everywhere, or never. */
+export type OcrMode = 'auto' | 'always' | 'off';
+/** PDF image quality: from small files that still read well, to lossless. */
+export type ExportPreset = 'compact' | 'balanced' | 'best' | 'lossless';
+
+export interface CaptureSettings {
+  start: CaptureStart;
+  speed: CaptureSpeed;
+  resolution: Resolution;
+}
+
+/** Light, dark, or whatever the system uses. */
+export type Theme = 'system' | 'light' | 'dark';
+
 /** PDF page images: chosen per page by content, or forced. */
 export type ImageMode = 'auto' | 'png' | 'jpeg';
 
@@ -27,6 +47,10 @@ export interface Settings {
   keepDays: number;
   /** In a document viewer (Drive, PDF previews), one PDF page per document page. */
   followSheets: boolean;
+  theme: Theme;
+  capture: CaptureSettings;
+  ocr: OcrMode;
+  exportPreset: ExportPreset;
 }
 
 export interface PdfSettings {
@@ -60,6 +84,10 @@ export const DEFAULT_SETTINGS: Settings = {
   pdf: DEFAULT_PDF_SETTINGS,
   keepDays: 0,
   followSheets: true,
+  theme: 'system',
+  capture: { start: 'top', speed: 'normal', resolution: 'standard' },
+  ocr: 'auto',
+  exportPreset: 'balanced',
 };
 
 const KEY = 'settings';
@@ -78,6 +106,7 @@ export function normalizeSettings(stored: unknown): Settings {
   const page = isObject(o.page) ? o.page : {};
   const pdf = isObject(o.pdf) ? o.pdf : {};
   const margins = isObject(page.marginsMm) ? page.marginsMm : {};
+  const cap = isObject(o.capture) ? o.capture : {};
   const mm = (v: unknown, def: number) => (num(v) && v >= 0 && v <= 100 ? v : def);
   const paper = page.paper;
   const validPaper =
@@ -107,6 +136,18 @@ export function normalizeSettings(stored: unknown): Settings {
       typeof o.filenameTemplate === 'string' ? o.filenameTemplate : d.filenameTemplate,
     afterCapture: o.afterCapture === 'pdf' ? 'pdf' : 'studio',
     followSheets: o.followSheets !== false,
+    theme: o.theme === 'light' || o.theme === 'dark' ? o.theme : 'system',
+    capture: {
+      start: cap.start === 'here' ? 'here' : 'top',
+      speed: cap.speed === 'careful' || cap.speed === 'fast' ? cap.speed : 'normal',
+      resolution:
+        cap.resolution === 'high' || cap.resolution === 'max' ? cap.resolution : 'standard',
+    },
+    ocr: o.ocr === 'always' || o.ocr === 'off' ? o.ocr : 'auto',
+    exportPreset:
+      o.exportPreset === 'compact' || o.exportPreset === 'best' || o.exportPreset === 'lossless'
+        ? o.exportPreset
+        : 'balanced',
     keepDays: num(o.keepDays) && o.keepDays >= 0 && o.keepDays <= 3650 ? Math.round(o.keepDays) : 0,
     pdf: {
       textLayer: typeof pdf.textLayer === 'boolean' ? pdf.textLayer : d.pdf.textLayer,
@@ -127,6 +168,18 @@ function band(v: unknown, def: BandTemplate): BandTemplate {
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+/** Per-screen timing for each speed. Chrome allows two screenshots a second (500 ms). */
+export const SPEED_TIMING: Record<
+  CaptureSpeed,
+  { intervalMs: number; settleMs: number; frameImageWaitMs: number; pageImageWaitMs: number }
+> = {
+  careful: { intervalMs: 700, settleMs: 400, frameImageWaitMs: 3000, pageImageWaitMs: 8000 },
+  normal: { intervalMs: 550, settleMs: 150, frameImageWaitMs: 1500, pageImageWaitMs: 5000 },
+  fast: { intervalMs: 505, settleMs: 60, frameImageWaitMs: 600, pageImageWaitMs: 2000 },
+};
+
+export const RESOLUTION_SCALE: Record<Resolution, number> = { standard: 1, high: 2, max: 3 };
 
 export async function saveSettings(patch: Partial<Settings>): Promise<Settings> {
   const next = { ...(await loadSettings()), ...patch };

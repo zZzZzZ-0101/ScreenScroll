@@ -4,6 +4,7 @@ import {
   Archive,
   History,
   Keyboard,
+  Settings as Gear,
   Monitor,
   PanelTop,
   ScanLine,
@@ -110,15 +111,29 @@ export function App() {
     <main className="w-80 bg-white p-3 text-[13px] text-neutral-900 dark:bg-neutral-900 dark:text-neutral-100">
       <header className="mb-2 flex items-center justify-between">
         <h1 className="text-sm font-semibold">ScreenScroll</h1>
-        <button
-          type="button"
-          title="Change keyboard shortcuts"
-          aria-label="Change keyboard shortcuts"
-          onClick={() => open('chrome://extensions/shortcuts')}
-          className="rounded p-1 text-neutral-500 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:hover:bg-neutral-800"
-        >
-          <Keyboard aria-hidden size={16} />
-        </button>
+        <div className="flex items-center gap-0.5">
+          <button
+            type="button"
+            title="Settings"
+            aria-label="Settings"
+            onClick={() => {
+              void chrome.runtime.openOptionsPage();
+              window.close();
+            }}
+            className="rounded p-1 text-neutral-500 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:hover:bg-neutral-800"
+          >
+            <Gear aria-hidden size={16} />
+          </button>
+          <button
+            type="button"
+            title="Change keyboard shortcuts"
+            aria-label="Change keyboard shortcuts"
+            onClick={() => open('chrome://extensions/shortcuts')}
+            className="rounded p-1 text-neutral-500 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:hover:bg-neutral-800"
+          >
+            <Keyboard aria-hidden size={16} />
+          </button>
+        </div>
       </header>
 
       {blocked && (
