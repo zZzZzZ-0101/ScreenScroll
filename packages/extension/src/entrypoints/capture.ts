@@ -16,7 +16,13 @@ import {
 } from '@screenscroll/core';
 import { collectHints, type CollectContext } from '@/content/hints-collector';
 import type { CaptureDone, GrabFrame, GrabResult, StartCapture } from '@/shared/messages';
-import { elementRegion, pickElement, pickScrollArea, selectRegion } from '@/content/page-ui';
+import {
+  elementRegion,
+  pickElement,
+  pickLines,
+  pickScrollArea,
+  selectRegion,
+} from '@/content/page-ui';
 import { documentTarget, elementTarget, isScroller, type Target } from '@/content/targets';
 
 // Injected on demand into the page (CAPTURE §2). All page changes go through `log` so they
@@ -53,6 +59,10 @@ async function plan(msg: StartCapture): Promise<Plan | null> {
       const sel = msg.region
         ? { target: documentTarget(), region: msg.region }
         : await selectRegion();
+      return sel && { kind: 'region', ...sel };
+    }
+    case 'lines': {
+      const sel = msg.region ? { target: documentTarget(), region: msg.region } : await pickLines();
       return sel && { kind: 'region', ...sel };
     }
     case 'element': {
@@ -121,6 +131,18 @@ async function run(msg: StartCapture): Promise<void> {
     const t = target;
     log.record(() => t.scrollTo(startOffset));
     warnings.push(...prepare(log, target));
+    // Viewers that live in an embedded frame (some document previews) can't be scrolled from
+    // here: say so instead of quietly returning one screen.
+    if (p.kind === 'scroll' && !target.el && target.maxScroll <= 2) {
+      const front = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
+      if (front instanceof HTMLIFrameElement) {
+        const r = front.getBoundingClientRect();
+        if (r.width * r.height > 0.3 * innerWidth * innerHeight)
+          warnings.push(
+            'The content is inside an embedded frame that ScreenScroll can’t scroll yet, so only the visible screen was captured. Try opening the frame’s content in its own tab.',
+          );
+      }
+    }
     const iframes = unreadableIframes();
     if (iframes > 0) {
       warnings.push(
@@ -329,10 +351,14 @@ function pickTarget(): Target {
   const se = document.scrollingElement ?? document.documentElement;
   const candidates: ScrollCandidate[] = [];
   const els: Element[] = [];
+  // Whatever is in front at the middle of the screen: a viewer over a file list, an opened
+  // mail over the inbox (CAPTURE §3).
+  const front = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
   for (const el of document.querySelectorAll('body *')) {
     if (!isScroller(el)) continue;
     const r = el.getBoundingClientRect();
     candidates.push({
+      atCenter: !!front && el.contains(front),
       id: els.length,
       rect: {
         x: r.left + el.clientLeft,

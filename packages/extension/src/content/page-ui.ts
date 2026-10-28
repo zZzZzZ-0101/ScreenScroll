@@ -26,6 +26,11 @@ function overlay(interactive: boolean) {
     .handle { position: absolute; width: 10px; height: 10px; background: #fff; border: 2px solid ${ACCENT};
       border-radius: 2px; pointer-events: auto; }
     .outline { position: fixed; outline: 2px solid ${ACCENT}; background: rgba(14,124,123,.12); pointer-events: none; }
+    .line { position: fixed; height: 0; border-top: 2px solid ${ACCENT}; pointer-events: none; }
+    .line.start { border-top-style: dashed; }
+    .tag { position: absolute; left: 8px; top: -24px; background: ${ACCENT}; color: #fff; padding: 2px 8px;
+      border-radius: 4px; white-space: nowrap; }
+    .band { position: fixed; background: rgba(14,124,123,.14); pointer-events: none; }
     .label { position: absolute; left: -2px; top: -22px; background: ${ACCENT}; color: #fff; padding: 1px 6px;
       border-radius: 4px; white-space: nowrap; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; }
   `;
@@ -182,6 +187,127 @@ export function selectRegion(): Promise<Selection | null> {
         finish({ target, region: r });
       },
     });
+  });
+}
+
+/**
+ * "From line to line" (UI §2): click the first line, scroll freely (wheel, keys, scrollbar),
+ * click the last line. Everything between is captured at the full width of whatever scrolls
+ * under the first click, however long. Enter ends at the bottom; Backspace picks the start
+ * again; Esc cancels.
+ */
+export function pickLines(): Promise<Selection | null> {
+  return new Promise((resolve) => {
+    const ui = overlay(false);
+    const hint = ui.el('div', 'hint');
+    const band = ui.el('div', 'band');
+    const startLine = ui.el('div', 'line start');
+    const startTag = ui.el('div', 'tag', startLine);
+    startTag.textContent = 'Start';
+    const line = ui.el('div', 'line');
+    const tag = ui.el('div', 'tag', line);
+    let target: Target | null = null;
+    let startY: number | null = null;
+    let pointer = { x: innerWidth / 2, y: innerHeight / 2 };
+
+    const targetAt = (x: number, y: number) =>
+      targetFor(nearestScroller(document.elementFromPoint(x, y)));
+    const clampY = (t: Target, y: number) =>
+      Math.max(t.crop.y, Math.min(t.crop.y + t.crop.height, y));
+    const place = (el: HTMLElement, t: Target, y: number) =>
+      Object.assign(el.style, {
+        display: 'block',
+        left: `${t.crop.x}px`,
+        width: `${t.crop.width}px`,
+        top: `${y}px`,
+      });
+
+    const render = () => {
+      const t = target ?? targetAt(pointer.x, pointer.y);
+      const y = clampY(t, pointer.y);
+      place(line, t, y);
+      if (startY === null) {
+        hint.textContent = 'Click the first line to capture · Esc to cancel';
+        tag.textContent = 'Start here';
+        startLine.style.display = 'none';
+        band.style.display = 'none';
+        return;
+      }
+      hint.textContent =
+        'Scroll to the last line and click it · Enter = to the end · Backspace = new start · Esc to cancel';
+      const sy = startY - t.offset + t.crop.y; // start line in viewport coordinates
+      const shown = sy >= t.crop.y && sy <= t.crop.y + t.crop.height;
+      startLine.style.display = shown ? 'block' : 'none';
+      if (shown) place(startLine, t, sy);
+      const top = clampY(t, Math.min(sy, y));
+      const bottom = clampY(t, Math.max(sy, y));
+      Object.assign(band.style, {
+        display: 'block',
+        left: `${t.crop.x}px`,
+        width: `${t.crop.width}px`,
+        top: `${top}px`,
+        height: `${bottom - top}px`,
+      });
+      const height = Math.round(Math.abs(contentY(t, y) - startY));
+      tag.textContent = `End here · ${height} px`;
+    };
+
+    const finish = (result: Selection | null) => {
+      removeKeys();
+      removeEventListener('mousemove', onMove, true);
+      removeEventListener('click', onClick, true);
+      removeEventListener('mousedown', block, true);
+      removeEventListener('mouseup', block, true);
+      removeEventListener('scroll', render, true);
+      ui.remove();
+      resolve(result);
+    };
+    const select = (t: Target, a: number, b: number) =>
+      finish({
+        target: t,
+        region: {
+          x0: t.crop.x,
+          x1: t.crop.x + t.crop.width,
+          y0: Math.max(0, Math.min(a, b)),
+          y1: Math.min(t.scrollHeight, Math.max(a, b)),
+        },
+      });
+    const onMove = (e: MouseEvent) => {
+      pointer = { x: e.clientX, y: e.clientY };
+      render();
+    };
+    const block = (e: Event) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    const onClick = (e: MouseEvent) => {
+      block(e);
+      pointer = { x: e.clientX, y: e.clientY };
+      if (startY === null || !target) {
+        target = targetAt(e.clientX, e.clientY);
+        startY = contentY(target, clampY(target, e.clientY));
+        render();
+      } else {
+        select(target, startY, contentY(target, clampY(target, e.clientY)));
+      }
+    };
+    addEventListener('mousemove', onMove, true);
+    addEventListener('click', onClick, true);
+    addEventListener('mousedown', block, true);
+    addEventListener('mouseup', block, true);
+    addEventListener('scroll', render, true);
+    const removeKeys = onKeys({
+      Escape: () => finish(null),
+      Enter: () => {
+        if (target && startY !== null) select(target, startY, target.scrollHeight);
+      },
+      Backspace: () => {
+        target = null;
+        startY = null;
+        render();
+      },
+    });
+    render();
   });
 }
 

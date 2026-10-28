@@ -1,7 +1,7 @@
 import type { CaptureLimits, DomHints, Rect, Region } from '@screenscroll/core';
 
 /** CAPTURE §14. Selection, element and scroll-area modes start with an in-page picker. */
-export type CaptureMode = 'full' | 'visible' | 'selection' | 'element' | 'pick-scroller';
+export type CaptureMode = 'full' | 'visible' | 'selection' | 'lines' | 'element' | 'pick-scroller';
 
 /** Background → content script. */
 export interface StartCapture {

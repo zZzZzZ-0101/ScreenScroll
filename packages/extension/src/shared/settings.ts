@@ -23,6 +23,8 @@ export interface Settings {
   afterCapture: 'studio' | 'pdf';
   /** UI §3 Export tab: PDF options (PDF_OUTPUT §2–5). */
   pdf: PdfSettings;
+  /** Saved captures older than this many days are deleted; 0 keeps them until deleted. */
+  keepDays: number;
 }
 
 export interface PdfSettings {
@@ -54,6 +56,7 @@ export const DEFAULT_SETTINGS: Settings = {
   filenameTemplate: DEFAULT_FILENAME_TEMPLATE,
   afterCapture: 'studio',
   pdf: DEFAULT_PDF_SETTINGS,
+  keepDays: 0,
 };
 
 const KEY = 'settings';
@@ -100,6 +103,7 @@ export function normalizeSettings(stored: unknown): Settings {
     filenameTemplate:
       typeof o.filenameTemplate === 'string' ? o.filenameTemplate : d.filenameTemplate,
     afterCapture: o.afterCapture === 'pdf' ? 'pdf' : 'studio',
+    keepDays: num(o.keepDays) && o.keepDays >= 0 && o.keepDays <= 3650 ? Math.round(o.keepDays) : 0,
     pdf: {
       textLayer: typeof pdf.textLayer === 'boolean' ? pdf.textLayer : d.pdf.textLayer,
       links: typeof pdf.links === 'boolean' ? pdf.links : d.pdf.links,

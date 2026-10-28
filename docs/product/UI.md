@@ -11,24 +11,25 @@ Design stance: **a quiet, fast tool**. No splash screens, no tips carousel, no u
 - Motion: 120–160 ms ease-out, and only for state changes (panels, toasts). Respect `prefers-reduced-motion`.
 - Accessibility: all controls are keyboard reachable, visible focus rings, contrast ≥ 4.5:1, ARIA labels on icon buttons.
 
-## 1. Starting a capture (no popup)
+## 1. The panel (toolbar icon)
 
-Distilled further (2026-10-28, see DECISIONS): there is no popup and no start page. A popup cost every capture an extra click and showed choices most people never change.
+The icon opens a small panel with everything needed before a capture, nothing else (2026-10-28: an earlier version without a panel was too bare; see DECISIONS).
 
-| Action | Result |
-|---|---|
-| Click the toolbar icon | Captures the full page at once, then opens the Studio |
-| Right-click the toolbar icon | Visible area · Selection · Element · Full page in 5 seconds · ☐ Skip the preview and save the PDF |
-| Right-click the page | Full page · Visible area · Selection · Element · Scroll area |
-| Keys | Alt+Shift+P full page · Alt+Shift+V visible · Alt+Shift+S selection · Alt+Shift+E element (change at `chrome://extensions/shortcuts`) |
+![Panel](../screenshots/panel.png)
 
-- A page that can't be captured (browser pages, the store, file:// without access) gets a red "!" on the icon; its tooltip says why. The next capture on that tab clears it.
-- Paper, breaks and formats are chosen in the Studio, where their effect is visible.
+- **Capture full page** (Alt+Shift+P), the main button.
+- Five tiles: **Visible** (Alt+Shift+V), **Area** (Alt+Shift+S), **Line to line**, **Element** (Alt+Shift+E), **Panel** (pick a scrolling panel: mail list, document viewer). Each has a tooltip saying what it does.
+- **Timer** Off / 3 / 5 / 10 s · **After capture** Review / Save PDF · **Paper**.
+- **Last capture** (reopens it in the Studio) and **Saved captures** with their count and size.
+- Keyboard icon: opens the browser's shortcut settings.
+- On a page that can't be captured the reason is shown first and the buttons are disabled. Captures started from menus or keys on such a page put a red "!" on the icon with the reason in its tooltip.
+- Right-click on the page: full page, visible, selection, line to line, element, scroll area.
 
 ## 2. In-page capture overlay
 
 - A thin progress bar at the top of the viewport, plus a small pill: "Capturing 7/23 · Esc to cancel". It's hidden during frame grabs. Toggle the overlay's visibility right before each `captureVisibleTab`, so the overlay never appears in the output.
 - Selection mode: dim the page, draw a crosshair rectangle with size readout, and show handles after release. Auto-scroll when dragging near the top/bottom edge. Press Enter to capture, Esc to cancel.
+- **Line to line**: a guide line follows the pointer across whatever scrolls under it. Click the first line, scroll freely (wheel, keys, scrollbar), click the last line; the band between is shaded and its height shown. Enter = to the end, Backspace = choose the start again, Esc = cancel. Clicks never reach the page.
 - Element mode: outline the hovered element with its tag, size and selector. ↑ selects the parent, ↓ the child. Click or Enter captures.
 
 ## 3. Studio (main window, extension tab)
@@ -58,10 +59,14 @@ Distilled (2026-10-28): three modes named by what you do, one primary button, an
 - Studio keyboard: ←/→ page, Ctrl+S, Ctrl+Shift+C, Ctrl+P; in Mark up the tool keys, Delete, Esc.
 - If the browser refuses the file name (some systems can't store every title), the file is saved under a plain ASCII name and the toast says so.
 
-## 4. History
+## 4. Saved captures (history)
 
-- A grid of cards: thumbnail, title, domain, date and page count. Search box with **full-text search** over captured page text (stored per session) plus title/URL.
-- Multi-select → Merge into one PDF / Export / Delete. A storage meter, with "Keep last N days / max N GB" settings.
+![Saved captures](../screenshots/saved-captures.png)
+
+- Everything kept on this computer: thumbnail, title, site, date and size per capture; space used and space free.
+- Search by title or address; **Open** reopens the Studio; delete one or several, with **Undo** for 6 seconds instead of a confirmation dialog.
+- **Keep captures**: until deleted / 1 / 7 / 30 / 90 days; older captures are deleted when the page opens and after each new capture.
+- Still to come (ROADMAP M5): full-text search of captured text, merge into one PDF.
 
 ## 5. Merge queue
 

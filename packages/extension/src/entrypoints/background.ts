@@ -1,5 +1,5 @@
 import { Pacer, blockedReason, type CaptureLimits, type Region } from '@screenscroll/core';
-import { db } from '@/shared/db';
+import { db, deleteOlderThan } from '@/shared/db';
 import type {
   CaptureDone,
   CaptureMode,
@@ -8,7 +8,7 @@ import type {
   ToBackground,
 } from '@/shared/messages';
 import { dataUrlToBlob, pngSize } from '@/shared/png';
-import { loadSettings, saveSettings } from '@/shared/settings';
+import { loadSettings } from '@/shared/settings';
 
 export default defineBackground(() => {
   const pacer = new Pacer();
@@ -104,6 +104,9 @@ export default defineBackground(() => {
       });
     }
     windowOf.delete(msg.sessionId);
+    // Auto-clean (Saved captures setting); never touches the capture that just finished.
+    const { keepDays } = await loadSettings();
+    if (keepDays) await deleteOlderThan(keepDays).catch(() => 0);
     // UI §7: whatever was captured opens, even after a cancel or an error; the Studio says why.
     if (frameCount > 0) await openStudio(msg.sessionId);
     if (__SP_E2E__) finished.set(msg.sessionId, msg);
@@ -121,9 +124,21 @@ export default defineBackground(() => {
     await chrome.tabs.create({ url, active: !direct });
   }
 
-  chrome.runtime.onMessage.addListener((msg: ToBackground, _sender, reply) => {
+  chrome.runtime.onMessage.addListener((msg: ToBackground | PopupCapture, _sender, reply) => {
     if (msg.type === 'sp:grab') {
       void grab(msg).then(reply);
+      return true;
+    }
+    if (msg.type === 'sp:popup-capture') {
+      void chrome.tabs.query({ active: true, currentWindow: true }).then(async ([tab]) => {
+        if (!tab) return reply({ ok: false, error: 'No tab to capture.' });
+        try {
+          await startCapture(tab, msg.mode, { delayMs: msg.delayMs });
+          reply({ ok: true });
+        } catch (e) {
+          reply({ ok: false, error: e instanceof Error ? e.message : String(e) });
+        }
+      });
       return true;
     }
     if (msg.type === 'sp:done') {
@@ -134,62 +149,34 @@ export default defineBackground(() => {
   });
 
   /**
-   * UI §1 (distilled): there is no popup. Clicking the toolbar icon captures the full page at
-   * once; everything else is one right-click away, on the icon or on the page. Clicking a
-   * menu entry grants activeTab, like the toolbar button.
+   * UI §1: the toolbar icon opens a small panel (popup/) with every mode and the few settings
+   * worth having at hand. The page menu has the modes too. A menu entry grants activeTab,
+   * like the toolbar button.
    */
   const PAGE_MENU: Array<{ id: string; title: string; mode: CaptureMode }> = [
     { id: 'sp-full', title: 'Capture full page', mode: 'full' },
     { id: 'sp-visible', title: 'Capture visible area', mode: 'visible' },
     { id: 'sp-selection', title: 'Capture a selection', mode: 'selection' },
+    { id: 'sp-lines', title: 'Capture from line to line', mode: 'lines' },
     { id: 'sp-element', title: 'Capture an element', mode: 'element' },
     { id: 'sp-pick-scroller', title: 'Capture a scroll area', mode: 'pick-scroller' },
   ];
-  // The icon's own menu (Chrome shows at most 6 entries there).
-  const ICON_MENU: Array<{ id: string; title: string; mode: CaptureMode; delayMs?: number }> = [
-    { id: 'sp-icon-visible', title: 'Capture visible area', mode: 'visible' },
-    { id: 'sp-icon-selection', title: 'Capture a selection', mode: 'selection' },
-    { id: 'sp-icon-element', title: 'Capture an element', mode: 'element' },
-    { id: 'sp-icon-delay', title: 'Capture full page in 5 seconds', mode: 'full', delayMs: 5000 },
-  ];
-  const SKIP_ID = 'sp-icon-skip';
-  /** Same text as the manifest's default_title. */
-  const ICON_TITLE = 'ScreenScroll: click to capture the full page, right-click for more';
 
-  async function buildMenus(): Promise<void> {
-    const { afterCapture } = await loadSettings();
-    await chrome.contextMenus.removeAll();
-    for (const m of PAGE_MENU)
-      chrome.contextMenus.create({ id: m.id, title: m.title, contexts: ['page'] });
-    for (const m of ICON_MENU)
-      chrome.contextMenus.create({ id: m.id, title: m.title, contexts: ['action'] });
-    chrome.contextMenus.create({
-      id: SKIP_ID,
-      title: 'Skip the preview and save the PDF',
-      type: 'checkbox',
-      checked: afterCapture === 'pdf',
-      contexts: ['action'],
+  chrome.runtime.onInstalled.addListener(() => {
+    chrome.contextMenus.removeAll(() => {
+      for (const m of PAGE_MENU)
+        chrome.contextMenus.create({ id: m.id, title: m.title, contexts: ['page'] });
     });
-  }
-  chrome.runtime.onInstalled.addListener(() => void buildMenus());
-  chrome.runtime.onStartup.addListener(() => void buildMenus());
+  });
 
   async function onMenu(
-    info: { menuItemId: string | number; checked?: boolean },
+    info: { menuItemId: string | number },
     tab?: chrome.tabs.Tab,
   ): Promise<string | null> {
-    if (info.menuItemId === SKIP_ID) {
-      await saveSettings({ afterCapture: info.checked ? 'pdf' : 'studio' });
-      return null;
-    }
-    const page = PAGE_MENU.find((m) => m.id === info.menuItemId);
-    const icon = ICON_MENU.find((m) => m.id === info.menuItemId);
-    const item = page ?? icon;
-    return item && tab ? capture(tab, item.mode, { delayMs: icon?.delayMs }) : null;
+    const item = PAGE_MENU.find((m) => m.id === info.menuItemId);
+    return item && tab ? capture(tab, item.mode) : null;
   }
   chrome.contextMenus.onClicked.addListener((info, tab) => void onMenu(info, tab));
-
-  chrome.action.onClicked.addListener((tab) => void capture(tab, 'full'));
 
   const COMMANDS: Record<string, CaptureMode> = {
     'capture-full': 'full',
@@ -207,6 +194,9 @@ export default defineBackground(() => {
    * page that can't be captured gets a red "!" on the icon whose tooltip says why (never
    * fail silently); the next capture on that tab clears it.
    */
+  /** Same text as the manifest's default_title. */
+  const ICON_TITLE = 'ScreenScroll';
+
   async function capture(
     tab: chrome.tabs.Tab,
     mode: CaptureMode,
@@ -247,8 +237,8 @@ export default defineBackground(() => {
           return capture(await chrome.tabs.get(tabId), 'full');
         },
         /** What choosing a right-click menu entry does. */
-        async menu(menuItemId: string, tabId: number, checked?: boolean) {
-          return onMenu({ menuItemId, checked }, await chrome.tabs.get(tabId));
+        async menu(menuItemId: string, tabId: number) {
+          return onMenu({ menuItemId }, await chrome.tabs.get(tabId));
         },
         async badge(tabId: number) {
           return {
@@ -296,6 +286,12 @@ export default defineBackground(() => {
     });
   }
 });
+
+interface PopupCapture {
+  type: 'sp:popup-capture';
+  mode: CaptureMode;
+  delayMs?: number;
+}
 
 interface CaptureOptions {
   limits?: CaptureLimits;

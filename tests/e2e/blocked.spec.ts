@@ -22,7 +22,7 @@ test('browser pages are refused with a clear message', async ({ context, service
   );
 });
 
-test('a click on the icon over a browser page marks the icon with the reason', async ({
+test('a capture started on a browser page marks the icon with the reason', async ({
   context,
   serviceWorker,
 }) => {
@@ -55,49 +55,6 @@ test('a click on the icon over a browser page marks the icon with the reason', a
   }, flagged.tabId);
   expect(cleared.started).toEqual(expect.any(String));
   expect(cleared.text).toBe('');
-  expect(cleared.title).toMatch(/click to capture the full page/);
+  expect(cleared.title).toBe('ScreenScroll');
   await studio;
-});
-
-test('icon menu: the skip-preview switch is stored; the 5-second entry waits', async ({
-  context,
-  serviceWorker,
-}) => {
-  type Hook = { menu(id: string, tabId: number, checked?: boolean): Promise<string | null> };
-  const page = await context.newPage();
-  await page.goto('http://localhost:5177/tiny.html');
-  await page.bringToFront();
-  const tabId = await serviceWorker.evaluate(
-    async () => (await chrome.tabs.query({ active: true }))[0]!.id!,
-  );
-  const afterCapture = () =>
-    serviceWorker.evaluate(
-      async () =>
-        ((await chrome.storage.local.get('settings')).settings as { afterCapture?: string })
-          ?.afterCapture,
-    );
-  await serviceWorker.evaluate(
-    ([id]) =>
-      (globalThis as unknown as { __spTest: Hook }).__spTest.menu('sp-icon-skip', id!, true),
-    [tabId],
-  );
-  expect(await afterCapture()).toBe('pdf');
-  await serviceWorker.evaluate(
-    ([id]) =>
-      (globalThis as unknown as { __spTest: Hook }).__spTest.menu('sp-icon-skip', id!, false),
-    [tabId],
-  );
-  expect(await afterCapture()).toBe('studio');
-
-  // "Full page in 5 seconds": the countdown shows in the page before anything is captured.
-  const studio = context.waitForEvent('page', {
-    predicate: (p) => p.url().includes('/studio.html'),
-  });
-  const t0 = Date.now();
-  await serviceWorker.evaluate(
-    ([id]) => (globalThis as unknown as { __spTest: Hook }).__spTest.menu('sp-icon-delay', id!),
-    [tabId],
-  );
-  await studio;
-  expect(Date.now() - t0).toBeGreaterThan(4500);
 });

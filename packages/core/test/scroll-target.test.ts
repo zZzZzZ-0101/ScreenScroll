@@ -80,4 +80,36 @@ describe('chooseScrollTarget', () => {
       crop: { x: 100, y: 100, width: 900, height: 700 },
     });
   });
+
+  it('prefers the scroller in front at the centre over a larger one behind it', () => {
+    // A document viewer overlay (centre) over a wider file list.
+    const list = cand(1, 0, 60, 1000, 740);
+    const viewer = { ...cand(2, 200, 60, 600, 740), atCenter: true };
+    expect(
+      chooseScrollTarget({ viewport, docScrollHeight: 800, candidates: [list, viewer] }),
+    ).toEqual({
+      kind: 'element',
+      id: 2,
+      crop: { x: 200, y: 60, width: 600, height: 740 },
+    });
+  });
+
+  it('does not let a small scroller at the centre steal a scrolling document', () => {
+    const code = { ...cand(1, 100, 300, 800, 250), atCenter: true };
+    expect(chooseScrollTarget({ viewport, docScrollHeight: 6000, candidates: [code] })).toEqual({
+      kind: 'document',
+    });
+  });
+
+  it('a centre scroller still needs to overflow', () => {
+    const flat = { ...cand(1, 0, 0, 1000, 800, 800), atCenter: true };
+    const list = cand(2, 0, 0, 300, 800);
+    expect(
+      chooseScrollTarget({ viewport, docScrollHeight: 800, candidates: [flat, list] }),
+    ).toEqual({
+      kind: 'element',
+      id: 2,
+      crop: { x: 0, y: 0, width: 300, height: 800 },
+    });
+  });
 });

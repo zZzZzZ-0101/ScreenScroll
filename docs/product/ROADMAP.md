@@ -111,6 +111,9 @@ Goal: the most capable screen capture tool available, that still looks simple. A
 - [ ] Overlay killer and auto-redact run as suggestions after capture (M6 items, surfaced here).
 
 **Capture scope — any part of the screen**
+- [x] Line to line: click the first line, scroll, click the last line (2026-10-28).
+- [ ] **Capture in the background** while the user reads another tab (tabCapture stream instead of captureVisibleTab; the Studio opens without taking focus).
+- [ ] Viewers inside embedded frames (some document previews): find the frame's scroller and capture it.
 - [ ] Several areas in one capture (pick, add another, finish) → one document.
 - [ ] Horizontal and two-way scrolling (wide tables, boards, maps, canvases).
 - [ ] Several scroll areas in one page (e.g. both panes of a mail client).
@@ -124,6 +127,10 @@ Goal: the most capable screen capture tool available, that still looks simple. A
 - [ ] Brush blur, find-text-and-redact, redact-all-matches.
 - [ ] Page tools: reorder, delete, duplicate, insert blank, split one page, per-page crop.
 - [ ] Combine captures side by side or stacked; compare two captures (visual diff).
+
+**Interface**
+- [ ] Interface languages, starting with Chinese (Simplified and Traditional).
+- [ ] Export/import of saved captures and settings as a backup file.
 
 **Output**
 - [ ] Markdown/HTML with images, SVG, PDF/A; presets ("Print A4", "Share small", "Archive").

@@ -30,10 +30,8 @@ export default defineConfig({
     // captureVisibleTab accepts only <all_urls> or an activeTab grant, so the e2e build
     // (which cannot click the toolbar) needs <all_urls>. Production asks for nothing.
     host_permissions: env.mode === 'e2e' ? ['<all_urls>'] : [],
-    // No popup: a click on the icon captures (UI §1); right-click the icon for more.
-    action: {
-      default_title: 'ScreenScroll: click to capture the full page, right-click for more',
-    },
+    // The icon opens the small panel in entrypoints/popup (UI §1).
+    action: { default_title: 'ScreenScroll' },
     commands: {
       'capture-full': {
         suggested_key: { default: 'Alt+Shift+P' },

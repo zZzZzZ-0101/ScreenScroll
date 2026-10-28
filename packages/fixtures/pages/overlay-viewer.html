@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Overlay viewer</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font: 15px/1.5 system-ui, sans-serif; }
+  /* A wide file list behind, like a drive's folder view. It scrolls and is the larger area. */
+  #list { position: absolute; inset: 0; overflow-y: auto; padding: 16px; background: #f4f4f4; }
+  #list p { margin: 0; padding: 10px; border-bottom: 1px solid #ddd; }
+  /* The document viewer in front, centred, like a file preview over the list. */
+  #overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); }
+  #viewer { position: absolute; top: 40px; bottom: 0; left: 25%; right: 25%; overflow-y: auto; }
+  .page { background: #fff; margin: 16px auto; width: 90%; height: 900px; padding: 24px; box-sizing: border-box; }
+</style></head>
+<body>
+<div id="list"></div>
+<div id="overlay"><div id="viewer"></div></div>
+<script>
+  const list = document.getElementById('list');
+  for (let i = 1; i <= 400; i++) list.insertAdjacentHTML('beforeend', `<p>File ${i}.pdf</p>`);
+  const viewer = document.getElementById('viewer');
+  for (let i = 1; i <= 5; i++)
+    viewer.insertAdjacentHTML('beforeend', `<div class="page"><h2>Viewer page ${i}</h2><p>Text on page ${i}.</p></div>`);
+</script>
+</body>
+</html>
