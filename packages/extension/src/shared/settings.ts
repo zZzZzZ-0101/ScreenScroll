@@ -55,6 +55,42 @@ export interface Settings {
   capture: CaptureSettings;
   ocr: OcrMode;
   exportPreset: ExportPreset;
+  /** Mark up → Page: the user's own presets (defaults included, all removable). */
+  presets: Presets;
+}
+
+export interface LabelPreset {
+  name: string;
+  band: BandTemplate;
+}
+
+export interface Presets {
+  watermarks: string[];
+  labels: LabelPreset[];
+}
+
+export const DEFAULT_PRESETS: Presets = {
+  watermarks: ['CONFIDENTIAL', 'DRAFT', 'COPY', '机密', '仅供参考'],
+  labels: [
+    { name: 'Page number', band: { left: '', center: '', right: '{page}/{pages}' } },
+    { name: 'Date + page', band: { left: '{date}', center: '', right: '{page}/{pages}' } },
+    {
+      name: 'Site + date + page',
+      band: { left: '{domain} · {date}', center: '', right: '{page}/{pages}' },
+    },
+    { name: 'Title + page', band: { left: '{title}', center: '', right: '{page}/{pages}' } },
+  ],
+};
+
+/** Presets are short lists; a cap keeps a corrupt or runaway list from swamping the panel. */
+export const MAX_PRESETS = 40;
+
+/** A label preset's name from its content, e.g. "{date} | {page}/{pages}". */
+export function labelName(b: BandTemplate): string {
+  return [b.left, b.center, b.right]
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .join(' | ');
 }
 
 export interface PdfSettings {
@@ -98,6 +134,7 @@ export const DEFAULT_SETTINGS: Settings = {
   capture: { start: 'top', speed: 'normal', resolution: 'standard' },
   ocr: 'auto',
   exportPreset: 'balanced',
+  presets: DEFAULT_PRESETS,
 };
 
 const KEY = 'settings';
@@ -159,6 +196,7 @@ export function normalizeSettings(stored: unknown): Settings {
         ? o.exportPreset
         : 'balanced',
     keepDays: num(o.keepDays) && o.keepDays >= 0 && o.keepDays <= 3650 ? Math.round(o.keepDays) : 0,
+    presets: presets(o.presets),
     pdf: {
       textLayer: typeof pdf.textLayer === 'boolean' ? pdf.textLayer : d.pdf.textLayer,
       links: typeof pdf.links === 'boolean' ? pdf.links : d.pdf.links,
@@ -169,6 +207,26 @@ export function normalizeSettings(stored: unknown): Settings {
       filter: FILTERS.some((f) => f.id === pdf.filter) ? (pdf.filter as FilterId) : 'original',
     },
   };
+}
+
+function presets(v: unknown): Presets {
+  if (!isObject(v)) return DEFAULT_PRESETS;
+  const watermarks = Array.isArray(v.watermarks)
+    ? [
+        ...new Set(v.watermarks.filter((t): t is string => typeof t === 'string' && !!t.trim())),
+      ].slice(0, MAX_PRESETS)
+    : DEFAULT_PRESETS.watermarks;
+  const labels = Array.isArray(v.labels)
+    ? v.labels
+        .filter(isObject)
+        .map((l) => ({
+          name: typeof l.name === 'string' ? l.name : '',
+          band: band(l.band, EMPTY_BAND),
+        }))
+        .filter((l) => l.name.trim() && labelName(l.band))
+        .slice(0, MAX_PRESETS)
+    : DEFAULT_PRESETS.labels;
+  return { watermarks, labels };
 }
 
 function watermark(v: unknown): Watermark {

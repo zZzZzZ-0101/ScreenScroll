@@ -10,7 +10,13 @@ import {
   X,
 } from 'lucide-react';
 import { useState } from 'react';
-import type { Settings } from '@/shared/settings';
+import {
+  DEFAULT_PRESETS,
+  MAX_PRESETS,
+  labelName,
+  type Presets,
+  type Settings,
+} from '@/shared/settings';
 import type { ImageMode } from '@/studio/engine/compose';
 import type { Edits } from '../App';
 
@@ -368,14 +374,103 @@ function FilterPicker({ value, onChange }: { value: FilterId; onChange: (f: Filt
   );
 }
 
-const LABEL_PRESETS: Array<[string, { left: string; center: string; right: string }]> = [
-  ['Page number', { left: '', center: '', right: '{page}/{pages}' }],
-  ['Date + page', { left: '{date}', center: '', right: '{page}/{pages}' }],
-  ['Site + date + page', { left: '{domain} · {date}', center: '', right: '{page}/{pages}' }],
-  ['Title + page', { left: '{title}', center: '', right: '{page}/{pages}' }],
-  ['None', { left: '', center: '', right: '' }],
-];
-const WATERMARKS = ['CONFIDENTIAL', 'DRAFT', 'COPY', '机密', '仅供参考'];
+/**
+ * A row of presets: click one to use it (when `onUse` is given), × removes it, the save
+ * buttons add a current value, "Restore defaults" brings back removed built-in ones.
+ */
+function PresetChips<T>({
+  label,
+  items,
+  name,
+  active = () => false,
+  onUse,
+  onChange,
+  saves,
+  defaults,
+  same,
+}: {
+  label: string;
+  items: T[];
+  name: (t: T) => string;
+  active?: (t: T) => boolean;
+  onUse?: (t: T) => void;
+  onChange: (items: T[]) => void;
+  /** Save buttons: their label and what they add (null = nothing to save yet). */
+  saves: Array<{ label: string; value: T | null }>;
+  defaults: T[];
+  same: (a: T, b: T) => boolean;
+}) {
+  const missing = defaults.filter((d) => !items.some((t) => same(t, d)));
+  const chip = 'px-1.5 max-w-40 truncate';
+  return (
+    <div role="group" aria-label={label} className="flex flex-wrap items-center gap-1 pt-1">
+      {items.map((t, i) => (
+        <span
+          key={`${name(t)}-${i}`}
+          className={`inline-flex items-center rounded border text-[12px] ${active(t) ? 'border-accent bg-accent/10' : 'border-neutral-300 dark:border-neutral-700'}`}
+        >
+          {onUse ? (
+            <button
+              type="button"
+              onClick={() => onUse(t)}
+              title={`Use “${name(t)}”`}
+              className={`${chip} hover:bg-neutral-100 dark:hover:bg-neutral-800`}
+            >
+              {name(t)}
+            </button>
+          ) : (
+            <span className={chip} title={name(t)}>
+              {name(t)}
+            </span>
+          )}
+          <button
+            type="button"
+            aria-label={`Remove preset ${name(t)}`}
+            title="Remove this preset"
+            onClick={() => onChange(items.filter((_, j) => j !== i))}
+            className="border-l border-inherit px-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-white"
+          >
+            ×
+          </button>
+        </span>
+      ))}
+      {saves.map(({ label: l, value }) => {
+        const dup = value !== null && items.some((t) => same(t, value));
+        const full = items.length >= MAX_PRESETS;
+        return (
+          <button
+            key={l}
+            type="button"
+            disabled={value === null || dup || full}
+            onClick={() => value !== null && onChange([...items, value])}
+            title={
+              value === null
+                ? 'Nothing to save yet'
+                : dup
+                  ? 'Already a preset'
+                  : full
+                    ? `At most ${MAX_PRESETS} presets`
+                    : 'Keep this as a preset'
+            }
+            className="rounded border border-dashed border-neutral-400 px-1.5 text-[12px] text-neutral-600 hover:bg-neutral-100 disabled:opacity-40 dark:text-neutral-300 dark:hover:bg-neutral-800"
+          >
+            {l}
+          </button>
+        );
+      })}
+      {missing.length > 0 && (
+        <button
+          type="button"
+          onClick={() => onChange([...items, ...missing])}
+          className="text-[12px] text-accent underline-offset-2 hover:underline"
+        >
+          Restore defaults ({missing.length})
+        </button>
+      )}
+    </div>
+  );
+}
+
 const WM_COLOURS: Array<[string, string]> = [
   ['#808080', 'Grey'],
   ['#d93025', 'Red'],
@@ -398,6 +493,8 @@ export function PageMarkPanel({
   const setWm = (patch: Partial<typeof wm>) =>
     onSettings({ pdf: { ...pdf, watermark: { ...wm, ...patch } } });
   const mode = wm.pages === 'all' || wm.pages === 'first' ? wm.pages : 'some';
+  const presets = settings.presets;
+  const setPresets = (patch: Partial<Presets>) => onSettings({ presets: { ...presets, ...patch } });
   return (
     <aside className={aside} aria-label="Page">
       <FilterPicker
@@ -418,15 +515,22 @@ export function PageMarkPanel({
               aria-label={`${label} preset`}
               value=""
               onChange={(e) => {
-                const preset = LABEL_PRESETS.find(([name]) => name === e.target.value);
-                if (preset) onSettings({ pdf: { ...pdf, [band]: preset[1] } });
+                const v = e.target.value;
+                if (v === 'none')
+                  onSettings({ pdf: { ...pdf, [band]: { left: '', center: '', right: '' } } });
+                const preset = presets.labels[Number(v)];
+                if (v !== '' && v !== 'none' && preset)
+                  onSettings({ pdf: { ...pdf, [band]: preset.band } });
               }}
               className="rounded border border-neutral-300 bg-white px-1 text-[12px] dark:border-neutral-700 dark:bg-neutral-900"
             >
               <option value="">Presets…</option>
-              {LABEL_PRESETS.map(([name]) => (
-                <option key={name}>{name}</option>
+              {presets.labels.map((l, i) => (
+                <option key={`${l.name}-${i}`} value={i}>
+                  {l.name}
+                </option>
               ))}
+              <option value="none">None</option>
             </select>
           </legend>
           <div className="grid grid-cols-3 gap-1">
@@ -448,6 +552,21 @@ export function PageMarkPanel({
       <p className="pt-1 text-[12px] text-neutral-500">
         {'{date} {time} {page} {pages} {title} {domain} {url}, or any text'}
       </p>
+      <PresetChips
+        label="Label presets"
+        items={presets.labels}
+        name={(l) => l.name}
+        onChange={(labels) => setPresets({ labels })}
+        saves={BANDS.map(([band, label]) => {
+          const n = labelName(pdf[band]);
+          return {
+            label: `+ Save ${label.toLowerCase()}`,
+            value: n ? { name: n, band: pdf[band] } : null,
+          };
+        })}
+        defaults={DEFAULT_PRESETS.labels}
+        same={(x, y) => labelName(x.band) === labelName(y.band)}
+      />
 
       <h2 className="mt-4 border-t border-neutral-200 pt-3 font-semibold dark:border-neutral-800">
         Watermark
@@ -459,18 +578,17 @@ export function PageMarkPanel({
         value={wm.text}
         onChange={(e) => setWm({ text: e.target.value })}
       />
-      <div className="flex flex-wrap gap-1 pt-1">
-        {WATERMARKS.map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setWm({ text: t })}
-            className="rounded border border-neutral-300 px-1.5 text-[12px] hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
-          >
-            {t}
-          </button>
-        ))}
-      </div>
+      <PresetChips
+        label="Watermark presets"
+        items={presets.watermarks}
+        name={(t) => t}
+        active={(t) => t === wm.text}
+        onUse={(t) => setWm({ text: t })}
+        onChange={(watermarks) => setPresets({ watermarks })}
+        saves={[{ label: '+ Save', value: wm.text.trim() || null }]}
+        defaults={DEFAULT_PRESETS.watermarks}
+        same={(a, b) => a === b}
+      />
       <label className={field}>
         Opacity
         <input

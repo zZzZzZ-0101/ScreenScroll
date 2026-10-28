@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SETTINGS, normalizeSettings } from '../src/shared/settings';
+import {
+  DEFAULT_PRESETS,
+  DEFAULT_SETTINGS,
+  MAX_PRESETS,
+  labelName,
+  normalizeSettings,
+} from '../src/shared/settings';
 
 describe('stored settings', () => {
   it.each([undefined, null, 'garbage', 42, [], [1, 2], {}])('%j falls back to defaults', (v) => {
@@ -52,5 +58,38 @@ describe('stored settings', () => {
   it('is idempotent', () => {
     const once = normalizeSettings({ crop: 'off', pdf: { outline: false } });
     expect(normalizeSettings(once)).toEqual(once);
+  });
+
+  it('presets: defaults when missing; the user’s own list kept, cleaned and capped', () => {
+    expect(normalizeSettings({}).presets).toEqual(DEFAULT_PRESETS);
+    const p = normalizeSettings({
+      presets: {
+        watermarks: ['MINE', '', '  ', 'MINE', 7, 'DRAFT'],
+        labels: [
+          { name: 'Mine', band: { left: '{date}', center: '', right: 'x' } },
+          { name: 'Empty', band: { left: '', center: ' ', right: '' } },
+          { name: '', band: { left: 'a', center: '', right: '' } },
+          'junk',
+        ],
+      },
+    }).presets;
+    expect(p.watermarks).toEqual(['MINE', 'DRAFT']);
+    expect(p.labels).toEqual([{ name: 'Mine', band: { left: '{date}', center: '', right: 'x' } }]);
+    // Deleting every default is allowed and stays deleted.
+    expect(normalizeSettings({ presets: { watermarks: [], labels: [] } }).presets).toEqual({
+      watermarks: [],
+      labels: [],
+    });
+    const many = Array.from({ length: 100 }, (_, i) => `W${i}`);
+    expect(
+      normalizeSettings({ presets: { watermarks: many, labels: [] } }).presets.watermarks,
+    ).toHaveLength(MAX_PRESETS);
+  });
+
+  it('label preset names come from their content', () => {
+    expect(labelName({ left: '{date}', center: '', right: '{page}/{pages}' })).toBe(
+      '{date} | {page}/{pages}',
+    );
+    expect(labelName({ left: ' ', center: '', right: '' })).toBe('');
   });
 });

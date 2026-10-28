@@ -443,3 +443,50 @@ test('Mark up → Filter: black & white reaches the PDF; its text stays searchab
   });
   expect(stored).toBe('bw');
 });
+
+test('Mark up → Page: presets can be added, removed, restored, and are remembered', async ({
+  context,
+  serviceWorker,
+}) => {
+  const studio = await capture(context, serviceWorker, 'article.html');
+  await studio.getByRole('tab', { name: 'Mark up' }).click();
+  const wm = studio.getByRole('group', { name: 'Watermark presets' });
+  const text = studio.getByRole('textbox', { name: 'Watermark text' });
+
+  // Watermark: use one, remove a default, save my own.
+  await wm.getByRole('button', { name: 'DRAFT', exact: true }).click();
+  await expect(text).toHaveValue('DRAFT');
+  await wm.getByRole('button', { name: 'Remove preset COPY' }).click();
+  await expect(wm.getByRole('button', { name: 'COPY', exact: true })).toHaveCount(0);
+  await text.fill('INTERNAL ONLY');
+  await wm.getByRole('button', { name: '+ Save' }).click();
+  await expect(wm.getByRole('button', { name: 'INTERNAL ONLY', exact: true })).toBeVisible();
+  await expect(wm.getByRole('button', { name: '+ Save' })).toBeDisabled(); // already saved
+
+  // Labels: save the footer as a preset, apply it to the header, then remove it.
+  const labels = studio.getByRole('group', { name: 'Label presets' });
+  await studio.getByRole('textbox', { name: 'Footer left' }).fill('Q3 report');
+  await studio.getByRole('textbox', { name: 'Footer center' }).fill('');
+  await studio.getByRole('textbox', { name: 'Footer right' }).fill('{page}/{pages}');
+  await labels.getByRole('button', { name: '+ Save footer' }).click();
+  await expect(labels.getByText('Q3 report | {page}/{pages}')).toBeVisible();
+  await studio
+    .getByRole('combobox', { name: 'Header preset' })
+    .selectOption({ label: 'Q3 report | {page}/{pages}' });
+  await expect(studio.getByRole('textbox', { name: 'Header left' })).toHaveValue('Q3 report');
+
+  // Remembered after a reload.
+  await studio.waitForTimeout(500);
+  await studio.reload();
+  await studio.getByRole('tab', { name: 'Mark up' }).click();
+  await expect(wm.getByRole('button', { name: 'INTERNAL ONLY', exact: true })).toBeVisible();
+  await expect(wm.getByRole('button', { name: 'COPY', exact: true })).toHaveCount(0);
+  await labels.getByRole('button', { name: 'Remove preset Q3 report | {page}/{pages}' }).click();
+  await expect(labels.getByText('Q3 report | {page}/{pages}')).toHaveCount(0);
+
+  // Defaults come back on request; my own stay.
+  await wm.getByRole('button', { name: 'Restore defaults (1)' }).click();
+  await expect(wm.getByRole('button', { name: 'COPY', exact: true })).toBeVisible();
+  await expect(wm.getByRole('button', { name: 'INTERNAL ONLY', exact: true })).toBeVisible();
+  await expect(wm.getByRole('button', { name: /Restore defaults/ })).toHaveCount(0);
+});
