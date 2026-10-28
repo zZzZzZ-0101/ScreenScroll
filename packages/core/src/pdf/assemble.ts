@@ -154,7 +154,10 @@ export async function buildSingleLongPagePdf(
   totalHeightCss: number,
   layout: PageLayout,
   meta: PdfMeta,
+  options: Partial<PdfOptions> = {},
+  content: PdfContent = {},
 ): Promise<Uint8Array> {
+  const opts = { ...DEFAULT_PDF_OPTIONS, ...options };
   const margin = layout.box.x;
   const height = totalHeightCss * layout.s + 2 * margin;
   if (height > MAX_PAGE_PT) {
@@ -166,7 +169,9 @@ export async function buildSingleLongPagePdf(
   setMeta(doc, meta);
   const page = doc.addPage([layout.paperW, height]);
   let y = height - margin;
+  let crop: { x0: number; x1: number } | null = null;
   for await (const p of pages) {
+    crop ??= { x0: p.slice.x0, x1: p.slice.x1 };
     const img = await embed(doc, p);
     const w = (p.slice.x1 - p.slice.x0) * layout.s;
     const full = (p.slice.y1 - p.slice.y0) * layout.s;
@@ -175,6 +180,33 @@ export async function buildSingleLongPagePdf(
     const skip = p.slice.overlapTop * layout.s;
     page.drawImage(img, { x: margin, y: y - full + skip, width: w, height: full });
     y -= full - skip;
+  }
+  if (crop) {
+    // The whole capture is one slice on one tall "paper": the same text, link and bookmark
+    // code then works unchanged.
+    const one: PageSlice = {
+      y0: 0,
+      y1: totalHeightCss,
+      ...crop,
+      overlapTop: 0,
+      breakKind: 'end',
+      cost: 0,
+      warnings: [],
+    };
+    const tall: PageLayout = {
+      ...layout,
+      paperH: height,
+      box: { x: margin, y: margin, w: layout.box.w, h: height - 2 * margin },
+    };
+    const runs = opts.textLayer ? (content.textRuns ?? []) : [];
+    if (runs.length) {
+      const font = new TextLayerFont(doc);
+      drawTextRuns(page, font, placeRuns(runs, one, tall));
+      font.finish();
+    }
+    if (opts.links && content.links?.length) addLinks(doc, [page], [one], tall, content.links);
+    if (opts.outline && content.headings?.length)
+      addOutline(doc, [page], [one], tall, content.headings);
   }
   return doc.save();
 }

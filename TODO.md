@@ -56,12 +56,12 @@ Legend: `[ ]` todo · `(L#)` = lesson from `docs/PRIOR_ART.md` §7 · `→ DOC` 
 
 ## M3 — Real-document PDF: text layer, links, headers (~3 h)
 
-- [ ] Invisible text layer from `TextRun`s: glyphless Identity-H font + ToUnicode (or the Noto subset fallback). Ctrl+F works for English **and Chinese** in Chrome's viewer and Acrobat (L7). → PDF_OUTPUT §2
-- [ ] Reading order sorting; runs assigned to the correct page at cuts.
-- [ ] Link annotations (URI + in-document GoTo). → PDF_OUTPUT §3
-- [ ] Header/footer templates with tokens; non-Latin titles render visibly. → PDF_OUTPUT §4
-- [ ] PDF metadata; outline/bookmarks from h1–h3. → PDF_OUTPUT §5
-- [ ] E2E: extracted text contains expected strings; links present; outline present.
+- [ ] Invisible text layer from `TextRun`s: glyphless Identity-H font + ToUnicode (or the Noto subset fallback). Ctrl+F works for English **and Chinese** in Chrome's viewer and Acrobat (L7). → PDF_OUTPUT §2 _(built; verified with pdf.js and poppler, English + Chinese + Japanese; Chrome's viewer and Acrobat need a manual Ctrl+F check)_
+- [x] Reading order sorting; runs assigned to the correct page at cuts.
+- [x] Link annotations (URI + in-document GoTo). → PDF_OUTPUT §3
+- [x] Header/footer templates with tokens; non-Latin titles render visibly. → PDF_OUTPUT §4
+- [x] PDF metadata; outline/bookmarks from h1–h3. → PDF_OUTPUT §5
+- [x] E2E: extracted text contains expected strings; links present; outline present.
 
 ## M4 — More capture modes & annotation editor (~4–5 h)
 

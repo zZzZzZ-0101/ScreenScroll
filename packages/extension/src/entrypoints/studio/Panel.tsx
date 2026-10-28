@@ -199,6 +199,9 @@ export function Panel(p: Props) {
               </select>
             </label>
           )}
+          {(format === 'pdf' || format === 'pdf-long') && (
+            <PdfOptions settings={p.settings} onSettings={p.onSettings} />
+          )}
           <label className="block py-1">
             File name
             <input
@@ -257,4 +260,56 @@ export function Panel(p: Props) {
 function formatBytes(n: number): string {
   if (n < 1024 * 1024) return `≈ ${Math.max(1, Math.round(n / 1024))} KB`;
   return `≈ ${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+const BANDS: Array<['header' | 'footer', string]> = [
+  ['header', 'Header'],
+  ['footer', 'Footer'],
+];
+
+/** PDF options (UI §3 Export tab): text layer, links, bookmarks, header and footer. */
+function PdfOptions({ settings, onSettings }: Pick<Props, 'settings' | 'onSettings'>) {
+  const pdf = settings.pdf;
+  const toggles: Array<['textLayer' | 'links' | 'outline', string]> = [
+    ['textLayer', 'Searchable text'],
+    ['links', 'Clickable links'],
+    ['outline', 'Bookmarks from headings'],
+  ];
+  return (
+    <div className="border-t border-neutral-200 py-2 dark:border-neutral-800">
+      {toggles.map(([key, label]) => (
+        <label key={key} className="flex items-center gap-2 py-0.5">
+          <input
+            type="checkbox"
+            checked={pdf[key]}
+            onChange={(e) => onSettings({ pdf: { ...pdf, [key]: e.target.checked } })}
+            className="accent-[#0e7c7b]"
+          />
+          {label}
+        </label>
+      ))}
+      {BANDS.map(([band, label]) => (
+        <fieldset key={band} className="pt-2">
+          <legend className="pb-1">{label}</legend>
+          <div className="grid grid-cols-3 gap-1">
+            {(['left', 'center', 'right'] as const).map((slot) => (
+              <input
+                key={slot}
+                aria-label={`${label} ${slot}`}
+                placeholder={slot}
+                className={`${control} min-w-0`}
+                value={pdf[band][slot]}
+                onChange={(e) =>
+                  onSettings({ pdf: { ...pdf, [band]: { ...pdf[band], [slot]: e.target.value } } })
+                }
+              />
+            ))}
+          </div>
+        </fieldset>
+      ))}
+      <p className="pt-1 text-neutral-500">
+        {'{title} {url} {domain} {date} {time} {page} {pages}'}
+      </p>
+    </div>
+  );
 }

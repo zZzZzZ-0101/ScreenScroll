@@ -1,6 +1,9 @@
 import {
   DEFAULT_FILENAME_TEMPLATE,
+  DEFAULT_FOOTER,
   DEFAULT_PAGE_SETTINGS,
+  EMPTY_BAND,
+  type BandTemplate,
   type PageSettings,
 } from '@scrollpress/core';
 import type { ImageMode } from './studio/compose';
@@ -15,6 +18,29 @@ export interface Settings {
   filenameTemplate: string;
   /** UI §1: what happens after a capture. */
   afterCapture: 'studio' | 'pdf';
+  /** UI §3 Export tab: PDF options (PDF_OUTPUT §2–5). */
+  pdf: PdfSettings;
+}
+
+export interface PdfSettings {
+  textLayer: boolean;
+  links: boolean;
+  outline: boolean;
+  header: BandTemplate;
+  footer: BandTemplate;
+}
+
+export const DEFAULT_PDF_SETTINGS: PdfSettings = {
+  textLayer: true,
+  links: true,
+  outline: true,
+  header: EMPTY_BAND,
+  footer: DEFAULT_FOOTER,
+};
+
+/** Header/footer space is reserved only when the band has something to show. */
+export function bandHeight(band: BandTemplate): number {
+  return band.left.trim() || band.center.trim() || band.right.trim() ? 14 : 0;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -24,6 +50,7 @@ export const DEFAULT_SETTINGS: Settings = {
   imageMode: 'auto',
   filenameTemplate: DEFAULT_FILENAME_TEMPLATE,
   afterCapture: 'studio',
+  pdf: DEFAULT_PDF_SETTINGS,
 };
 
 const KEY = 'settings';
@@ -34,6 +61,7 @@ export async function loadSettings(): Promise<Settings> {
     ...DEFAULT_SETTINGS,
     ...stored,
     page: { ...DEFAULT_SETTINGS.page, ...stored?.page },
+    pdf: { ...DEFAULT_PDF_SETTINGS, ...stored?.pdf },
   };
 }
 

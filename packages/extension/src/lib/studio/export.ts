@@ -3,10 +3,14 @@ import {
   buildPdf,
   buildSingleLongPagePdf,
   type PageImage,
+  type PdfContent,
   type PdfMeta,
+  type PdfOptions,
 } from '@scrollpress/core/pdf';
 import { zipSync } from 'fflate';
+import type { PdfSettings } from '@/lib/settings';
 import { composePage, encodePage, type ImageMode } from './compose';
+import { renderBandText } from './render-text';
 import type { FrameCache, LoadedSession } from './session';
 
 export type Progress = (done: number, total: number) => void;
@@ -29,6 +33,15 @@ export function metaOf(s: LoadedSession): PdfMeta {
   return { title: s.session.title, url: s.session.url, capturedAt: new Date(s.session.capturedAt) };
 }
 
+function pdfOptions(pdf: PdfSettings): Partial<PdfOptions> {
+  return { ...pdf, renderText: renderBandText };
+}
+
+/** What the DOM told us: text for the invisible layer, links, headings for bookmarks. */
+function contentOf(s: LoadedSession): PdfContent {
+  return { textRuns: s.hints.textRuns, links: s.hints.links, headings: s.hints.headings };
+}
+
 /** PDF_OUTPUT §6 default: multi-page PDF, pages composed and encoded one at a time. */
 export function exportPdf(
   s: LoadedSession,
@@ -36,6 +49,7 @@ export function exportPdf(
   slices: PageSlice[],
   layout: PageLayout,
   mode: ImageMode,
+  pdf: PdfSettings,
   onProgress?: Progress,
 ): Promise<Uint8Array> {
   return buildPdf(
@@ -43,6 +57,8 @@ export function exportPdf(
     slices.length,
     layout,
     metaOf(s),
+    pdfOptions(pdf),
+    contentOf(s),
   );
 }
 
@@ -52,6 +68,7 @@ export function exportLongPagePdf(
   slices: PageSlice[],
   layout: PageLayout,
   mode: ImageMode,
+  pdf: PdfSettings,
   onProgress?: Progress,
 ): Promise<Uint8Array> {
   const total = slices.reduce((h, sl) => h + sl.y1 - sl.y0 - sl.overlapTop, 0);
@@ -60,6 +77,8 @@ export function exportLongPagePdf(
     total,
     layout,
     metaOf(s),
+    pdfOptions(pdf),
+    contentOf(s),
   );
 }
 

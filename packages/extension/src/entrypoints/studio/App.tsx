@@ -10,7 +10,7 @@ import {
   type PaginationDebug,
 } from '@scrollpress/core';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { loadSettings, saveSettings, type Settings } from '@/lib/settings';
+import { bandHeight, loadSettings, saveSettings, type Settings } from '@/lib/settings';
 import { analyze, type Analysis } from '@/lib/studio/analysis';
 import {
   copyPageImage,
@@ -101,7 +101,13 @@ export function App() {
         : { x0: 0, x1: session.width, cropped: false };
     let layout: PageLayout;
     try {
-      layout = computeLayout(settings.page, crop.x1 - crop.x0);
+      // Header/footer space only when the band shows something (PDF_OUTPUT §4).
+      const page = {
+        ...settings.page,
+        headerPt: bandHeight(settings.pdf.header),
+        footerPt: bandHeight(settings.pdf.footer),
+      };
+      layout = computeLayout(page, crop.x1 - crop.x0);
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
@@ -209,7 +215,15 @@ export function App() {
       await run('Exporting', async (progress) => {
         switch (format) {
           case 'pdf': {
-            const bytes = await exportPdf(session, f, slices, layout, settings.imageMode, progress);
+            const bytes = await exportPdf(
+              session,
+              f,
+              slices,
+              layout,
+              settings.imageMode,
+              settings.pdf,
+              progress,
+            );
             await download(bytes, filename('pdf'), 'application/pdf');
             return `Saved ${filename('pdf')}`;
           }
@@ -220,6 +234,7 @@ export function App() {
               slices,
               layout,
               settings.imageMode,
+              settings.pdf,
               progress,
             );
             await download(bytes, filename('pdf'), 'application/pdf');
@@ -262,7 +277,15 @@ export function App() {
     const f = frames.current;
     await run('Preparing PDF', async (progress) => {
       openPdfForPrint(
-        await exportPdf(session, f, slices, result.layout, settings.imageMode, progress),
+        await exportPdf(
+          session,
+          f,
+          slices,
+          result.layout,
+          settings.imageMode,
+          settings.pdf,
+          progress,
+        ),
       );
     });
   }, [session, result, settings, slices, run]);
@@ -344,6 +367,7 @@ export function App() {
             result.debug.slices,
             result.layout,
             settings.imageMode,
+            settings.pdf,
           );
           let bin = '';
           for (let i = 0; i < bytes.length; i += 0x8000)

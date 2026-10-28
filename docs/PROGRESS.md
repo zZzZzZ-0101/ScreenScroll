@@ -1,7 +1,7 @@
 # Progress
 
 ## Current milestone
-M2 — built and verified except the manual checks (see M2 below). M1 is also complete apart from its manual real-site checks. Neither is tagged yet: tags follow the manual checks. Next: M3 (text layer, links, headers).
+M3 — built and verified except the manual viewer checks (see M3 below). M1 and M2 are complete apart from their manual real-site checks; no milestone is tagged yet (tags follow the manual checks). Next: M4 (selection/element capture, annotation editor).
 
 ## Done
 ### M0 — Scaffold (2026-10-27)
@@ -62,6 +62,20 @@ Known limitations:
 - Pixel analysis and composition run on the main thread (no Web Worker yet); fine for the fixtures, unmeasured on very long real pages.
 - The footer uses Helvetica: non-Latin domains would show "?" (Unicode headers/footers are M3).
 
+### M3 — Real-document PDF (2026-10-28)
+Built:
+- Invisible text layer: a 552-byte glyphless TrueType generated in code, embedded as Type0/CIDFontType2 (Identity-H) with a ToUnicode map; runs sized to their line boxes and stretched to their width; DOM reading order; each run on exactly one page (never twice across a forced-cut overlap).
+- Links: URI annotations, and in-PDF jumps for anchors on the captured page; clipped at page breaks.
+- Bookmarks from h1–h3, nested, opening the bookmarks panel.
+- Header/footer templates (left/centre/right, tokens `{title} {url} {domain} {date} {time} {page} {pages}`); non-Latin text drawn with the browser's fonts as an image plus an invisible searchable twin; space reserved only when a band has text.
+- Studio Export tab: Searchable text / Clickable links / Bookmarks toggles, header and footer inputs. One-long-page PDFs get text, links and bookmarks too.
+
+Verified:
+- Synthetic capture: pdf.js and poppler (`pdftotext`, `pdffonts`) extract every line, English and Chinese, in reading order; pdf.js positions match the visible text within 0.5 pt; fontTools decodes the font; bookmarks, URI links and jumps resolve to the right pages; a Chinese header title is visible and searchable; rendered pages show no stray text and an intact footer.
+- e2e through the extension: `cjk.html` — Chinese, Japanese and English phrases each found on exactly one page by pdf.js and by poppler; Chinese title in the header on every page; external link, three in-document jumps to the right pages; nested bookmarks. `article.html` — text, external link, in-page jump and bookmarks.
+
+Manual: Ctrl+F for an English word and a Chinese phrase in Chrome's PDF viewer and in Acrobat Reader; select text and copy-paste.
+
 ## Manual site checks
 | Site | Date | Capture | Header once | Images loaded | No text cut | Text searchable | Links | Time | Notes |
 |---|---|---|---|---|---|---|---|---|---|
@@ -72,6 +86,7 @@ Known limitations:
 - The e2e build is a non-production (unminified, React dev) build. Fine for tests; the offline guard checks the production build.
 
 ## Needs from user
+- M3 manual checks: open an exported PDF of a Chinese page in Chrome and in Acrobat Reader; Ctrl+F an English word and a Chinese phrase; select a paragraph and paste it somewhere. Click a link and a bookmark.
 - M2 manual checks: on a few real pages, open the Studio, save the PDF and look at it at 100% on A4: legible? any text cut? Also try Copy page, Print, and check the downloaded file name.
 - When you try the extension: check the right-click menu entries and the Alt+Shift+P / Alt+Shift+V hotkeys start a capture (they need a real user gesture, so e2e can't cover them).
 - Run `pnpm install && pnpm dev` on the Windows desktop once to confirm WXT opens Chrome with the extension loaded (or load `packages/extension/.output/chrome-mv3` via chrome://extensions → Load unpacked).
