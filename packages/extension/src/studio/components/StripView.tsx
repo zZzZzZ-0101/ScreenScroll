@@ -35,6 +35,8 @@ interface Props {
   edits: Edits;
   onEdits: (e: Edits) => void;
   page: number;
+  /** Breaks follow a document's own pages: shown, not editable. */
+  locked?: boolean;
 }
 
 export function StripView(p: Props) {
@@ -104,6 +106,7 @@ export function StripView(p: Props) {
           className="relative mx-auto bg-white shadow-sm"
           style={{ width, height: p.session.height * k }}
           onDoubleClick={(e) => {
+            if (p.locked) return;
             const y = snap(docY(e.clientY), e.altKey);
             p.onEdits({ ...p.edits, pinned: [...p.edits.pinned, y] });
           }}
@@ -124,10 +127,10 @@ export function StripView(p: Props) {
             return (
               <div
                 key={`${b.y}-${i}`}
-                className="group absolute left-0 right-0 -mt-[6px] h-3 cursor-ns-resize"
+                className={`group absolute left-0 right-0 -mt-[6px] h-3 ${p.locked ? '' : 'cursor-ns-resize'}`}
                 style={{ top: y * k }}
                 onPointerDown={(e) => {
-                  if ((e.target as HTMLElement).closest('button')) return;
+                  if (p.locked || (e.target as HTMLElement).closest('button')) return;
                   (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
                   setDrag({ index: i, y: b.y });
                   setFocusY(b.y);
@@ -162,14 +165,16 @@ export function StripView(p: Props) {
                     style={{ color: colour }}
                   />
                 )}
-                <button
-                  type="button"
-                  aria-label={`Remove break ${i + 1}`}
-                  onClick={() => remove(b)}
-                  className="absolute -right-7 -top-1 hidden h-5 w-5 rounded-full bg-neutral-800 text-[11px] text-white group-hover:block focus-visible:block focus-visible:outline-2 focus-visible:outline-accent"
-                >
-                  ✕
-                </button>
+                {!p.locked && (
+                  <button
+                    type="button"
+                    aria-label={`Remove break ${i + 1}`}
+                    onClick={() => remove(b)}
+                    className="absolute -right-7 -top-1 hidden h-5 w-5 rounded-full bg-neutral-800 text-[11px] text-white group-hover:block focus-visible:block focus-visible:outline-2 focus-visible:outline-accent"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
             );
           })}

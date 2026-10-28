@@ -25,6 +25,8 @@ export interface Settings {
   pdf: PdfSettings;
   /** Saved captures older than this many days are deleted; 0 keeps them until deleted. */
   keepDays: number;
+  /** In a document viewer (Drive, PDF previews), one PDF page per document page. */
+  followSheets: boolean;
 }
 
 export interface PdfSettings {
@@ -57,6 +59,7 @@ export const DEFAULT_SETTINGS: Settings = {
   afterCapture: 'studio',
   pdf: DEFAULT_PDF_SETTINGS,
   keepDays: 0,
+  followSheets: true,
 };
 
 const KEY = 'settings';
@@ -103,6 +106,7 @@ export function normalizeSettings(stored: unknown): Settings {
     filenameTemplate:
       typeof o.filenameTemplate === 'string' ? o.filenameTemplate : d.filenameTemplate,
     afterCapture: o.afterCapture === 'pdf' ? 'pdf' : 'studio',
+    followSheets: o.followSheets !== false,
     keepDays: num(o.keepDays) && o.keepDays >= 0 && o.keepDays <= 3650 ? Math.round(o.keepDays) : 0,
     pdf: {
       textLayer: typeof pdf.textLayer === 'boolean' ? pdf.textLayer : d.pdf.textLayer,

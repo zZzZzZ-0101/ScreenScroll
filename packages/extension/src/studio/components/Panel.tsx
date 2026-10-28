@@ -26,6 +26,8 @@ interface PagesProps {
   onSettings: (patch: Partial<Settings>) => void;
   filename: string;
   cropped: boolean;
+  /** Pages of a document viewer found in the capture, or null. */
+  sheetCount: number | null;
   /** Estimated PDF size in bytes, or null while it is computed. */
   estimate: number | null;
 }
@@ -42,6 +44,23 @@ export function PagesPanel(p: PagesProps) {
 
   return (
     <aside className={aside} aria-label="Page setup">
+      {p.sheetCount !== null && (
+        <div
+          className="mb-2 rounded-md border border-accent/40 bg-accent/5 p-2"
+          data-testid="sheets"
+        >
+          <p className="font-medium">{p.sheetCount} document pages found</p>
+          <label className="flex items-center gap-2 pt-1 text-neutral-600 dark:text-neutral-300">
+            <input
+              type="checkbox"
+              checked={p.settings.followSheets}
+              onChange={(e) => p.onSettings({ followSheets: e.target.checked })}
+              className="accent-[#0e7c7b]"
+            />
+            One PDF page per document page
+          </label>
+        </div>
+      )}
       <label className={field}>
         Paper
         <select
@@ -199,6 +218,8 @@ export function PagesPanel(p: PagesProps) {
 interface BreaksProps {
   edits: Edits;
   onReset: () => void;
+  /** Breaks follow a document's own pages. */
+  locked: boolean;
 }
 
 /** Breaks mode: how to edit, and one way back to the automatic result. */
@@ -209,6 +230,15 @@ export function BreaksPanel(p: BreaksProps) {
     [MousePointerClick, 'Double-click the page to add a break.'],
     [X, 'Point at a break and click × to remove it.'],
   ];
+  if (p.locked)
+    return (
+      <aside className={aside} aria-label="Page breaks">
+        <p className="text-neutral-600 dark:text-neutral-300">
+          The breaks follow the document&apos;s own pages. To place them yourself, turn off
+          &ldquo;One PDF page per document page&rdquo; in Pages.
+        </p>
+      </aside>
+    );
   return (
     <aside className={aside} aria-label="Page breaks">
       <ul className="space-y-2 pb-3">

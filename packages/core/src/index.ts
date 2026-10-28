@@ -18,6 +18,7 @@ export * from './region.js';
 export * from './registration.js';
 export * from './rows.js';
 export * from './scroll-target.js';
+export * from './sheets.js';
 export * from './templates.js';
 // PDF assembly lives at '@screenscroll/core/pdf' so pdf-lib never lands in the service
 // worker or the content script.

@@ -6,6 +6,8 @@ import {
   computeLayout,
   DEFAULT_STYLE,
   emptyHistory,
+  fitSheets,
+  sheetSlices,
   redo,
   TOOL_KEYS,
   undo,
@@ -59,6 +61,8 @@ type PageResult =
   | { ok: false; error: string }
   | {
       ok: true;
+      /** Pages follow a document viewer's own pages. */
+      sheets: boolean;
       crop: { x0: number; x1: number; cropped: boolean };
       layout: PageLayout;
       debug: PaginationDebug;
@@ -141,14 +145,31 @@ export function App() {
             session.width,
           )
         : { x0: 0, x1: session.width, cropped: false };
+    // Header/footer space only when the band shows something (PDF_OUTPUT §4).
+    const page = {
+      ...settings.page,
+      headerPt: bandHeight(settings.pdf.header),
+      footerPt: bandHeight(settings.pdf.footer),
+    };
+    // A document viewer: its own pages decide, one PDF page per sheet (a drawn crop wins).
+    const sheets = analysis.sheets;
+    if (sheets && settings.followSheets && !manual) {
+      try {
+        const layout = fitSheets(computeLayout(page, sheets.x1 - sheets.x0), sheets);
+        const slices = sheetSlices(sheets);
+        return {
+          ok: true,
+          sheets: true,
+          crop: { x0: sheets.x0, x1: sheets.x1, cropped: true },
+          layout,
+          debug: { slices, candidates: [], forbidden: [], opaque: [] },
+        };
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    }
     let layout: PageLayout;
     try {
-      // Header/footer space only when the band shows something (PDF_OUTPUT §4).
-      const page = {
-        ...settings.page,
-        headerPt: bandHeight(settings.pdf.header),
-        footerPt: bandHeight(settings.pdf.footer),
-      };
       layout = computeLayout(page, crop.x1 - crop.x0);
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -169,7 +190,7 @@ export function App() {
     });
     if (!debug.slices.length)
       return { ok: false, error: 'Nothing to show: the captured area is empty.' };
-    return { ok: true, crop, layout, debug };
+    return { ok: true, sheets: false, crop, layout, debug };
   }, [session, analysis, settings, edits, project.crop, annotations]);
 
   // Projects are saved as they change, so they can be re-edited later (TODO M4).
@@ -739,6 +760,7 @@ export function App() {
                   edits={edits}
                   onEdits={setEdits}
                   page={page}
+                  locked={result.sheets}
                 />
               )}
             </main>
@@ -754,10 +776,15 @@ export function App() {
             onSettings={updateSettings}
             filename={filename('pdf')}
             cropped={result.ok && result.crop.cropped}
+            sheetCount={analysis.sheets?.sheets.length ?? null}
             estimate={estimate}
           />
         ) : view === 'breaks' ? (
-          <BreaksPanel edits={edits} onReset={() => setEdits({ pinned: [], removed: [] })} />
+          <BreaksPanel
+            edits={edits}
+            onReset={() => setEdits({ pinned: [], removed: [] })}
+            locked={result.ok && result.sheets}
+          />
         ) : null}
       </div>
 

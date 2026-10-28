@@ -96,7 +96,8 @@ Not built yet: re-opening a project from History (History is M5); auto-redact (M
 
 ### After the first real-site test (2026-10-28)
 User report: Google Drive PDF preview not captured; no way to choose "from this line to that line"; no panel under the icon. Done: panel restored with the useful settings; line-to-line mode; scroller in front at the centre preferred (Drive-like overlay fixture); explicit warning for viewers in embedded frames; Saved captures page (sizes, search, open, delete with undo, auto-delete after N days). Tests: `lines.spec.ts`, `library.spec.ts`, panel in `smoke.spec.ts`.
-Open: confirm Google Drive on the user's machine; background capture (planned, see DECISIONS).
+Second report (Drive works but pages are cut "robotically"): document-page detection added; on a Drive-like fixture (`doc-viewer.html`, dark viewer, dimmed list on one side, a page with a dark table) the PDF has exactly one page per document page, cropped, each page's text complete (`doc-viewer.spec.ts`, `sheets.test.ts`).
+Open: confirm on the user's real Drive file; background capture (planned, see DECISIONS).
 
 ### Repository reorganisation and popup removal (2026-10-28)
 - No popup or start page: icon click = capture; right-click the icon for the rest; red "!" badge with the reason on pages that can't be captured. Studio duplicates removed (second break slider, second page count, debug button → Ctrl+Shift+D).
