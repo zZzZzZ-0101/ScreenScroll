@@ -3,10 +3,12 @@ import {
   DEFAULT_FOOTER,
   DEFAULT_PAGE_SETTINGS,
   EMPTY_BAND,
+  FILTERS,
   NO_WATERMARK,
   PAPERS,
   type Watermark,
   type BandTemplate,
+  type FilterId,
   type PageSettings,
 } from '@screenscroll/core';
 
@@ -63,6 +65,8 @@ export interface PdfSettings {
   footer: BandTemplate;
   /** Text across the pages (Mark up → Watermark); empty = none. */
   watermark: Watermark;
+  /** Page filter (Mark up → Filter), like a scanner app's. */
+  filter: FilterId;
 }
 
 export const DEFAULT_PDF_SETTINGS: PdfSettings = {
@@ -72,6 +76,7 @@ export const DEFAULT_PDF_SETTINGS: PdfSettings = {
   header: EMPTY_BAND,
   footer: DEFAULT_FOOTER,
   watermark: NO_WATERMARK,
+  filter: 'original',
 };
 
 /** Header/footer space is reserved only when the band has something to show. */
@@ -161,6 +166,7 @@ export function normalizeSettings(stored: unknown): Settings {
       header: band(pdf.header, d.pdf.header),
       footer: band(pdf.footer, d.pdf.footer),
       watermark: watermark(pdf.watermark),
+      filter: FILTERS.some((f) => f.id === pdf.filter) ? (pdf.filter as FilterId) : 'original',
     },
   };
 }

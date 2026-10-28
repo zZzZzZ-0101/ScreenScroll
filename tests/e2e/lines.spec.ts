@@ -15,7 +15,7 @@ test('line to line: click a first line, scroll, click a last line; everything be
   await page.goto(url);
   await page.bringToFront();
   const id = await serviceWorker.evaluate(async (u) => {
-    const [tab] = await chrome.tabs.query({ url: u });
+    const [tab] = await chrome.tabs.query({ active: true, url: u });
     return (globalThis as unknown as { __spTest: Hook }).__spTest.start(tab!.id!, 'lines');
   }, url);
   // The picker is up: a guide line follows the pointer.
@@ -52,7 +52,7 @@ test('line to line: Enter captures from the first line to the end', async ({
   await page.goto(url);
   await page.bringToFront();
   const id = await serviceWorker.evaluate(async (u) => {
-    const [tab] = await chrome.tabs.query({ url: u });
+    const [tab] = await chrome.tabs.query({ active: true, url: u });
     return (globalThis as unknown as { __spTest: Hook }).__spTest.start(tab!.id!, 'lines');
   }, url);
   await page.waitForTimeout(300);
@@ -75,7 +75,7 @@ test('full page picks the viewer in front, not the larger list behind it', async
   await page.goto(url);
   await page.bringToFront();
   const result = await serviceWorker.evaluate(async (u) => {
-    const [tab] = await chrome.tabs.query({ url: u });
+    const [tab] = await chrome.tabs.query({ active: true, url: u });
     return (globalThis as unknown as { __spTest: Hook }).__spTest.capture(tab!.id!);
   }, url);
   const viewer = await page.evaluate(() => {

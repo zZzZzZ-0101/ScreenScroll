@@ -1,7 +1,8 @@
-import { PAPERS, type PaperId } from '@screenscroll/core';
+import { FILTERS, PAPERS, type FilterId, type PaperId } from '@screenscroll/core';
 import {
   ChevronRight,
   GripHorizontal,
+  Info,
   MousePointerClick,
   Plus,
   RectangleHorizontal,
@@ -299,9 +300,71 @@ function PdfOptions({ settings, onSettings }: Pick<PagesProps, 'settings' | 'onS
         </label>
       ))}
       <p className="pt-1 text-[12px] text-neutral-500">
-        Page labels and watermark: Mark up → Page.
+        Filter, page labels and watermark: Mark up → Page.
       </p>
     </div>
+  );
+}
+
+/**
+ * Mark up → Page → Filter: one line per filter (name, what it does); ⓘ opens what it is
+ * for and the exact method and numbers. Applies to every page and every output.
+ */
+function FilterPicker({ value, onChange }: { value: FilterId; onChange: (f: FilterId) => void }) {
+  const [open, setOpen] = useState<FilterId | null>(null);
+  return (
+    <fieldset className="min-w-0">
+      <legend className="pb-1 font-semibold">Filter</legend>
+      <div role="radiogroup" aria-label="Filter" className="flex flex-col">
+        {FILTERS.map((f) => (
+          <div
+            key={f.id}
+            className="border-b border-neutral-100 last:border-0 dark:border-neutral-800"
+          >
+            <div className="flex items-center gap-1">
+              <label className="flex min-w-0 flex-1 cursor-pointer items-baseline gap-2 py-1">
+                <input
+                  type="radio"
+                  name="page-filter"
+                  checked={value === f.id}
+                  onChange={() => onChange(f.id)}
+                  className="accent-[#0e7c7b]"
+                />
+                <span className="shrink-0 font-medium whitespace-nowrap">{f.name}</span>
+                <span className="min-w-0 truncate text-[12px] text-neutral-500" title={f.short}>
+                  {f.short}
+                </span>
+              </label>
+              <button
+                type="button"
+                aria-expanded={open === f.id}
+                aria-label={`About ${f.name}`}
+                title={`About ${f.name}`}
+                onClick={() => setOpen(open === f.id ? null : f.id)}
+                className="rounded p-0.5 text-neutral-400 hover:text-neutral-900 focus-visible:outline-2 focus-visible:outline-accent dark:hover:text-white"
+              >
+                <Info aria-hidden size={14} />
+              </button>
+            </div>
+            {open === f.id && (
+              <dl className="mb-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 rounded-md bg-neutral-50 p-2 text-[12px] dark:bg-neutral-800/60">
+                <dt className="text-neutral-500">What</dt>
+                <dd>{f.details}</dd>
+                <dt className="text-neutral-500">For</dt>
+                <dd>{f.bestFor}</dd>
+                <dt className="text-neutral-500">Not for</dt>
+                <dd>{f.notFor}</dd>
+                <dt className="text-neutral-500">Method</dt>
+                <dd className="font-mono text-[11px] leading-snug">{f.params}</dd>
+              </dl>
+            )}
+          </div>
+        ))}
+      </div>
+      <p className="pt-1 text-[12px] text-neutral-500">
+        Every page and output. Mark-up stays in colour.
+      </p>
+    </fieldset>
   );
 }
 
@@ -337,7 +400,13 @@ export function PageMarkPanel({
   const mode = wm.pages === 'all' || wm.pages === 'first' ? wm.pages : 'some';
   return (
     <aside className={aside} aria-label="Page">
-      <h2 className="font-semibold">Page labels</h2>
+      <FilterPicker
+        value={pdf.filter}
+        onChange={(filter) => onSettings({ pdf: { ...pdf, filter } })}
+      />
+      <h2 className="mt-3 border-t border-neutral-200 pt-3 font-semibold dark:border-neutral-700">
+        Page labels
+      </h2>
       <p className="pb-1 text-[12px] text-neutral-500">
         On every page, above and below the content.
       </p>

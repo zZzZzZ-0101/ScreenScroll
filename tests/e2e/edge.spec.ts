@@ -36,7 +36,7 @@ async function capture(context: BrowserContext, sw: Worker, path: string): Promi
   await openPage(context, path);
   const studioPromise = studioOpens(context);
   await sw.evaluate(async (url) => {
-    const [tab] = await chrome.tabs.query({ url });
+    const [tab] = await chrome.tabs.query({ active: true, url });
     await (globalThis as unknown as { __spTest: Hook }).__spTest.capture(tab!.id!);
   }, `${FIXTURES}/${path}`);
   const studio = await studioPromise;
@@ -107,7 +107,7 @@ test('an empty region is reported, not silently dropped', async ({ context, serv
   await openPage(context, 'tiny.html');
   const url = `${FIXTURES}/tiny.html`;
   const id = await serviceWorker.evaluate(async (u) => {
-    const [tab] = await chrome.tabs.query({ url: u });
+    const [tab] = await chrome.tabs.query({ active: true, url: u });
     return (globalThis as unknown as { __spTest: Hook }).__spTest.start(tab!.id!, 'selection', {
       region: { x0: 10, x1: 300, y0: 40, y1: 40 },
     });
@@ -314,7 +314,7 @@ test('mark up: no-ops, tiny drags and leaving mid-edit', async ({ context, servi
   await studio.mouse.click(p.x, p.y + 200);
   await studio.keyboard.type('rabbit');
   await studio.keyboard.press('Enter');
-  await expect(studio.getByRole('button', { name: 'Text' })).toHaveAttribute(
+  await expect(studio.getByRole('button', { name: 'Text', exact: true })).toHaveAttribute(
     'aria-pressed',
     'true',
   );
@@ -388,4 +388,58 @@ test('Mark up → Page: watermark on chosen pages, in the preview and the PDF', 
   await page.getByRole('button', { name: 'Remove watermark' }).click();
   await studio.getByRole('tab', { name: 'Pages' }).click();
   await expect(studio.getByTestId('watermark-preview')).toHaveCount(0);
+});
+
+test('Mark up → Filter: black & white reaches the PDF; its text stays searchable', async ({
+  context,
+  serviceWorker,
+}) => {
+  const { createCanvas } = await import('@napi-rs/canvas');
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const studio = await capture(context, serviceWorker, 'article.html');
+  const fonts = new URL('../../node_modules/pdfjs-dist/standard_fonts/', import.meta.url).pathname;
+  /** Page 1 of the current PDF: share of pixels that are neither near black nor near white. */
+  const page1 = async () => {
+    const b64 = (await studio.evaluate(() =>
+      (
+        window as unknown as { __spStudio: { pdfBase64(): Promise<string> } }
+      ).__spStudio.pdfBase64(),
+    )) as string;
+    const pdf = await pdfjs.getDocument({
+      data: new Uint8Array(Buffer.from(b64, 'base64')),
+      standardFontDataUrl: fonts,
+    }).promise;
+    const pg = await pdf.getPage(1);
+    const text = (await pg.getTextContent()).items
+      .map((it) => ('str' in it ? it.str : ''))
+      .join('');
+    const vp = pg.getViewport({ scale: 3 });
+    const canvas = createCanvas(Math.ceil(vp.width), Math.ceil(vp.height));
+    await pg.render({ canvas: canvas as never, viewport: vp }).promise;
+    const d = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+    let mid = 0;
+    let ink = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      const v = (d[i]! + d[i + 1]! + d[i + 2]!) / 3;
+      if (v > 40 && v < 215) mid++;
+      if (v < 128) ink++;
+    }
+    return { text, mid: mid / (d.length / 4), ink: ink / (d.length / 4) };
+  };
+  const original = await page1();
+  await studio.getByRole('tab', { name: 'Mark up' }).click();
+  await studio.getByRole('radio', { name: /^Black & white/ }).check();
+  await studio.getByRole('button', { name: 'About Black & white' }).click();
+  await expect(studio.getByText(/Sauvola 2000/)).toBeVisible();
+  const bw = await page1();
+  // Fewer in-between greys (only the edges the PDF viewer smooths), the same text, still ink.
+  expect(bw.mid).toBeLessThan(original.mid * 0.6);
+  expect(bw.ink).toBeGreaterThan(0.01);
+  expect(bw.text).toContain('Article fixture');
+  // Remembered, like the other page settings.
+  const stored = await serviceWorker.evaluate(async () => {
+    const { settings } = await chrome.storage.local.get('settings');
+    return (settings as { pdf: { filter: string } }).pdf.filter;
+  });
+  expect(stored).toBe('bw');
 });

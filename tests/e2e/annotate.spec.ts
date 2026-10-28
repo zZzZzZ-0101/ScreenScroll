@@ -91,7 +91,7 @@ test('Annotate: draw, undo/redo, select/move/delete, crop, persist, flatten and 
     predicate: (p) => p.url().includes('/studio.html'),
   });
   await serviceWorker.evaluate(async (url) => {
-    const [tab] = await chrome.tabs.query({ url });
+    const [tab] = await chrome.tabs.query({ active: true, url });
     await (
       globalThis as unknown as { __spTest: { capture(id: number): Promise<unknown> } }
     ).__spTest.capture(tab!.id!);

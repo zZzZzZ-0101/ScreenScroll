@@ -1,8 +1,10 @@
 import {
+  applyFilter,
   composeOps,
   drawAnnotations,
   type Annotation,
   type AnnotationCtx,
+  type FilterId,
   type PageSlice,
 } from '@screenscroll/core';
 import { chooseImageFormat, type PageImage } from '@screenscroll/core/pdf';
@@ -19,6 +21,7 @@ export async function composePage(
   region: { x0: number; x1: number; y0: number; y1: number },
   scale = 1,
   annotations: readonly Annotation[] = [],
+  filter: FilterId = 'original',
 ): Promise<OffscreenCanvas> {
   const outDpr = s.dpr * scale;
   const w = Math.max(1, Math.round((region.x1 - region.x0) * outDpr));
@@ -31,11 +34,22 @@ export async function composePage(
     const bitmap = await frames.get(op.frame);
     ctx.drawImage(bitmap, op.sx, op.sy, op.sw, op.sh, op.dx, op.dy, op.dw, op.dh);
   }
+  // The filter acts on the page, then mark-up goes on top in its own colours.
+  filterCanvas(ctx, filter, outDpr);
   paintAnnotations(ctx, annotations, region, outDpr);
   return canvas;
 }
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+
+/** Applies a page filter to the whole canvas; `pxPerCss` sizes its neighbourhoods. */
+export function filterCanvas(ctx: Ctx, filter: FilterId, pxPerCss: number): void {
+  if (filter === 'original') return;
+  const { width, height } = ctx.canvas;
+  const img = ctx.getImageData(0, 0, width, height);
+  applyFilter(filter, img, pxPerCss);
+  ctx.putImageData(img, 0, 0);
+}
 
 /**
  * Draws annotations over a canvas that already shows `region` at `scale` px per CSS px

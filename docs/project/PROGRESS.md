@@ -125,6 +125,13 @@ Suite: `pnpm test` 219, `pnpm e2e` 53 (see the commit), lint and typecheck clean
 - Not yet: watermark on the single long-page PDF; details panel and export quality presets; WeChat-style area toolbar with left/right edges; OCR; background capture.
 - Suite: `pnpm test` 233, affected e2e specs 20/20, lint and typecheck clean.
 
+### Stop hint, filters, area toolbar (2026-10-28)
+- Capture pill always on screen (frames skip the rows under it); Esc/Cancel keep nothing, Stop here keeps what was captured; same buttons in the toolbar panel while capturing; icon REC/WAIT; page input held off with a steady notice; tab switch waits instead of picturing the wrong tab; resize ends the capture with a notice. Pickers' hints have a Cancel button.
+- Six page filters with details and exact parameters (Mark up → Page → Filter; Settings).
+- Area mode: eight handles, x/y/size readout, nudge keys, toolbar (box, arrow, text, mosaic, undo, extend, copy, PDF, cancel, capture). Marks carry into the Studio.
+- Checked by eye: pill mid-capture and with the paused notice; filter panel and black & white pages; area toolbar with marks.
+- Needs a real-browser check: Copy from the area toolbar on a real site (clipboard focus), the toolbar panel's Stop/Cancel while capturing, REC/WAIT on the icon.
+
 ## Manual site checks
 | Site | Date | Capture | Header once | Images loaded | No text cut | Text searchable | Links | Time | Notes |
 |---|---|---|---|---|---|---|---|---|---|

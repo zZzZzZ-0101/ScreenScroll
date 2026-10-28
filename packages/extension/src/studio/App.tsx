@@ -314,7 +314,7 @@ export function App() {
       let bytes = 0;
       for (const i of sample) {
         const img = await encodePage(
-          await composePage(session, f, slices[i]!, 1, annotations),
+          await composePage(session, f, slices[i]!, 1, annotations, settings.pdf.filter),
           slices[i]!,
           settings.imageMode,
         );
@@ -358,14 +358,17 @@ export function App() {
       job: (progress: (d: number, t: number) => void) => Promise<string | void>,
     ) => {
       // One job at a time: a double click or a held Ctrl+S must not save twice.
-      if (running.current) return;
+      if (running.current) return null;
       running.current = true;
       setBusy(label);
       try {
         const done = await job((d, t) => setBusy(`${label} ${d}/${t}`));
         if (done) setToast(done);
+        return { ok: true, text: done || '' };
       } catch (e) {
-        setToast(e instanceof Error ? e.message : String(e));
+        const text = e instanceof Error ? e.message : String(e);
+        setToast(text);
+        return { ok: false, text };
       } finally {
         running.current = false;
         setBusy(null);
@@ -376,10 +379,10 @@ export function App() {
 
   const doExport = useCallback(
     async (format: ExportFormat) => {
-      if (!session || !result || !result.ok || !settings || !frames.current) return;
+      if (!session || !result || !result.ok || !settings || !frames.current) return null;
       const f = frames.current;
       const { layout, crop } = result;
-      await run('Exporting', async (progress) => {
+      return run('Exporting', async (progress) => {
         switch (format) {
           case 'pdf': {
             const bytes = await exportPdf(
@@ -425,6 +428,7 @@ export function App() {
               base,
               progress,
               annotations,
+              settings.pdf.filter,
             );
             return saved(
               await download(bytes, filename('zip'), 'application/zip'),
@@ -432,10 +436,16 @@ export function App() {
             );
           }
           case 'long-png': {
-            const parts = await exportLongImage(session, f, crop, 'png', progress, annotations, {
-              y0: slices[0]!.y0,
-              y1: slices.at(-1)!.y1,
-            });
+            const parts = await exportLongImage(
+              session,
+              f,
+              crop,
+              'png',
+              progress,
+              annotations,
+              { y0: slices[0]!.y0, y1: slices.at(-1)!.y1 },
+              settings.pdf.filter,
+            );
             if (parts.length === 1) {
               return saved(
                 await download(parts[0]!, filename('png'), 'image/png'),
@@ -483,10 +493,10 @@ export function App() {
     if (!session || !frames.current || !slices[page]) return;
     const f = frames.current;
     await run('Copying', async () => {
-      await copyPageImage(session, f, slices[page]!, annotations);
+      await copyPageImage(session, f, slices[page]!, annotations, settings?.pdf.filter);
       return `Page ${page + 1} copied as an image`;
     });
-  }, [session, slices, page, run, annotations]);
+  }, [session, slices, page, run, annotations, settings]);
 
   const doDebug = useCallback(async () => {
     if (!session || !analysis || !result || !result.ok) return;
@@ -508,14 +518,48 @@ export function App() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  // UI §1 fast path: save the PDF with automatic breaks, then close this tab.
+  /** Area mode → Copy: the whole capture as one PNG on the clipboard. */
+  const doCopyAll = useCallback(async () => {
+    if (!session || !result || !result.ok || !settings || !frames.current || !slices.length)
+      return null;
+    const f = frames.current;
+    const { crop } = result;
+    return run('Copying', async () => {
+      const range = { y0: slices[0]!.y0, y1: slices.at(-1)!.y1 };
+      const parts = await exportLongImage(
+        session,
+        f,
+        crop,
+        'png',
+        undefined,
+        annotations,
+        range,
+        settings.pdf.filter,
+      );
+      if (parts.length > 1)
+        throw new Error('Too tall to copy as one image. Use Save PDF or save it as images.');
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': parts[0]! })]);
+      const px = (v: number) => Math.round(v * session.dpr);
+      return `Copied as an image · ${px(crop.x1 - crop.x0)} × ${px(range.y1 - range.y0)} px`;
+    });
+  }, [session, result, settings, slices, run, annotations]);
+
+  // UI §1 fast path (and area mode's PDF and Copy): do it, say so on the captured page, and
+  // close this tab. On failure the tab stays open with the reason.
   const autoDone = useRef(false);
   useEffect(() => {
-    if (AUTO !== 'pdf' || autoDone.current || stage.kind !== 'ready' || !result || !result.ok)
-      return;
+    if (!AUTO || autoDone.current || stage.kind !== 'ready' || !result || !result.ok) return;
     autoDone.current = true;
-    void doExport('pdf').then(() => setTimeout(() => window.close(), 500));
-  }, [stage, result, doExport]);
+    const tabId = session?.session.tabId;
+    const job = AUTO === 'copy' ? doCopyAll() : doExport('pdf');
+    void job.then((r) => {
+      if (!r?.ok) return;
+      void chrome.runtime
+        .sendMessage({ type: 'sp:notice', text: r.text, tabId })
+        .catch(() => undefined);
+      setTimeout(() => window.close(), 500);
+    });
+  }, [stage, result, doExport, doCopyAll, session]);
 
   // Keyboard (UI §3).
   useEffect(() => {
@@ -796,6 +840,7 @@ export function App() {
                 page={page}
                 onSelect={setPage}
                 annotations={annotations}
+                filter={settings.pdf.filter}
               />
             )}
             <main className="relative flex min-w-0 flex-1 flex-col">
@@ -812,6 +857,7 @@ export function App() {
               {view === 'pages' ? (
                 <PagesView
                   watermark={settings.pdf.watermark}
+                  filter={settings.pdf.filter}
                   session={session}
                   frames={frames.current!}
                   analysis={analysis}

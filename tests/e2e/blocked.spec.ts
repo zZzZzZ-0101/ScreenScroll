@@ -43,7 +43,8 @@ test('a capture started on a browser page marks the icon with the reason', async
   expect(flagged.text).toBe('!');
   expect(flagged.title).toMatch(/^ScreenScroll: This page can’t be captured/);
 
-  // A normal page in the same tab captures, and the mark goes away.
+  // A normal page in the same tab captures: the mark becomes "capturing, here is how to stop",
+  // and goes away when the capture ends.
   const studio = context.waitForEvent('page', {
     predicate: (p) => p.url().includes('/studio.html'),
   });
@@ -54,7 +55,12 @@ test('a capture started on a browser page marks the icon with the reason', async
     return { started, ...(await hook.badge(tabId)) };
   }, flagged.tabId);
   expect(cleared.started).toEqual(expect.any(String));
-  expect(cleared.text).toBe('');
-  expect(cleared.title).toBe('ScreenScroll');
+  expect(cleared.text).toBe('REC');
+  expect(cleared.title).toMatch(/capturing this tab\. Press Esc on the page to cancel/);
   await studio;
+  const after = await serviceWorker.evaluate(
+    (tabId) => (globalThis as unknown as { __spTest: Hook }).__spTest.badge(tabId),
+    flagged.tabId,
+  );
+  expect(after).toEqual({ text: '', title: 'ScreenScroll' });
 });

@@ -24,7 +24,7 @@ async function captureFixture(
   await page.goto(`${FIXTURES}/${path}`);
   await page.bringToFront();
   const result = await serviceWorker.evaluate(async (url) => {
-    const [tab] = await chrome.tabs.query({ url });
+    const [tab] = await chrome.tabs.query({ active: true, url });
     const hook = (globalThis as unknown as { __spTest: { capture(id: number): Promise<unknown> } })
       .__spTest;
     return hook.capture(tab!.id!);
@@ -45,7 +45,10 @@ test('full-page capture of the article stores contiguous frames and restores the
     innerHeight,
   }));
   const frames = result.frames;
-  expect(frames.length).toBe(Math.ceil(scrollHeight / innerHeight));
+  // Frames leave out the rows under the always-visible pill, so a few more than screens.
+  expect(frames.length).toBeGreaterThanOrEqual(Math.ceil(scrollHeight / innerHeight));
+  expect(frames.length).toBeLessThanOrEqual(Math.ceil(scrollHeight / (innerHeight - 80)) + 1);
+  expect(frames.slice(0, -1).every((f) => f.crop.height < innerHeight)).toBe(true);
   expect(frames[0]!.docY).toBe(0);
   // Every frame starts within the previous one: no gaps in coverage.
   for (let i = 1; i < frames.length; i++) {
@@ -215,7 +218,7 @@ test('Esc cancels mid-capture and restores the page', async ({ context, serviceW
   const before = await pageState(page);
   const url = `${FIXTURES}/sticky-header.html`;
   const id = await serviceWorker.evaluate(async (u) => {
-    const [tab] = await chrome.tabs.query({ url: u });
+    const [tab] = await chrome.tabs.query({ active: true, url: u });
     return (globalThis as unknown as { __spTest: Hook }).__spTest.start(tab!.id!);
   }, url);
   // Wait until at least one frame is stored, then cancel.
@@ -228,7 +231,17 @@ test('Esc cancels mid-capture and restores the page', async ({ context, serviceW
     id,
   );
   expect(result.done.status).toBe('cancelled');
-  expect(await pageState(page)).toEqual(before);
+  // Says so on the page, then the notice goes and the page is exactly as before. Nothing kept.
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (document.querySelector('[data-screenscroll]') as HTMLElement | null)?.dataset.message,
+      ),
+    )
+    .toBe('Capture cancelled. Nothing was saved.');
+  await expect.poll(() => pageState(page), { timeout: 10_000 }).toEqual(before);
+  expect(result.frames).toHaveLength(0);
 });
 
 test('a failed frame grab ends with an error warning and restores the page', async ({
@@ -243,7 +256,7 @@ test('a failed frame grab ends with an error warning and restores the page', asy
   const result = await serviceWorker.evaluate(async (u) => {
     const hook = (globalThis as unknown as { __spTest: Hook }).__spTest;
     hook.failGrabAt(2);
-    const [tab] = await chrome.tabs.query({ url: u });
+    const [tab] = await chrome.tabs.query({ active: true, url: u });
     return hook.wait(await hook.start(tab!.id!));
   }, url);
   expect(result.done.status).toBe('error');
@@ -274,7 +287,7 @@ test('an infinite page stops at the cap with an explicit warning', async ({
         };
       }
     ).__spTest;
-    const [tab] = await chrome.tabs.query({ url: u });
+    const [tab] = await chrome.tabs.query({ active: true, url: u });
     return hook.wait(
       await hook.start(tab!.id!, 'full', { limits: { maxScreens: 6, maxHeight: 1e9 } }),
     );
@@ -340,7 +353,7 @@ test('capture survives the service worker losing its in-memory state', async ({
     forgetMemory(): void;
   };
   const id = await serviceWorker.evaluate(async (u) => {
-    const [tab] = await chrome.tabs.query({ url: u });
+    const [tab] = await chrome.tabs.query({ active: true, url: u });
     return (globalThis as unknown as { __spTest: RestartHook }).__spTest.start(tab!.id!);
   }, url);
   await expect
@@ -356,7 +369,8 @@ test('capture survives the service worker losing its in-memory state', async ({
   expect(result.done.warnings).toEqual([]);
   expect(result.done.status).toBe('complete');
   const height = await page.evaluate(() => document.scrollingElement!.scrollHeight);
-  expect(result.frames.length).toBe(Math.ceil(height / 800));
+  expect(result.frames.length).toBeGreaterThanOrEqual(Math.ceil(height / 800));
+  expect(result.frames.length).toBeLessThanOrEqual(Math.ceil(height / 720) + 1);
 });
 
 test('fixed backgrounds scroll with the page instead of repeating per frame', async ({
@@ -403,7 +417,7 @@ test('playing videos are paused for the capture and resumed afterwards', async (
     v.addEventListener('play', () => log.push('play'));
   });
   const result = await serviceWorker.evaluate(async (u) => {
-    const [tab] = await chrome.tabs.query({ url: u });
+    const [tab] = await chrome.tabs.query({ active: true, url: u });
     return (
       globalThis as unknown as { __spTest: { capture(id: number): Promise<CaptureResult> } }
     ).__spTest.capture(tab!.id!);
@@ -414,4 +428,169 @@ test('playing videos are paused for the capture and resumed afterwards', async (
     paused: (document.getElementById('v') as HTMLVideoElement).paused,
   }));
   expect(after).toEqual({ events: ['pause', 'play'], paused: false });
+});
+
+type ControlHook = {
+  start(tabId: number): Promise<string>;
+  wait(id: string): Promise<CaptureResult>;
+  badge(tabId: number): Promise<{ text: string; title: string }>;
+};
+
+async function startOn(
+  serviceWorker: import('@playwright/test').Worker,
+  url: string,
+): Promise<{ id: string; tabId: number }> {
+  return serviceWorker.evaluate(async (u) => {
+    const [tab] = await chrome.tabs.query({ active: true, url: u });
+    const id = await (globalThis as unknown as { __spTest: ControlHook }).__spTest.start(tab!.id!);
+    return { id, tabId: tab!.id! };
+  }, url);
+}
+
+/** Frames stored so far for a capture, read straight from the extension's database. */
+const frameCount = (serviceWorker: import('@playwright/test').Worker, id: string) =>
+  serviceWorker.evaluate(
+    (i) =>
+      new Promise<number>((resolve, reject) => {
+        const req = indexedDB.open('scrollpress');
+        req.onerror = () => reject(req.error);
+        req.onsuccess = () => {
+          const q = req.result
+            .transaction('frames')
+            .objectStore('frames')
+            .index('bySession')
+            .count(i);
+          q.onsuccess = () => {
+            resolve(q.result);
+            req.result.close();
+          };
+        };
+      }),
+    id,
+  );
+
+const waitFor = (serviceWorker: import('@playwright/test').Worker, id: string) =>
+  serviceWorker.evaluate(
+    (i) => (globalThis as unknown as { __spTest: ControlHook }).__spTest.wait(i),
+    id,
+  ) as Promise<CaptureResult>;
+
+test('the stop hint stays on screen the whole time and never appears in the capture', async ({
+  context,
+  serviceWorker,
+}) => {
+  const page = await context.newPage();
+  await page.goto(`${FIXTURES}/article.html`);
+  await page.bringToFront();
+  // Sample the pill every animation frame for the whole capture.
+  await page.evaluate(() => {
+    const w = window as unknown as { __pill: string[] };
+    w.__pill = [];
+    const tick = () => {
+      const host = document.querySelector<HTMLElement>('[data-screenscroll="pill"]');
+      if (host) w.__pill.push(getComputedStyle(host).visibility);
+      requestAnimationFrame(tick);
+    };
+    tick();
+  });
+  const { id } = await startOn(serviceWorker, `${FIXTURES}/article.html`);
+  const result = await waitFor(serviceWorker, id);
+  expect(result.done.status).toBe('complete');
+  const seen = await page.evaluate(() => (window as unknown as { __pill: string[] }).__pill);
+  expect(seen.length).toBeGreaterThan(20);
+  expect(seen.filter((v) => v !== 'visible')).toEqual([]);
+  // The pill is a solid #202124 box ≥ 300 px wide at the centre; text in that colour never
+  // fills such a run, so a row that does is the pill.
+  const img = await stitch(serviceWorker, result, 'article-pill');
+  const pillRows: number[] = [];
+  const near = (c: number[]) =>
+    Math.abs(c[0]! - 32) + Math.abs(c[1]! - 33) + Math.abs(c[2]! - 36) < 12;
+  for (let y = 0; y < img.height; y++) {
+    let all = true;
+    for (let x = img.width / 2 - 100; x < img.width / 2 + 100 && all; x += 4)
+      all = near(img.colourAt(x, y));
+    if (all) pillRows.push(y);
+  }
+  expect(pillRows).toEqual([]);
+});
+
+test('"Stop here" from the toolbar panel keeps what was captured and says so', async ({
+  context,
+  serviceWorker,
+}) => {
+  const page = await context.newPage();
+  await page.goto(`${FIXTURES}/article.html`);
+  await page.bringToFront();
+  const { id, tabId } = await startOn(serviceWorker, `${FIXTURES}/article.html`);
+  // Some frames in (the preload pass scrolls before any frame is taken).
+  await expect.poll(() => frameCount(serviceWorker, id), { timeout: 30_000 }).toBeGreaterThan(1);
+  await serviceWorker.evaluate(
+    (t) => chrome.tabs.sendMessage(t, { type: 'sp:control', action: 'stop' }),
+    tabId,
+  );
+  const result = await waitFor(serviceWorker, id);
+  expect(result.done.status).toBe('complete');
+  expect(result.frames.length).toBeGreaterThan(0);
+  expect(result.done.warnings.join(' ')).toMatch(/You stopped the capture after \d+ screens?/);
+});
+
+test('a capture waits while its tab is in the background and never pictures another tab', async ({
+  context,
+  serviceWorker,
+}) => {
+  const page = await context.newPage();
+  await page.goto(`${FIXTURES}/article.html`);
+  await page.bringToFront();
+  const { id, tabId } = await startOn(serviceWorker, `${FIXTURES}/article.html`);
+  await expect
+    .poll(() => page.evaluate(() => document.scrollingElement!.scrollTop), { timeout: 20_000 })
+    .toBeGreaterThan(0);
+  const other = await context.newPage();
+  await other.setContent('<body style="margin:0;background:#ff0000;height:3000px"></body>');
+  await other.bringToFront();
+  await expect
+    .poll(
+      () =>
+        serviceWorker.evaluate(
+          (t) => (globalThis as unknown as { __spTest: ControlHook }).__spTest.badge(t),
+          tabId,
+        ),
+      { timeout: 15_000 },
+    )
+    .toMatchObject({ text: 'WAIT' });
+  await other.close();
+  await page.bringToFront();
+  const result = await waitFor(serviceWorker, id);
+  expect(result.done.status).toBe('complete');
+  const img = await stitch(serviceWorker, result, 'article-tab-switch');
+  expect(img.rowsWithColour(10, [255, 0, 0])).toEqual([]);
+  expect(img.height).toBe(result.done.docHeight);
+});
+
+test('scrolling during a capture is held off and answered on the pill', async ({
+  context,
+  serviceWorker,
+}) => {
+  const page = await context.newPage();
+  await page.goto(`${FIXTURES}/article.html`);
+  await page.bringToFront();
+  const { id } = await startOn(serviceWorker, `${FIXTURES}/article.html`);
+  await expect
+    .poll(() => page.evaluate(() => document.scrollingElement!.scrollTop), { timeout: 20_000 })
+    .toBeGreaterThan(0);
+  await page.mouse.move(300, 300);
+  await page.mouse.wheel(0, 3000);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => (document.querySelector('[data-screenscroll]') as HTMLElement | null)?.dataset.alert,
+      ),
+    )
+    .toMatch(/page is paused/);
+  const result = await waitFor(serviceWorker, id);
+  expect(result.done.status).toBe('complete');
+  for (let i = 1; i < result.frames.length; i++)
+    expect(result.frames[i]!.docY).toBeLessThanOrEqual(
+      result.frames[i - 1]!.docY + result.frames[i - 1]!.crop.height,
+    );
 });

@@ -58,6 +58,7 @@ export function App() {
   const [stored, setStored] = useState<{ count: number; bytes: number } | null>(null);
   const [delay, setDelay] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [running, setRunning] = useState(false);
 
   useEffect(() => {
     void loadSettings().then(setSettings);
@@ -67,6 +68,11 @@ export function App() {
     void listCaptures()
       .then((all) => setStored({ count: all.length, bytes: all.reduce((n, c) => n + c.bytes, 0) }))
       .catch(() => setStored(null));
+    // A capture already running here (perhaps started by accident): offer the way out first.
+    void chrome.runtime
+      .sendMessage({ type: 'sp:running' })
+      .then((r: unknown) => setRunning(!!r))
+      .catch(() => setRunning(false));
     // Say up front when this page can't be captured, instead of after a click.
     void (async () => {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -97,12 +103,17 @@ export function App() {
     }
   }
 
+  const control = async (action: 'stop' | 'cancel') => {
+    await chrome.runtime.sendMessage({ type: 'sp:control', action }).catch(() => undefined);
+    window.close();
+  };
+
   const open = (url: string) => {
     void chrome.tabs.create({ url });
     window.close();
   };
 
-  const disabled = busy || !!blocked;
+  const disabled = busy || !!blocked || running;
   const segment = (on: boolean) =>
     `rounded px-2 py-0.5 focus-visible:outline-2 focus-visible:outline-accent ${on ? 'bg-neutral-200 font-medium dark:bg-neutral-700' : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'}`;
   const row = 'flex items-center justify-between gap-2 py-1';
@@ -135,6 +146,38 @@ export function App() {
           </button>
         </div>
       </header>
+
+      {running && (
+        <section
+          role="alert"
+          aria-label="Capture in progress"
+          className="mb-2 rounded-lg border border-accent bg-accent/10 p-2"
+        >
+          <p className="mb-2">
+            Capturing this page. On the page, press{' '}
+            <kbd className="rounded border border-neutral-400 px-1 font-sans text-[11px]">Esc</kbd>{' '}
+            to cancel, or:
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => void control('stop')}
+              title="Stop now and keep what is captured so far"
+              className="flex-1 rounded-md bg-accent px-2 py-1 font-medium text-white hover:bg-accent-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            >
+              Stop here
+            </button>
+            <button
+              type="button"
+              onClick={() => void control('cancel')}
+              title="Stop and keep nothing"
+              className="flex-1 rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:border-neutral-600 dark:hover:bg-neutral-800"
+            >
+              Cancel
+            </button>
+          </div>
+        </section>
+      )}
 
       {blocked && (
         <p

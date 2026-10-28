@@ -23,7 +23,7 @@ const hook = (sw: Worker) => ({
   start: (url: string, mode: string, opts: object = {}) =>
     sw.evaluate(
       async ([u, m, o]) => {
-        const [tab] = await chrome.tabs.query({ url: u as string });
+        const [tab] = await chrome.tabs.query({ active: true, url: u as string });
         return (globalThis as unknown as { __spTest: Hook }).__spTest.start(
           tab!.id!,
           m as string,
@@ -221,8 +221,103 @@ test('Esc in the selection picker cancels without capturing or opening the Studi
   expect(r.frames).toEqual([]);
   await page.waitForTimeout(500);
   expect(context.pages().some((p) => p.url().includes('studio.html'))).toBe(false);
-  // The page is untouched: no overlay host left on <html>.
-  expect(await page.evaluate(() => document.documentElement.lastElementChild?.tagName)).toBe(
-    'BODY',
+  // The page says so, then is untouched: no overlay or notice left on <html>.
+  expect(
+    await page.evaluate(
+      () => (document.querySelector('[data-screenscroll]') as HTMLElement | null)?.dataset.message,
+    ),
+  ).toBe('Capture cancelled. Nothing was saved.');
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.lastElementChild?.tagName), {
+      timeout: 10_000,
+    })
+    .toBe('BODY');
+});
+
+test('area: left and right edges resize, a box mark is drawn, Enter captures with it', async ({
+  context,
+  serviceWorker,
+}) => {
+  const { page, url } = await open(context, 'article.html');
+  const id = await hook(serviceWorker).start(url, 'selection');
+  await page.waitForTimeout(300);
+  await page.mouse.move(300, 200);
+  await page.mouse.down();
+  await page.mouse.move(700, 500, { steps: 5 });
+  await page.mouse.up();
+  // Right edge out by 100, left edge out by 50.
+  for (const [from, to] of [
+    [700, 800],
+    [300, 250],
+  ] as const) {
+    await page.mouse.move(from, 350);
+    await page.mouse.down();
+    await page.mouse.move(to, 350, { steps: 4 });
+    await page.mouse.up();
+  }
+  // Box tool (R), drawn inside the area.
+  await page.keyboard.press('r');
+  await page.mouse.move(350, 250);
+  await page.mouse.down();
+  await page.mouse.move(450, 320, { steps: 4 });
+  await page.mouse.up();
+  // Text (T): letters that are also tool keys go into the text; Enter commits it, then a
+  // second Enter captures.
+  await page.keyboard.press('t');
+  await page.mouse.click(600, 450);
+  await page.keyboard.type('Ram & Tea');
+  await page.keyboard.press('Enter');
+  const studioOpens = context.waitForEvent('page', {
+    predicate: (p) => p.url().includes('/studio.html'),
+    timeout: 60_000,
+  });
+  await page.keyboard.press('Enter');
+  const r = await hook(serviceWorker).wait(id);
+  expect(r.done.status).toBe('complete');
+  expect(r.done.docWidth).toBe(550);
+  expect(r.done.docHeight).toBe(300);
+  const studio = await studioOpens;
+  await studio.waitForFunction(
+    () => 'project' in ((window as unknown as { __spStudio?: object }).__spStudio ?? {}),
+    null,
+    { timeout: 60_000 },
   );
+  const anns = await studio.evaluate(
+    () =>
+      (
+        window as unknown as {
+          __spStudio: { project(): { annotations: Array<Record<string, unknown>> } };
+        }
+      ).__spStudio.project().annotations,
+  );
+  expect(anns).toHaveLength(2);
+  expect(anns[0]).toMatchObject({ kind: 'rect', x: 100, y: 50, w: 100, h: 70 });
+  expect(anns[1]).toMatchObject({ kind: 'text', x: 350, y: 250, text: 'Ram & Tea' });
+});
+
+test('area: Ctrl+C copies the area and the page says so', async ({ context, serviceWorker }) => {
+  const { page, url } = await open(context, 'article.html');
+  const id = await hook(serviceWorker).start(url, 'selection');
+  await page.waitForTimeout(300);
+  await page.mouse.move(300, 200);
+  await page.mouse.down();
+  await page.mouse.move(600, 400, { steps: 5 });
+  await page.mouse.up();
+  await page.keyboard.press('Control+c');
+  const r = await hook(serviceWorker).wait(id);
+  expect(r.done.status).toBe('complete');
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          () =>
+            (document.querySelector('[data-screenscroll]') as HTMLElement | null)?.dataset.message,
+        ),
+      { timeout: 30_000 },
+    )
+    .toBe('Copied as an image · 300 × 200 px');
+  // The Studio tab that did the copying has closed itself.
+  await expect
+    .poll(() => context.pages().filter((p) => p.url().includes('studio.html')).length)
+    .toBe(0);
 });

@@ -8,11 +8,11 @@ A free, ad-free, fully offline browser extension for desktop Chrome and Edge. It
 
 ## Use it
 
-1. **Click the ScreenScroll icon.** The panel opens: **Capture full page**, or pick another way: Visible, Area, **Line to line** (click a first line, scroll, click a last line), Element, or a scrolling Panel. Timer, paper and "after capture" are there too.
+1. **Click the ScreenScroll icon.** The panel opens: **Capture full page**, or pick another way: Visible, **Area** (box with handles and a toolbar: box, arrow, text, mosaic, copy, PDF), **Line to line** (click a first line, scroll, click a last line), Element, or a scrolling Panel. Timer, paper and "after capture" are there too. While it captures, a bar at the bottom always shows how to stop: **Esc** or Cancel keeps nothing, **Stop here** keeps what was captured.
 2. **The Studio opens** with the pages as they will be saved. Adjust only if you want to:
    - **Pages**: paper and orientation (everything else is under _More options_).
    - **Breaks**: drag, add or remove page breaks.
-   - **Mark up**: crop, text, boxes, arrows, numbers, mosaic and blur; page labels (date, page number…) and a watermark on every page or chosen pages.
+   - **Mark up**: crop, text, boxes, arrows, numbers, mosaic and blur; filters (Original, Enhanced, Sharper text, Greyscale, Black & white, Ink saver), page labels (date, page number…) and a watermark on every page or chosen pages.
 3. **Save PDF.** The arrow next to it has the other outputs (images, one long page, copy, print).
 
 **Saved captures** (in the panel) lists what is kept on this computer, with sizes: reopen, delete one, several or all for good, or auto-delete after some days. Keys: Alt+Shift+P / V / S / E (full page / visible / selection / element).

@@ -5,6 +5,7 @@ export * from './compose.js';
 export * from './crop.js';
 export * from './debug.js';
 export * from './filename.js';
+export * from './filters.js';
 export * from './geometry.js';
 export * from './hints.js';
 export * from './image.js';

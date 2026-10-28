@@ -11,7 +11,7 @@ type Hook = {
 
 const capture = (sw: Worker, url: string) =>
   sw.evaluate(async (u) => {
-    const [tab] = await chrome.tabs.query({ url: u });
+    const [tab] = await chrome.tabs.query({ active: true, url: u });
     const h = (globalThis as unknown as { __spTest: Hook }).__spTest;
     return h.wait(await h.start(tab!.id!, 'full'));
   }, url);
@@ -89,6 +89,7 @@ test('capture settings: start where I am, sharp 2× capture, speeds', async ({
   expect(await page.evaluate(() => scrollY)).toBe(2000);
 
   // Sharp: frames at 2 device px per CSS px, layout unchanged, override removed afterwards.
+  await page.bringToFront(); // the Studio of the first capture came to the front
   await set({ capture: { start: 'top', speed: 'normal', resolution: 'high' } });
   const width = await page.evaluate(() => innerWidth);
   const sharp = await capture(serviceWorker, url);

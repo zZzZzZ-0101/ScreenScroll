@@ -1,4 +1,4 @@
-import { PAPERS } from '@screenscroll/core';
+import { FILTERS, PAPERS } from '@screenscroll/core';
 import { DEFAULT_SETTINGS, SPEED_TIMING, type Settings } from './settings';
 
 /**
@@ -185,6 +185,18 @@ export const SETTINGS: SettingEntry[] = [
     set: (_s, v) => ({ exportPreset: v as Settings['exportPreset'] }),
     recommended: 'balanced',
     why: 'Sharp text at a reasonable size; choose Best for printing photos.',
+  },
+  {
+    id: 'pdf.filter',
+    section: 'Pages and PDF',
+    label: 'Filter',
+    help: FILTERS.map((f) => `${f.name}: ${f.short.toLowerCase()}.`).join(' '),
+    kind: 'choice',
+    choices: FILTERS.map((f) => ({ value: f.id, label: f.name })),
+    get: (s) => s.pdf.filter,
+    set: (s, v) => ({ pdf: { ...s.pdf, filter: v as Settings['pdf']['filter'] } }),
+    recommended: 'original',
+    why: 'Keeps the page as you saw it. Black & white for printing text; Ink saver for dark pages.',
   },
   {
     id: 'pdf.textLayer',

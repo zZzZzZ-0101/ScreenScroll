@@ -1,13 +1,14 @@
 import {
   watermarkOn,
   type Annotation,
+  type FilterId,
   type PageLayout,
   type PageSlice,
   type Watermark,
 } from '@screenscroll/core';
 import { useEffect, useRef, useState } from 'react';
 import type { Analysis } from '@/studio/engine/analysis';
-import { composePage, paintAnnotations } from '@/studio/engine/compose';
+import { composePage, filterCanvas, paintAnnotations } from '@/studio/engine/compose';
 import type { FrameCache, LoadedSession } from '@/studio/engine/session';
 import { drawFromStrip } from '../strip';
 
@@ -30,6 +31,7 @@ export function PagesView(p: {
   zoom: Zoom;
   onZoom: (z: Zoom) => void;
   watermark: Watermark;
+  filter: FilterId;
   /** Reports the scale shown (share of actual size), for the zoom control's label. */
   onEffective: (scale: number) => void;
 }) {
@@ -99,6 +101,7 @@ export function PagesView(p: {
               slice={s}
               layout={p.layout}
               annotations={p.annotations}
+              filter={p.filter}
               pageW={pageW}
             />
             <span className="absolute bottom-1 right-2 text-[11px] text-neutral-400">{i + 1}</span>
@@ -131,6 +134,7 @@ function PageCanvas({
   slice,
   layout,
   annotations,
+  filter,
   pageW,
 }: {
   session: LoadedSession;
@@ -139,6 +143,7 @@ function PageCanvas({
   slice: PageSlice;
   layout: PageLayout;
   annotations: Annotation[];
+  filter: FilterId;
   pageW: number;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -155,6 +160,7 @@ function PageCanvas({
     ctx.fillRect(0, 0, c.width, c.height);
     // Quick, blurry first paint from the thumbnail strip...
     drawFromStrip(ctx, analysis, slice, c.width);
+    filterCanvas(ctx, filter, c.width / (slice.x1 - slice.x0));
     paintAnnotations(ctx, annotations, slice, c.width / (slice.x1 - slice.x0));
     // ...then the real pixels once the page is on screen, at the preview's own size.
     let cancelled = false;
@@ -163,7 +169,7 @@ function PageCanvas({
         if (!entries.some((e) => e.isIntersecting)) return;
         io.disconnect();
         const scale = Math.min(1, c.width / ((slice.x1 - slice.x0) * session.dpr));
-        const img = await composePage(session, frames, slice, scale, annotations);
+        const img = await composePage(session, frames, slice, scale, annotations, filter);
         if (!cancelled) ctx.drawImage(img, 0, 0, c.width, c.height);
       },
       { rootMargin: '400px' },
@@ -173,7 +179,7 @@ function PageCanvas({
       cancelled = true;
       io.disconnect();
     };
-  }, [session, frames, analysis, slice, w, h, annotations]);
+  }, [session, frames, analysis, slice, w, h, annotations, filter]);
   return (
     <canvas
       ref={ref}

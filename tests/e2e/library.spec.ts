@@ -43,7 +43,7 @@ test('saved captures: size, search, open, delete for good, auto-clean', async ({
     await page.goto(`${FIXTURES}/${path}`);
     await page.bringToFront();
     await serviceWorker.evaluate(async (url) => {
-      const [tab] = await chrome.tabs.query({ url });
+      const [tab] = await chrome.tabs.query({ active: true, url });
       await (globalThis as unknown as { __spTest: Hook }).__spTest.capture(tab!.id!);
     }, `${FIXTURES}/${path}`);
   }
@@ -100,7 +100,7 @@ test('saved captures: deleting one after another never brings one back; batch an
     await page.goto(`${FIXTURES}/${path}`);
     await page.bringToFront();
     await serviceWorker.evaluate(async (url) => {
-      const [tab] = await chrome.tabs.query({ url });
+      const [tab] = await chrome.tabs.query({ active: true, url });
       await (globalThis as unknown as { __spTest: Hook }).__spTest.capture(tab!.id!);
     }, `${FIXTURES}/${path}`);
     await page.close();

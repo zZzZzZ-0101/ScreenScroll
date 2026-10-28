@@ -29,7 +29,7 @@ test('a document viewer: one PDF page per document page, cropped to the page', a
     predicate: (p) => p.url().includes('/studio.html'),
   });
   await serviceWorker.evaluate(async (u) => {
-    const [tab] = await chrome.tabs.query({ url: u });
+    const [tab] = await chrome.tabs.query({ active: true, url: u });
     await (
       globalThis as unknown as { __spTest: { capture(id: number): Promise<unknown> } }
     ).__spTest.capture(tab!.id!);

@@ -1,6 +1,7 @@
 import {
   redactions,
   type Annotation,
+  type FilterId,
   type PageLayout,
   type PageSlice,
   type Rect,
@@ -28,9 +29,10 @@ async function* pageImages(
   mode: ImageMode,
   onProgress?: Progress,
   annotations: readonly Annotation[] = [],
+  filter: FilterId = 'original',
 ): AsyncGenerator<PageImage> {
   for (let i = 0; i < slices.length; i++) {
-    const canvas = await composePage(s, frames, slices[i]!, 1, annotations);
+    const canvas = await composePage(s, frames, slices[i]!, 1, annotations, filter);
     yield await encodePage(canvas, slices[i]!, mode);
     onProgress?.(i + 1, slices.length);
   }
@@ -74,7 +76,7 @@ export function exportPdf(
   annotations: readonly Annotation[] = [],
 ): Promise<Uint8Array> {
   return buildPdf(
-    pageImages(s, frames, slices, mode, onProgress, annotations),
+    pageImages(s, frames, slices, mode, onProgress, annotations, pdf.filter),
     slices.length,
     layout,
     metaOf(s),
@@ -95,7 +97,7 @@ export function exportLongPagePdf(
 ): Promise<Uint8Array> {
   const total = slices.reduce((h, sl) => h + sl.y1 - sl.y0 - sl.overlapTop, 0);
   return buildSingleLongPagePdf(
-    pageImages(s, frames, slices, mode, onProgress, annotations),
+    pageImages(s, frames, slices, mode, onProgress, annotations, pdf.filter),
     total,
     layout,
     metaOf(s),
@@ -120,11 +122,12 @@ export async function exportPageImagesZip(
   baseName: string,
   onProgress?: Progress,
   annotations: readonly Annotation[] = [],
+  filter: FilterId = 'original',
 ): Promise<Uint8Array> {
   const files: Record<string, [Uint8Array, { level: 0 }]> = {};
   const digits = String(slices.length).length;
   for (let i = 0; i < slices.length; i++) {
-    const canvas = await composePage(s, frames, slices[i]!, 1, annotations);
+    const canvas = await composePage(s, frames, slices[i]!, 1, annotations, filter);
     const blob = await canvas.convertToBlob({ type: MIME[format], quality: 0.92 });
     files[`${baseName}-${String(i + 1).padStart(digits, '0')}.${ext(format)}`] = [
       new Uint8Array(await blob.arrayBuffer()),
@@ -150,6 +153,7 @@ export async function exportLongImage(
   onProgress?: Progress,
   annotations: readonly Annotation[] = [],
   range: { y0: number; y1: number } = { y0: 0, y1: s.height },
+  filter: FilterId = 'original',
 ): Promise<Blob[]> {
   const partCss = Math.floor(LONG_IMAGE_MAX / s.dpr);
   const parts: Blob[] = [];
@@ -157,7 +161,7 @@ export async function exportLongImage(
   for (let k = 0; k < count; k++) {
     const y0 = range.y0 + k * partCss;
     const y1 = Math.min(range.y1, y0 + partCss);
-    const canvas = await composePage(s, frames, { ...crop, y0, y1 }, 1, annotations);
+    const canvas = await composePage(s, frames, { ...crop, y0, y1 }, 1, annotations, filter);
     parts.push(await canvas.convertToBlob({ type: MIME[format], quality: 0.92 }));
     onProgress?.(k + 1, count);
   }
@@ -220,8 +224,9 @@ export async function copyPageImage(
   frames: FrameCache,
   slice: PageSlice,
   annotations: readonly Annotation[] = [],
+  filter: FilterId = 'original',
 ): Promise<void> {
-  const canvas = await composePage(s, frames, slice, 1, annotations);
+  const canvas = await composePage(s, frames, slice, 1, annotations, filter);
   const blob = await canvas.convertToBlob({ type: 'image/png' });
   await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
 }
