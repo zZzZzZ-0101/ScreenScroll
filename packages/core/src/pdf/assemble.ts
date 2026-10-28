@@ -238,8 +238,8 @@ export async function buildSingleLongPagePdf(
 function setMeta(doc: PDFDocument, meta: PdfMeta): void {
   doc.setTitle(meta.title || meta.url);
   doc.setSubject(meta.url);
-  doc.setProducer('ScrollPress');
-  doc.setCreator('ScrollPress');
+  doc.setProducer('ScreenScroll');
+  doc.setCreator('ScreenScroll');
   doc.setCreationDate(meta.capturedAt);
   doc.setModificationDate(meta.capturedAt);
 }

@@ -94,6 +94,40 @@ Legend: `[ ]` todo · `(L#)` = lesson from `docs/PRIOR_ART.md` §7 · `→ DOC` 
 - [ ] Experimental CDP capture engine toggle (`chrome.debugger`), compared against scroll-stitch on the fixtures.
 - [ ] Browser-window capture via `getDisplayMedia`.
 
+## M7 — Power and precision (user direction, 2026-10-28)
+
+Goal: the most capable screen capture tool available, that still looks simple. Automate first; make every automatic decision editable; ask the user only where confidence is low.
+
+**Highest resolution**
+- [ ] Capture at up to 2–3× the screen's pixel density (temporary device-scale override via `chrome.debugger` `Emulation.setDeviceMetricsOverride`, or browser zoom + restore). *Verify: debugger banner, memory per frame, rate limits.* Setting: Standard / High / Maximum.
+- [ ] Never downscale on export unless asked; show the effective DPI per page.
+
+**Smarter automation (less hand-editing)**
+- [ ] Confidence per break: highlight only the breaks that "need a look"; jump between them.
+- [ ] Main-content detection: offer the article / chat / document panel pre-selected, with one click for "whole page instead".
+- [ ] Repeated headers, footers and sticky bars detected across frames and removed automatically (with a note).
+- [ ] Seam check by image registration on every frame; re-capture a frame automatically when a seam doesn't match.
+- [ ] Auto break style per page type (article, table, chat, code, slides).
+- [ ] Overlay killer and auto-redact run as suggestions after capture (M6 items, surfaced here).
+
+**Capture scope — any part of the screen**
+- [ ] Several areas in one capture (pick, add another, finish) → one document.
+- [ ] Horizontal and two-way scrolling (wide tables, boards, maps, canvases).
+- [ ] Several scroll areas in one page (e.g. both panes of a mail client).
+- [ ] "Follow my scroll": capture while the user scrolls by hand, for pages that fight automation.
+- [ ] Only the scrolled part between two points (start here → end here).
+- [ ] Timed series (every N seconds) and whole-window capture.
+
+**Editing**
+- [ ] Resize and rotate handles, multi-select, align and snap, layers order.
+- [ ] Shapes with fill and opacity, callouts, text with background, stamps, zoom-in inset (magnified detail).
+- [ ] Brush blur, find-text-and-redact, redact-all-matches.
+- [ ] Page tools: reorder, delete, duplicate, insert blank, split one page, per-page crop.
+- [ ] Combine captures side by side or stacked; compare two captures (visual diff).
+
+**Output**
+- [ ] Markdown/HTML with images, SVG, PDF/A; presets ("Print A4", "Share small", "Archive").
+
 ## Always / cross-cutting
 
 - [ ] No network calls, no analytics, no remote code: offline guard test stays green.

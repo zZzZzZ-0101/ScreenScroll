@@ -19,7 +19,7 @@ Distilled (2026-10-28, see DECISIONS): the popup answers one question, "what do 
 
 ```
 ┌───────────────────────────────────┐
-│ ScrollPress                       │
+│ ScreenScroll                       │
 │ ┌───────────────────────────────┐ │
 │ │ ⛶  Capture full page   Alt+Shift+P │  ← the one primary action
 │ │    Then check the pages and save│ │    (subtitle changes when "skip" is on)
@@ -79,7 +79,7 @@ A side sheet in the Studio and History: an ordered list of captures, drag to reo
 
 ## 6. Options page
 
-Sections: Capture (delays, lazy-load behaviour, fixed-element rules, capture width, max screens, format), Pages (default paper, margins, crop, break style), PDF (text layer, links, header/footer templates, watermark), Files (filename template, sub-folder, ask where to save), Shortcuts (link to the browser shortcut page), History (retention), Privacy statement ("ScrollPress never sends data anywhere"), Reset.
+Sections: Capture (delays, lazy-load behaviour, fixed-element rules, capture width, max screens, format), Pages (default paper, margins, crop, break style), PDF (text layer, links, header/footer templates, watermark), Files (filename template, sub-folder, ask where to save), Shortcuts (link to the browser shortcut page), History (retention), Privacy statement ("ScreenScroll never sends data anywhere"), Reset.
 
 ## 7. Empty, error & first-run states
 

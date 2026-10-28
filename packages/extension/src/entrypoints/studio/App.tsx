@@ -108,7 +108,7 @@ export function App() {
       try {
         const [s, st] = await Promise.all([loadSession(SESSION_ID), loadSettings()]);
         if (cancelled) return;
-        document.title = `${s.session.title || 'Capture'} · ScrollPress`;
+        document.title = `${s.session.title || 'Capture'} · ScreenScroll`;
         frames.current = new FrameCache(s.frames);
         setHistory(emptyHistory(s.project));
         setSession(s);

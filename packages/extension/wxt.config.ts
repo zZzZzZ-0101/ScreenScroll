@@ -7,7 +7,7 @@ import tailwindcss from '@tailwindcss/vite';
 export default defineConfig({
   srcDir: 'src',
   modules: ['@wxt-dev/module-react'],
-  zip: { artifactTemplate: 'scrollpress-{{version}}-{{browser}}.zip' },
+  zip: { artifactTemplate: 'screenscroll-{{version}}-{{browser}}.zip' },
   vite: (env) => ({
     plugins: [tailwindcss()],
     define: { __SP_E2E__: JSON.stringify(env.mode === 'e2e') },
@@ -16,7 +16,7 @@ export default defineConfig({
     build: { modulePreload: { polyfill: false } },
   }),
   manifest: (env) => ({
-    name: 'ScrollPress',
+    name: 'ScreenScroll',
     description: 'Capture whole web pages as clean multi-page PDFs. Offline, no ads.',
     permissions: [
       'activeTab',
@@ -33,7 +33,7 @@ export default defineConfig({
     commands: {
       _execute_action: {
         suggested_key: { default: 'Alt+Shift+O' },
-        description: 'Open ScrollPress',
+        description: 'Open ScreenScroll',
       },
       'capture-full': {
         suggested_key: { default: 'Alt+Shift+P' },

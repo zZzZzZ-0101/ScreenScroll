@@ -225,7 +225,9 @@ describe('file names', () => {
   it('understands {date} and {time} like the header and footer, and the old tokens', () => {
     const info = { title: 'T', url: '', date };
     expect(buildFilename('{title}_{date}_{time}', info, 'pdf')).toBe('T_2026-10-28_0905.pdf');
-    expect(buildFilename('{title}_{yyyy}-{mm}-{dd}_{HHmm}', info, 'pdf')).toBe('T_2026-10-28_0905.pdf');
+    expect(buildFilename('{title}_{yyyy}-{mm}-{dd}_{HHmm}', info, 'pdf')).toBe(
+      'T_2026-10-28_0905.pdf',
+    );
   });
 
   it('survives an empty or token-only template', () => {

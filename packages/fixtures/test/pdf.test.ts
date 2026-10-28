@@ -94,7 +94,7 @@ describe('PDF assembly', () => {
       }
       expect(pdf.getTitle()).toBe(meta.title);
       expect(pdf.getSubject()).toBe(meta.url);
-      expect(pdf.getProducer()).toBe('ScrollPress');
+      expect(pdf.getProducer()).toBe('ScreenScroll');
 
       expect(await renderPdfPage(bytes, 1, `${name}-pdf-p1.png`)).toBe(slices.length);
       await renderPdfPage(bytes, 2, `${name}-pdf-p2.png`);

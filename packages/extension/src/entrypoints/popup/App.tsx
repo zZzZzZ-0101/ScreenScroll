@@ -65,7 +65,7 @@ export function App() {
 
   return (
     <main className="w-72 bg-white p-3 text-[13px] text-neutral-900 dark:bg-neutral-900 dark:text-neutral-100">
-      <h1 className="mb-2 text-sm font-semibold">ScrollPress</h1>
+      <h1 className="mb-2 text-sm font-semibold">ScreenScroll</h1>
 
       {blocked ? (
         <p

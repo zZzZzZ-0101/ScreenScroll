@@ -111,7 +111,7 @@ For the visible slice, in document coordinates (`rect.top + scrollOffset`, relat
 
 ## 13. Blocked pages & errors
 
-- `chrome://`, `edge://`, `about:`, `view-source:`, Chrome Web Store, other extensions' pages and the built-in PDF viewer: show a clear message. For the PDF viewer, suggest "Open the PDF file in ScrollPress Studio (import)".
+- `chrome://`, `edge://`, `about:`, `view-source:`, Chrome Web Store, other extensions' pages and the built-in PDF viewer: show a clear message. For the PDF viewer, suggest "Open the PDF file in ScreenScroll Studio (import)".
 - `file://` needs "Allow access to file URLs". Detect and explain.
 - Cross-origin iframes: content is captured as pixels, hints are opaque. Add a warning chip.
 

@@ -30,7 +30,7 @@
 
 Legend: ✅ planned, 🟡 partial / later milestone, ❌ deliberately skipped. M# = milestone in `TODO.md`.
 
-| FireShot feature | FireShot tier (verified where possible) | ScrollPress | M# |
+| FireShot feature | FireShot tier (verified where possible) | ScreenScroll | M# |
 |---|---|---|---|
 | Capture full page | Lite | ✅ with sticky/lazy/animation handling | M1 |
 | Capture visible area | Lite | ✅ | M1 |

@@ -1,6 +1,6 @@
-# ScrollPress
+# ScreenScroll
 
-> Working name — rename freely (search-and-replace `ScrollPress` / `scrollpress`).
+> Working name — rename freely (search-and-replace `ScreenScroll` / `scrollpress`).
 
 A free, ad-free, fully offline browser extension for **desktop Chrome / Edge (and later Firefox)** that captures any web page — including pages that scroll inside an inner panel — and turns it into **clean, standard-size, multi-page PDFs whose page breaks never slice through a line of text**. It also does everything people normally buy FireShot Pro for: area/element capture, an annotation editor, searchable text and clickable links in the PDF, headers/footers, batch capture, and a local history.
 

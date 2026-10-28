@@ -34,7 +34,7 @@ For each `LinkRect` within the slice, add a `/Link` annotation with a `/URI` act
 
 ## 5. Document metadata & outline
 
-- Title = page title, Subject = URL, Producer = "ScrollPress", CreationDate = capture time. Keywords: none.
+- Title = page title, Subject = URL, Producer = "ScreenScroll", CreationDate = capture time. Keywords: none.
 - **Outline (bookmarks)** from `h1–h3` hints: each heading → `/GoTo` its page. That's a nice touch for long articles (M4 stretch).
 
 ## 6. Variants

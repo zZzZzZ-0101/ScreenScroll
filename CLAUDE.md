@@ -1,6 +1,6 @@
 # CLAUDE.md — instructions for the coding agent
 
-You are building **ScrollPress**: an offline, ad-free desktop browser extension (Chrome/Edge first) that captures web pages and exports smart multi-page PDFs whose page breaks never cut through text, plus a FireShot-Pro-level feature set. Read `README.md` first, then `TODO.md`. The `docs/` folder is the spec.
+You are building **ScreenScroll**: an offline, ad-free desktop browser extension (Chrome/Edge first) that captures web pages and exports smart multi-page PDFs whose page breaks never cut through text, plus a FireShot-Pro-level feature set. Read `README.md` first, then `TODO.md`. The `docs/` folder is the spec.
 
 ## Hard constraints (never violate)
 

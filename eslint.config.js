@@ -2,7 +2,7 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import globals from 'globals';
 
-const NETWORK = 'ScrollPress is offline: no network requests (CLAUDE.md constraint 1).';
+const NETWORK = 'ScreenScroll is offline: no network requests (CLAUDE.md constraint 1).';
 
 export default tseslint.config(
   {
