@@ -98,6 +98,9 @@ async function run(msg: StartCapture): Promise<void> {
     pill.hide();
     const p = await plan(msg);
     if (!p) throw new Cancelled();
+    // A zero-size selection or a hidden element: say so rather than produce nothing.
+    if (p.kind === 'region' && (p.region.x1 - p.region.x0 < 1 || p.region.y1 - p.region.y0 < 1))
+      throw new Error('The selected area is empty, so nothing was captured.');
     pill.show();
     addEventListener('keydown', onKey, true);
     addEventListener('pagehide', onHide);
@@ -171,7 +174,9 @@ async function run(msg: StartCapture): Promise<void> {
       warnings.push(`Capture failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   } finally {
-    pill.remove();
+    // A failure must be visible where the user is looking (never fail silently).
+    if (status! === 'error') pill.notice(warnings.at(-1)!.replace(/^Capture failed: /, ''));
+    else pill.remove();
     const errors = log.restore();
     if (errors.length) warnings.push(`${errors.length} page change(s) could not be undone.`);
     removeEventListener('keydown', onKey, true);
@@ -549,5 +554,12 @@ function makePill() {
     hide: () => void (host.style.visibility = 'hidden'),
     show: () => void (host.style.visibility = 'visible'),
     remove: () => host.remove(),
+    /** Shows a message for a few seconds, then goes away by itself. */
+    notice: (text: string) => {
+      host.style.visibility = 'visible';
+      pill.style.background = '#8a4b00';
+      pill.textContent = text;
+      setTimeout(() => host.remove(), 6000);
+    },
   };
 }

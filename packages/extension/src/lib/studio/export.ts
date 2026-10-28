@@ -172,22 +172,46 @@ export function ext(format: RasterFormat): string {
   return format === 'jpeg' ? 'jpg' : format;
 }
 
-/** Saves through chrome.downloads so the browser's download settings apply. */
+/**
+ * Saves through chrome.downloads so the browser's download settings apply. Returns the name
+ * used: if the browser refuses the name (some file systems and locales can't hold every
+ * title), the file is saved under a plain name instead of not at all.
+ */
 export async function download(
   data: Uint8Array | Blob,
   filename: string,
   mime: string,
-): Promise<void> {
+): Promise<string> {
   const blob = data instanceof Blob ? data : new Blob([data as BlobPart], { type: mime });
   const url = URL.createObjectURL(blob);
-  // e2e only: the test browser renames downloads, so record the name we asked for.
-  if (__SP_E2E__) await chrome.storage.session.set({ lastDownload: filename });
   try {
-    await chrome.downloads.download({ url, filename, saveAs: false });
+    for (const name of [filename, fallbackName(filename)]) {
+      // e2e only: the test browser renames downloads, so record the name we asked for.
+      if (__SP_E2E__) await chrome.storage.session.set({ lastDownload: name });
+      try {
+        await chrome.downloads.download({ url, filename: name, saveAs: false });
+        return name;
+      } catch (e) {
+        if (name !== filename || !/invalid filename/i.test(String(e))) throw e;
+      }
+    }
+    throw new Error('The browser refused to save the file.');
   } finally {
     // The download has its own copy once started; keep the URL a little for slow starts.
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
+}
+
+/** ASCII-only name with the same date part and extension, e.g. capture_2026-10-28_0915.pdf. */
+export function fallbackName(filename: string): string {
+  const ext = /\.([a-z0-9]+)$/i.exec(filename)?.[1] ?? 'bin';
+  const date = /\d{4}-\d{2}-\d{2}(_\d{4})?/.exec(filename)?.[0];
+  const base = filename
+    .replace(/\.[a-z0-9]+$/i, '')
+    .replace(/[^A-Za-z0-9 _-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^[_ ]+|[_ ]+$/g, '');
+  return `${/[A-Za-z0-9]{3}/.test(base) ? base.slice(0, 80) : `capture${date ? `_${date}` : ''}`}.${ext}`;
 }
 
 /** Copies one page as PNG (UI §3, Ctrl+Shift+C). */

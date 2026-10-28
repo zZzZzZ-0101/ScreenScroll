@@ -110,6 +110,11 @@ export function AnnotateView(p: Props) {
     p.onSelect(ann.id);
   };
 
+  // Leaving Mark up (or the Studio) with the text box open keeps what was typed.
+  const flush = useRef(commitText);
+  flush.current = commitText;
+  useEffect(() => () => flush.current(), []);
+
   const onDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
     // The click blurs the text box, which commits it.
@@ -279,6 +284,10 @@ export function AnnotateView(p: Props) {
           touchAction: 'none',
         }}
         onPointerDown={onDown}
+        // The click that opens a text box must not move focus away from it again.
+        onMouseDown={(e) => {
+          if (p.tool === 'text' || editing) e.preventDefault();
+        }}
         onPointerMove={onMove}
         onPointerUp={onUp}
         onDoubleClick={onDoubleClick}
@@ -338,7 +347,9 @@ export function AnnotateView(p: Props) {
         {editing && (
           <textarea
             ref={(el) => {
-              if (el && document.activeElement !== el) requestAnimationFrame(() => el.focus());
+              // Focus now, not on the next frame: keys typed right after the click must land
+              // here, not trigger tool shortcuts.
+              if (el && document.activeElement !== el) el.focus();
             }}
             aria-label="Annotation text"
             value={editing.text}

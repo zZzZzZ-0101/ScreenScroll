@@ -164,6 +164,7 @@ test('wide margins: a 700 px column in a 1920 px page is cropped and stays reada
   expect(crop.x0).toBeGreaterThan(580);
   expect(warnings.filter((w) => w.startsWith('Text will be small'))).toEqual([]);
   // With cropping off, the same page prints too small, and the Studio says so.
+  await studio.getByRole('button', { name: 'More options' }).click();
   await studio.getByRole('combobox', { name: 'Crop sides' }).selectOption('off');
   await expect
     .poll(() =>

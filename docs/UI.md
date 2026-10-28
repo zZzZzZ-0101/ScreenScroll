@@ -13,28 +13,27 @@ Design stance: **a quiet, fast tool**. No splash screens, no tips carousel, no u
 
 ## 1. Popup (toolbar button)
 
+Distilled (2026-10-28, see DECISIONS): the popup answers one question, "what do you want to capture?". Everything that changes how pages look lives in the Studio, where its effect is visible.
+
+![Popup](ui/popup.png)
+
 ```
 ┌───────────────────────────────────┐
-│  ScrollPress               ⚙  🕘 │
-├───────────────────────────────────┤
-│ [■ Capture full page    Alt+Shift+P]│  ← big primary button
-│                                   │
-│  ▭ Visible area         Alt+Shift+V│
-│  ⬚ Select area          Alt+Shift+S│
-│  ◎ Pick element         Alt+Shift+E│
-│  ☰ Clean (reader) capture          │
-│  ⧉ All tabs / URL list…            │
-│  ⏱ Delay: [Off ▾]                  │
-├───────────────────────────────────┤
-│ After capture: (•) Open Studio     │
-│   ( ) Save PDF directly  ( ) Copy  │
-│ Paper: A4 ▾  Width: Auto ▾         │
+│ ScrollPress                       │
+│ ┌───────────────────────────────┐ │
+│ │ ⛶  Capture full page   Alt+Shift+P │  ← the one primary action
+│ │    Then check the pages and save│ │    (subtitle changes when "skip" is on)
+│ └───────────────────────────────┘ │
+│ [ ▭ Visible ][ ⬚ Area ][ ◎ Element ] │  ← three alternatives, tooltips explain
+│ ⏱ Timer          [Off 3s 5s 10s]  │
+│ ☐ Skip the preview and save the PDF│
 └───────────────────────────────────┘
 ```
 
-- "After capture" lets power users skip the Studio: Save PDF directly applies the smart breaks automatically and downloads.
-- Shortcut defaults are suggestions. Chrome limits the number of suggested commands, so check for conflicts and let users change them at `chrome://extensions/shortcuts` (link in Options).
-- Context menu (right-click page): Capture full page / visible / element under cursor / selection.
+- On a page that can't be captured (browser pages, the store, file:// without access) the reason is shown first and the buttons are disabled: no click, then error.
+- "Pick scroll area" is in the right-click menu; "Element" already captures a whole panel when the element scrolls.
+- Paper and other page settings moved to the Studio. Shortcut defaults are suggestions; users change them at `chrome://extensions/shortcuts`.
+- Context menu (right-click page): Capture full page / visible / selection / element / scroll area.
 
 ## 2. In-page capture overlay
 
@@ -44,33 +43,30 @@ Design stance: **a quiet, fast tool**. No splash screens, no tips carousel, no u
 
 ## 3. Studio (main window, extension tab)
 
+Distilled (2026-10-28): three modes named by what you do, one primary button, and a side panel that shows only what matters for the current mode. Advanced settings are one click away under "More options". Overview of every screen: [ui/overview.png](ui/overview.png).
+
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
-│ ◀ History   "Page title"  example.com · 26 Oct 22:41    ⚠ 2 warnings   ⤓ Export│
-├──────────┬──────────────────────────────────────────────────┬──────────────┤
-│ Pages    │                                                  │ [Pages][Annotate][Export]
-│ ┌──┐ 1   │   Canvas                                         │              │
-│ │  │     │   View: (•) Pages  ( ) Long strip                │ Paper  A4 ▾  │
-│ └──┘     │                                                  │ Orient ▯ ▭   │
-│ ┌──┐ 2   │   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ (break)  ⠿   │ Margins 10mm │
-│ │  │     │                                                  │ Crop sides Auto▾│
-│ └──┘     │                                                  │ Break style  │
-│  …       │                                                  │ Fewer pages ━●━ Cleaner breaks│
-│          │   🔍 magnifier on hover over a break line          │ [Re-run smart breaks]│
-│          │                                                  │ Header/footer…│
-└──────────┴──────────────────────────────────────────────────┴──────────────┘
+│ Page title                     [Pages | Breaks | Mark up]   ⚠ 2 notes [⤓ Save PDF ▾]│
+│ example.com · 26 Oct · 7 pages                                             │
+├──────┬────────────────────────────────────────────────────┬────────────────┤
+│ 1 ▢  │                                                    │ Paper     A4 ▾ │
+│ 2 ▢  │      page previews, exactly as saved               │ Orientation ▯ ▭│
+│ 3 ▢  │                                                    │ Page breaks    │
+│      │                                                    │ Fewer ━●━ Cleaner│
+│      │                                                    │ 7 pages · 1.4 MB│
+│      │                                                    │ › More options │
+└──────┴────────────────────────────────────────────────────┴────────────────┘
 ```
 
-- **Long strip view**: the whole capture as a continuous column with the break lines drawn across it.
-  - Drag a break line up/down. It snaps to good candidates, and holding Alt disables snapping. A live magnifier (2–3×) shows the row being cut.
-  - Double-click empty space → add a break. Hover a break → ✕ removes it. Pinned breaks show a pin icon.
-  - Break colour by kind: section green, paragraph teal, line amber, forced red dashed.
-- **Pages view**: true page previews with margins, header/footer, exactly as exported.
-- **Left rail**: page thumbnails with numbers. Click to scroll there. Drag to reorder only in merge mode.
-- **Warnings chip** opens a list. Each warning links to its location: "Page 7: tall image split", "iframe content not readable", "Page kept loading — stopped at 200 screens".
-- **Annotate tab**: tools in a vertical toolbar, each with a single-key shortcut: Select V, Crop C, Arrow A, Rect R, Ellipse O, Line L, Pen P, Highlighter H, Text T, Step number N, Blur B, Pixelate X. Colour, stroke and font size controls. "Auto-redact" button: lists detected emails/phones/card numbers (from DOM text), with checkboxes, then blurs them. Undo/redo with Ctrl+Z / Ctrl+Y. Annotations live in document coordinates, so they survive re-pagination.
-- **Export tab**: format (PDF / PNG / JPEG / WebP / ZIP of pages / long image); PDF options (text layer ✓, links ✓, outline ✓, header/footer ✓, single long page); estimated file size; filename template preview; buttons Save (Ctrl+S), Copy image (Ctrl+Shift+C), Print (Ctrl+P), Add to merge queue.
-- Studio keyboard: ←/→ page, +/- zoom, 0 fit, B add break at cursor, Del remove the selected break.
+- **Pages** (default): true page previews. Panel: Paper, Orientation, the "Fewer pages ↔ Cleaner breaks" slider, page count and size. **More options** (closed by default, remembered): margins, crop sides, image quality, searchable text / links / bookmarks, header and footer, file name.
+- **Breaks**: the whole capture as one strip with the break lines. Drag to move (snaps; Alt = free), double-click to add, hover × to remove; a magnifier shows the cut. Break colour shows its kind; the tooltip says it in words ("Break between paragraphs"). Panel: three one-line instructions, the slider, **Reset breaks**.
+- **Mark up**: the capture at full width with one toolbar row: Select · Arrow, Rectangle, Ellipse, Line · Pen, Highlighter, Text, Step number · Blur, Pixelate · Crop; six colours plus a picker; one size control (S/M/L) for both lines and text; Undo, Redo, Delete. A sentence under the toolbar says what the current tool does. Blur/pixelate also remove the text and links underneath from the PDF. Single-key shortcuts (V C A R O L P H T N B X), Ctrl+Z / Ctrl+Y.
+- **Save PDF ▾**: the button saves the PDF (Ctrl+S); the arrow lists every other output: one long page PDF, PNG/JPEG/WebP pages (zip), one long image, Copy this page (Ctrl+Shift+C), Print (Ctrl+P).
+- **Notes** chip (warnings) opens the list; "Page N: …" entries jump to the page.
+- Left rail: page thumbnails (hidden in Mark up, which needs the width).
+- Studio keyboard: ←/→ page, Ctrl+S, Ctrl+Shift+C, Ctrl+P; in Mark up the tool keys, Delete, Esc.
+- If the browser refuses the file name (some systems can't store every title), the file is saved under a plain ASCII name and the toast says so.
 
 ## 4. History
 

@@ -1,9 +1,23 @@
-import { KIND_COLOURS, type PaginationDebug } from '@scrollpress/core';
+import { KIND_COLOURS, type BreakKind, type PaginationDebug } from '@scrollpress/core';
+import { Pin } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Analysis } from '@/lib/studio/analysis';
 import { composePage } from '@/lib/studio/compose';
 import type { FrameCache, LoadedSession } from '@/lib/studio/session';
 import type { Edits } from './App';
+
+/** Plain-language names for the break kinds (colours stay as the visual cue). */
+const KIND_TITLES: Record<BreakKind, string> = {
+  section: 'Break between sections',
+  paragraph: 'Break between paragraphs',
+  listItem: 'Break between list items',
+  tableRow: 'Break between table rows',
+  line: 'Break between lines of text',
+  pixel: 'Break in an empty gap',
+  manual: 'Break you placed',
+  forced: 'Break through a tall image (repeated at the top of the next page)',
+  end: 'End',
+};
 
 /** CSS zoom applied to the ≤ 320 px thumbnail strip. */
 const ZOOM = 1.5;
@@ -84,10 +98,6 @@ export function StripView(p: Props) {
         className="flex-1 overflow-y-auto bg-neutral-100 p-6 dark:bg-neutral-950"
         data-testid="strip-view"
       >
-        <p className="mb-3 text-neutral-500">
-          Drag a break to move it (Alt: no snapping). Double-click to add one. Hover a break to
-          remove it.
-        </p>
         <div
           ref={body}
           data-testid="strip-body"
@@ -135,6 +145,7 @@ export function StripView(p: Props) {
                 onPointerEnter={() => !drag && setFocusY(b.y)}
                 onPointerLeave={() => !drag && setFocusY(null)}
                 data-testid="break"
+                title={KIND_TITLES[b.kind]}
               >
                 <div
                   className="absolute left-0 right-0 top-[5px]"
@@ -142,13 +153,15 @@ export function StripView(p: Props) {
                     borderTop: `${b.kind === 'forced' ? '2px dashed' : '2px solid'} ${colour}`,
                   }}
                 />
-                <span
-                  className="absolute -left-24 top-0 w-20 text-right text-[11px]"
-                  style={{ color: colour }}
-                >
-                  {b.pinned ? '📌 ' : ''}
-                  {b.kind}
-                </span>
+                {b.pinned && (
+                  <Pin
+                    aria-label="Pinned break"
+                    role="img"
+                    size={13}
+                    className="absolute -left-5 -top-0.5"
+                    style={{ color: colour }}
+                  />
+                )}
                 <button
                   type="button"
                   aria-label={`Remove break ${i + 1}`}

@@ -10,6 +10,8 @@ Runtime dependencies are installed from npm and bundled at build time. All are p
 | tailwindcss | MIT | extension styles (build-time, emits CSS) |
 | pdf-lib (+ @pdf-lib/standard-fonts, @pdf-lib/upng) | MIT | PDF assembly in the Studio |
 | idb | ISC | IndexedDB wrapper |
+| fflate | MIT | zip of page images |
+| lucide-react | ISC | icons in the popup and Studio (tree-shaken; only the icons used are bundled) |
 
 Dev-only (tests, never bundled): @napi-rs/canvas (MIT), pdfjs-dist (Apache-2.0), vitest, Playwright.
 

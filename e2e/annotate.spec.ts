@@ -107,7 +107,7 @@ test('Annotate: draw, undo/redo, select/move/delete, crop, persist, flatten and 
   const main = await docRect(page, 'main');
   const s5 = await docRect(page, '#s5');
 
-  await studio.getByRole('tab', { name: 'Annotate' }).first().click();
+  await studio.getByRole('tab', { name: 'Mark up' }).click();
   await expect(studio.getByTestId('annotate-view')).toBeVisible();
   await expect(studio.getByRole('toolbar', { name: 'Tools' })).toBeVisible();
 
@@ -194,7 +194,7 @@ test('Annotate: draw, undo/redo, select/move/delete, crop, persist, flatten and 
   expect(await hook(studio, (h) => h.slices()[0]!.y0)).toBe(0);
 
   // Pages view previews show the annotations too.
-  await studio.getByRole('tab', { name: 'Pages' }).first().click();
+  await studio.getByRole('tab', { name: 'Pages' }).click();
   await studio.waitForTimeout(800);
   await studio.screenshot({ path: 'e2e-artifacts/studio-pages-annotated.png' });
 

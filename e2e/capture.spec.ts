@@ -249,7 +249,12 @@ test('a failed frame grab ends with an error warning and restores the page', asy
   expect(result.done.status).toBe('error');
   expect(result.done.warnings).toEqual(['Capture failed: Injected test failure']);
   expect(result.frames).toHaveLength(2);
-  expect(await pageState(page)).toEqual(before);
+  // The failure is shown on the page (never fail silently), then the notice removes itself
+  // and the page is exactly as before.
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.lastElementChild!.tagName))
+    .toBe('DIV');
+  await expect.poll(() => pageState(page), { timeout: 10_000 }).toEqual(before);
 });
 
 test('an infinite page stops at the cap with an explicit warning', async ({

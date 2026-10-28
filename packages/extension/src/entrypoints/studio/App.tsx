@@ -22,6 +22,7 @@ import {
   type Style,
   type Tool,
 } from '@scrollpress/core';
+import { FileText, PenLine, SeparatorHorizontal, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EMPTY_PROJECT, saveProject, type Project } from '@/lib/db';
 import { bandHeight, loadSettings, saveSettings, type Settings } from '@/lib/settings';
@@ -40,7 +41,9 @@ import {
 import { FrameCache, loadSession, type LoadedSession } from '@/lib/studio/session';
 import { composePage, encodePage } from '@/lib/studio/compose';
 import { AnnotateView } from './AnnotateView';
-import { Panel, type ExportFormat, type PanelTab } from './Panel';
+import { MarkupToolbar, type MarkupControls } from './MarkupToolbar';
+import { BreaksPanel, PagesPanel } from './Panel';
+import { SaveMenu, type ExportFormat } from './SaveMenu';
 import { PagesView } from './PagesView';
 import { StripView } from './StripView';
 import { Thumbnails } from './Thumbnails';
@@ -61,13 +64,14 @@ type PageResult =
       debug: PaginationDebug;
     };
 
-type View = 'pages' | 'strip' | 'annotate';
+type View = 'pages' | 'breaks' | 'markup';
 
-const VIEW_LABELS: Record<View, string> = {
-  pages: 'Pages',
-  strip: 'Long strip',
-  annotate: 'Annotate',
-};
+/** Three modes, named by what you do in them (UI §3, distilled). */
+const MODES: Array<[View, string, typeof FileText, string]> = [
+  ['pages', 'Pages', FileText, 'See the pages as they will be saved'],
+  ['breaks', 'Breaks', SeparatorHorizontal, 'Move, add or remove page breaks'],
+  ['markup', 'Mark up', PenLine, 'Draw, write, hide private details, crop'],
+];
 
 export interface Edits {
   pinned: number[];
@@ -85,7 +89,6 @@ export function App() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [edits, setEdits] = useState<Edits>({ pinned: [], removed: [] });
   const [view, setViewState] = useState<View>('pages');
-  const [panelTab, setPanelTab] = useState<PanelTab>('pages');
   const [history, setHistory] = useState<History<Project>>(() => emptyHistory(EMPTY_PROJECT));
   const [tool, setTool] = useState<Tool>('rect');
   const [style, setStyle] = useState<Style>(DEFAULT_STYLE);
@@ -97,6 +100,7 @@ export function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [showWarnings, setShowWarnings] = useState(false);
   const frames = useRef<FrameCache | null>(null);
+  const running = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -160,8 +164,11 @@ export function App() {
       rows: analysis.rows,
       crop,
       range: manual ? { y0: manual.y0, y1: manual.y1 } : undefined,
+      trimBlankEnd: true,
       options: { ...sliderWeights(settings.breakStyle), ...edits },
     });
+    if (!debug.slices.length)
+      return { ok: false, error: 'Nothing to show: the captured area is empty.' };
     return { ok: true, crop, layout, debug };
   }, [session, analysis, settings, edits, project.crop, annotations]);
 
@@ -224,18 +231,7 @@ export function App() {
     },
     [selected],
   );
-  const setView = useCallback((v: View) => {
-    setViewState(v);
-    if (v === 'annotate') setPanelTab('annotate');
-  }, []);
-  const changePanelTab = useCallback(
-    (t: PanelTab) => {
-      setPanelTab(t);
-      if (t === 'annotate') setViewState('annotate');
-      else if (view === 'annotate') setViewState('pages');
-    },
-    [view],
-  );
+  const setView = setViewState;
 
   const slices = result && result.ok ? result.debug.slices : [];
 
@@ -283,8 +279,12 @@ export function App() {
     };
   }, [session, result, settings, slices, annotations]);
 
-  const updateSettings = useCallback(async (patch: Partial<Settings>) => {
-    setSettings(await saveSettings(patch));
+  // The UI changes at once; writes are queued so they land in order (fast typing in a text
+  // field would otherwise lose characters, or an older write could finish last).
+  const saving = useRef<Promise<unknown>>(Promise.resolve());
+  const updateSettings = useCallback((patch: Partial<Settings>) => {
+    setSettings((prev) => prev && { ...prev, ...patch });
+    saving.current = saving.current.then(() => saveSettings(patch)).catch(() => undefined);
   }, []);
 
   const filename = useCallback(
@@ -308,6 +308,9 @@ export function App() {
       label: string,
       job: (progress: (d: number, t: number) => void) => Promise<string | void>,
     ) => {
+      // One job at a time: a double click or a held Ctrl+S must not save twice.
+      if (running.current) return;
+      running.current = true;
       setBusy(label);
       try {
         const done = await job((d, t) => setBusy(`${label} ${d}/${t}`));
@@ -315,6 +318,7 @@ export function App() {
       } catch (e) {
         setToast(e instanceof Error ? e.message : String(e));
       } finally {
+        running.current = false;
         setBusy(null);
       }
     },
@@ -339,8 +343,10 @@ export function App() {
               progress,
               annotations,
             );
-            await download(bytes, filename('pdf'), 'application/pdf');
-            return `Saved ${filename('pdf')}`;
+            return saved(
+              await download(bytes, filename('pdf'), 'application/pdf'),
+              filename('pdf'),
+            );
           }
           case 'pdf-long': {
             const bytes = await exportLongPagePdf(
@@ -353,8 +359,10 @@ export function App() {
               progress,
               annotations,
             );
-            await download(bytes, filename('pdf'), 'application/pdf');
-            return `Saved ${filename('pdf')}`;
+            return saved(
+              await download(bytes, filename('pdf'), 'application/pdf'),
+              filename('pdf'),
+            );
           }
           case 'png':
           case 'jpeg':
@@ -369,8 +377,10 @@ export function App() {
               progress,
               annotations,
             );
-            await download(bytes, filename('zip'), 'application/zip');
-            return `Saved ${filename('zip')}`;
+            return saved(
+              await download(bytes, filename('zip'), 'application/zip'),
+              filename('zip'),
+            );
           }
           case 'long-png': {
             const parts = await exportLongImage(session, f, crop, 'png', progress, annotations, {
@@ -378,8 +388,10 @@ export function App() {
               y1: slices.at(-1)!.y1,
             });
             if (parts.length === 1) {
-              await download(parts[0]!, filename('png'), 'image/png');
-              return `Saved ${filename('png')}`;
+              return saved(
+                await download(parts[0]!, filename('png'), 'image/png'),
+                filename('png'),
+              );
             }
             const base = filename('png').replace(/\.png$/, '');
             const zip = zipBlobs(
@@ -390,8 +402,8 @@ export function App() {
                 })),
               ),
             );
-            await download(zip, filename('zip'), 'application/zip');
-            return `The image was too tall for one file; saved ${parts.length} parts in ${filename('zip')}`;
+            const name = await download(zip, filename('zip'), 'application/zip');
+            return `The image was too tall for one file; ${saved(name, filename('zip')).replace('Saved', 'saved')} (${parts.length} parts)`;
           }
         }
       });
@@ -469,12 +481,12 @@ export function App() {
       } else if (mod && key === 'z') {
         e.preventDefault();
         doUndo();
-      } else if (view === 'annotate' && !mod && !e.altKey && TOOL_KEYS[key]) {
+      } else if (view === 'markup' && !mod && !e.altKey && TOOL_KEYS[key]) {
         setTool(TOOL_KEYS[key]);
-      } else if (view === 'annotate' && (e.key === 'Delete' || e.key === 'Backspace')) {
+      } else if (view === 'markup' && (e.key === 'Delete' || e.key === 'Backspace')) {
         e.preventDefault();
         deleteSelected();
-      } else if (view === 'annotate' && e.key === 'Escape') {
+      } else if (view === 'markup' && e.key === 'Escape') {
         setSelected(null);
       } else if (mod && e.key.toLowerCase() === 's') {
         e.preventDefault();
@@ -485,9 +497,9 @@ export function App() {
       } else if (mod && e.key.toLowerCase() === 'p') {
         e.preventDefault();
         void doPrint();
-      } else if (view !== 'annotate' && e.key === 'ArrowRight')
+      } else if (view !== 'markup' && e.key === 'ArrowRight')
         setPage((p) => Math.min(slices.length - 1, p + 1));
-      else if (view !== 'annotate' && e.key === 'ArrowLeft') setPage((p) => Math.max(0, p - 1));
+      else if (view !== 'markup' && e.key === 'ArrowLeft') setPage((p) => Math.max(0, p - 1));
     };
     addEventListener('keydown', onKey);
     return () => removeEventListener('keydown', onKey);
@@ -560,100 +572,129 @@ export function App() {
     minute: '2-digit',
   });
 
+  const markup: MarkupControls = {
+    tool,
+    onTool: setTool,
+    style,
+    onStyle: changeStyle,
+    canUndo: history.past.length > 0,
+    canRedo: history.future.length > 0,
+    onUndo: doUndo,
+    onRedo: doRedo,
+    selected: !!selected && annotations.some((a) => a.id === selected),
+    onDelete: deleteSelected,
+    count: annotations.length,
+    onClear: () => {
+      setAnnotations([]);
+      setSelected(null);
+    },
+    cropped: !!project.crop,
+    onResetCrop: () => setCrop(null),
+  };
+
   return (
-    <div className="flex h-screen flex-col text-[13px] text-neutral-900 dark:text-neutral-100">
+    <div className="flex h-screen flex-col bg-neutral-50 text-[13px] text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
       <header className="flex items-center gap-3 border-b border-neutral-200 bg-white px-3 py-2 dark:border-neutral-800 dark:bg-neutral-900">
         <div className="min-w-0 flex-1">
           <h1 className="truncate font-semibold" title={session.session.title}>
             {session.session.title || 'Untitled capture'}
           </h1>
-          <p className="truncate text-neutral-500">
-            {domain} · {captured} · {result.ok ? `${slices.length} pages` : ''}
+          <p className="truncate text-[12px] text-neutral-500">
+            {[
+              domain,
+              captured,
+              result.ok ? `${slices.length} ${slices.length === 1 ? 'page' : 'pages'}` : '',
+            ]
+              .filter(Boolean)
+              .join(' · ')}
           </p>
         </div>
-        {warnings.length > 0 && (
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setShowWarnings((v) => !v)}
-              aria-expanded={showWarnings}
-              className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-amber-900 focus-visible:outline-2 focus-visible:outline-accent dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100"
-            >
-              ⚠ {warnings.length} {warnings.length === 1 ? 'warning' : 'warnings'}
-            </button>
-            {showWarnings && (
-              <ul
-                data-testid="warnings"
-                className="absolute right-0 z-20 mt-1 w-96 rounded-md border border-neutral-200 bg-white p-2 shadow-sm dark:border-neutral-700 dark:bg-neutral-900"
-              >
-                {warnings.map((w, i) => {
-                  const m = /^Page (\d+):/.exec(w);
-                  return (
-                    <li key={i} className="py-1">
-                      {m ? (
-                        <button
-                          type="button"
-                          className="text-left underline-offset-2 hover:underline"
-                          onClick={() => {
-                            setPage(Number(m[1]) - 1);
-                            setShowWarnings(false);
-                          }}
-                        >
-                          {w}
-                        </button>
-                      ) : (
-                        w
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-        )}
-        <button
-          type="button"
-          onClick={() => void doExport('pdf')}
-          disabled={!!busy || !result.ok}
-          title="Save PDF (Ctrl+S)"
-          className="rounded-md bg-accent px-3 py-1.5 font-medium text-white hover:bg-accent-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-60"
+        <div
+          role="tablist"
+          aria-label="Mode"
+          className="flex rounded-lg bg-neutral-100 p-0.5 dark:bg-neutral-800"
         >
-          Save PDF
-        </button>
+          {MODES.map(([v, label, Icon, hint]) => (
+            <button
+              key={v}
+              role="tab"
+              type="button"
+              aria-selected={view === v}
+              title={hint}
+              disabled={!result.ok}
+              onClick={() => setView(v)}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1 focus-visible:outline-2 focus-visible:outline-accent ${view === v ? 'bg-white font-medium shadow-sm dark:bg-neutral-700' : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-white'}`}
+            >
+              <Icon aria-hidden size={15} />
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-1 items-center justify-end gap-2">
+          {warnings.length > 0 && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowWarnings((v) => !v)}
+                aria-expanded={showWarnings}
+                className="flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-amber-900 focus-visible:outline-2 focus-visible:outline-accent dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100"
+              >
+                <TriangleAlert aria-hidden size={14} />
+                {warnings.length} {warnings.length === 1 ? 'note' : 'notes'}
+              </button>
+              {showWarnings && (
+                <ul
+                  data-testid="warnings"
+                  className="absolute right-0 z-20 mt-1 w-96 max-w-[80vw] rounded-md border border-neutral-200 bg-white p-2 shadow-sm dark:border-neutral-700 dark:bg-neutral-900"
+                >
+                  {warnings.map((w, i) => {
+                    const m = /^Page (\d+):/.exec(w);
+                    return (
+                      <li key={i} className="py-1">
+                        {m ? (
+                          <button
+                            type="button"
+                            className="text-left underline-offset-2 hover:underline"
+                            onClick={() => {
+                              setPage(Number(m[1]) - 1);
+                              setView('pages');
+                              setShowWarnings(false);
+                            }}
+                          >
+                            {w}
+                          </button>
+                        ) : (
+                          w
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          )}
+          <SaveMenu
+            disabled={!!busy || !result.ok}
+            onExport={doExport}
+            onCopy={doCopy}
+            onPrint={doPrint}
+          />
+        </div>
       </header>
 
       <div className="flex min-h-0 flex-1">
         {result.ok ? (
           <>
-            <Thumbnails
-              analysis={analysis}
-              slices={slices}
-              page={page}
-              onSelect={(i) => {
-                setPage(i);
-                if (view === 'annotate') setView('pages');
-              }}
-              annotations={annotations}
-            />
+            {view !== 'markup' && (
+              <Thumbnails
+                analysis={analysis}
+                slices={slices}
+                page={page}
+                onSelect={setPage}
+                annotations={annotations}
+              />
+            )}
             <main className="flex min-w-0 flex-1 flex-col">
-              <div
-                role="tablist"
-                aria-label="View"
-                className="flex gap-1 border-b border-neutral-200 bg-white px-3 py-1.5 dark:border-neutral-800 dark:bg-neutral-900"
-              >
-                {(['pages', 'strip', 'annotate'] as const).map((v) => (
-                  <button
-                    key={v}
-                    role="tab"
-                    type="button"
-                    aria-selected={view === v}
-                    onClick={() => setView(v)}
-                    className={`rounded-md px-2 py-1 focus-visible:outline-2 focus-visible:outline-accent ${view === v ? 'bg-neutral-200 dark:bg-neutral-800' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
-                  >
-                    {VIEW_LABELS[v]}
-                  </button>
-                ))}
-              </div>
               {view === 'pages' ? (
                 <PagesView
                   session={session}
@@ -665,22 +706,25 @@ export function App() {
                   onSelect={setPage}
                   annotations={annotations}
                 />
-              ) : view === 'annotate' ? (
-                <AnnotateView
-                  session={session}
-                  frames={frames.current!}
-                  annotations={annotations}
-                  crop={project.crop}
-                  tool={tool}
-                  style={style}
-                  selected={selected}
-                  onSelect={setSelected}
-                  onAnnotations={setAnnotations}
-                  onCrop={(c) => {
-                    setCrop(c);
-                    setTool('select');
-                  }}
-                />
+              ) : view === 'markup' ? (
+                <>
+                  <MarkupToolbar {...markup} />
+                  <AnnotateView
+                    session={session}
+                    frames={frames.current!}
+                    annotations={annotations}
+                    crop={project.crop}
+                    tool={tool}
+                    style={style}
+                    selected={selected}
+                    onSelect={setSelected}
+                    onAnnotations={setAnnotations}
+                    onCrop={(c) => {
+                      setCrop(c);
+                      setTool('select');
+                    }}
+                  />
+                </>
               ) : (
                 <StripView
                   session={session}
@@ -700,41 +744,25 @@ export function App() {
             <p role="alert">{result.error}</p>
           </main>
         )}
-        <Panel
-          tab={panelTab}
-          onTab={changePanelTab}
-          annotate={{
-            tool,
-            onTool: setTool,
-            style,
-            onStyle: changeStyle,
-            canUndo: history.past.length > 0,
-            canRedo: history.future.length > 0,
-            onUndo: doUndo,
-            onRedo: doRedo,
-            selected: !!selected && annotations.some((a) => a.id === selected),
-            onDelete: deleteSelected,
-            count: annotations.length,
-            onClear: () => {
-              setAnnotations([]);
-              setSelected(null);
-            },
-            cropped: !!project.crop,
-            onResetCrop: () => setCrop(null),
-          }}
-          settings={settings}
-          onSettings={updateSettings}
-          edits={edits}
-          onRerun={() => setEdits({ pinned: [], removed: [] })}
-          filename={filename}
-          busy={busy}
-          onExport={doExport}
-          onCopy={doCopy}
-          onPrint={doPrint}
-          onDebug={doDebug}
-          cropped={result.ok && result.crop.cropped}
-          estimate={estimate}
-        />
+        {view === 'pages' || !result.ok ? (
+          <PagesPanel
+            settings={settings}
+            onSettings={updateSettings}
+            filename={filename('pdf')}
+            cropped={result.ok && result.crop.cropped}
+            pages={slices.length}
+            estimate={estimate}
+          />
+        ) : view === 'breaks' ? (
+          <BreaksPanel
+            edits={edits}
+            onReset={() => setEdits({ pinned: [], removed: [] })}
+            breakStyle={settings.breakStyle}
+            onBreakStyle={(v) => void updateSettings({ breakStyle: v })}
+            onDebug={doDebug}
+            busy={!!busy}
+          />
+        ) : null}
       </div>
 
       {(busy || toast) && (
@@ -749,6 +777,13 @@ export function App() {
       )}
     </div>
   );
+}
+
+/** Toast text for a finished save, explaining a changed file name. */
+function saved(name: string, wanted: string): string {
+  return name === wanted
+    ? `Saved ${name}`
+    : `Saved as ${name}. The browser did not accept the page title as a file name.`;
 }
 
 function Centered({ children }: { children: React.ReactNode }) {

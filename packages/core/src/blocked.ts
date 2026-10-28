@@ -30,6 +30,12 @@ export function blockedReason(url: string | undefined, fileAccess = false): Bloc
   }
   const scheme = u.protocol.slice(0, -1);
 
+  if (scheme === 'javascript' || scheme === 'data') {
+    return {
+      reason: 'browser-page',
+      message: 'This kind of address can’t be captured. Open a regular web page.',
+    };
+  }
   if (['chrome', 'edge', 'about', 'view-source', 'devtools', 'chrome-search'].includes(scheme)) {
     return { reason: 'browser-page', message: 'Browser pages can’t be captured.' };
   }

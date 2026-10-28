@@ -26,32 +26,37 @@ test('export formats: PNG pages zip, one long PDF page, long PNG', async ({
   const pages = await studio.evaluate(
     () => (window as unknown as { __spStudio: { slices(): unknown[] } }).__spStudio.slices().length,
   );
-  await studio.getByRole('tab', { name: 'Export' }).click();
-  const format = studio.getByRole('combobox', { name: 'Format' });
-
-  async function save(): Promise<Buffer> {
+  // Every other output is one click away in the Save menu.
+  async function save(item: string): Promise<Buffer> {
     const dl = studio.waitForEvent('download', { timeout: 60_000 });
-    await studio.getByRole('button', { name: 'Save', exact: true }).click();
+    await studio.getByRole('button', { name: 'More ways to save' }).click();
+    await studio.getByRole('menuitem', { name: item }).click();
     return readFileSync(await (await dl).path());
   }
 
-  await format.selectOption('png');
-  const zip = unzipSync(new Uint8Array(await save()));
+  const zip = unzipSync(new Uint8Array(await save('Pages as PNG images (zip)')));
   const names = Object.keys(zip).sort();
   expect(names).toHaveLength(pages);
   expect(names[0]).toMatch(/^Article fixture_.*-1\.png$/);
   for (const n of names) expect(Buffer.from(zip[n]!.subarray(1, 4)).toString()).toBe('PNG');
 
-  await format.selectOption('pdf-long');
-  const long = await PDFDocument.load(new Uint8Array(await save()));
+  const long = await PDFDocument.load(new Uint8Array(await save('PDF as one long page')));
   expect(long.getPageCount()).toBe(1);
   expect(long.getPage(0).getHeight()).toBeGreaterThan(842 * 2);
 
-  await format.selectOption('long-png');
-  const png = await save();
+  const png = await save('One long image (PNG)');
   expect(png.subarray(1, 4).toString()).toBe('PNG');
   // Height from the IHDR chunk: the whole capture, in one part for this page.
   const height = png.readUInt32BE(20);
+  // It matches the pages: the whole capture minus blank space after the last content.
   const docHeight = await page.evaluate(() => document.scrollingElement!.scrollHeight);
-  expect(height).toBe(docHeight);
+  const lastY = await studio.evaluate(
+    () =>
+      (window as unknown as { __spStudio: { slices(): Array<{ y1: number }> } }).__spStudio
+        .slices()
+        .at(-1)!.y1,
+  );
+  expect(height).toBe(Math.round(lastY));
+  expect(docHeight - height).toBeGreaterThanOrEqual(0);
+  expect(docHeight - height).toBeLessThan(80);
 });

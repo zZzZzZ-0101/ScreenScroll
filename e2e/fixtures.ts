@@ -6,6 +6,12 @@ export const EXTENSION_PATH = fileURLToPath(
 );
 export const FIXTURES = 'http://localhost:5177';
 
+interface ExtOptions {
+  /** Run the browser in a UTF-8 locale, like a desktop. Off reproduces systems whose file
+   * names can't hold every title (Chrome then refuses non-ASCII download names). */
+  utf8: boolean;
+}
+
 interface ExtFixtures {
   context: BrowserContext;
   serviceWorker: Worker;
@@ -13,14 +19,15 @@ interface ExtFixtures {
 }
 
 // Extensions need a persistent context; the bundled Chromium supports them headless.
-export const test = base.extend<ExtFixtures>({
-  // eslint-disable-next-line no-empty-pattern -- Playwright fixture signature
-  context: async ({}, use) => {
+export const test = base.extend<ExtFixtures & ExtOptions>({
+  utf8: [true, { option: true }],
+  context: async ({ utf8 }, use) => {
     const context = await chromium.launchPersistentContext('', {
       channel: 'chromium',
       headless: !process.env.HEADED,
       viewport: { width: 1280, height: 800 },
       args: [`--disable-extensions-except=${EXTENSION_PATH}`, `--load-extension=${EXTENSION_PATH}`],
+      env: { ...process.env, LANG: utf8 ? 'C.UTF-8' : 'C', LC_ALL: utf8 ? 'C.UTF-8' : 'C' },
     });
     await use(context);
     await context.close();

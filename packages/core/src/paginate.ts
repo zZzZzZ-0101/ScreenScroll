@@ -57,6 +57,11 @@ export interface PaginateInput {
   crop?: { x0: Px; x1: Px };
   /** Vertical crop (the Studio's Crop tool): paginate only [y0, y1). Defaults to [0, H). */
   range?: { y0: Px; y1: Px };
+  /**
+   * Drop blank space after the last ink (needs `rows`), so a short page doesn't end with an
+   * empty sheet. Ignored with `range`: a drawn crop is kept exactly.
+   */
+  trimBlankEnd?: boolean;
   options?: Partial<PaginateOptions>;
 }
 
@@ -122,11 +127,18 @@ export function paginateDebug(input: PaginateInput): PaginationDebug {
   const H = input.height;
   const T = input.T;
   const crop = input.crop ?? { x0: 0, x1: input.width };
-  if (!(T > 0) || !(H > 0)) throw new Error('paginate: height and T must be positive');
+  if (!(T > 0)) throw new Error('paginate: T must be positive');
+  // An empty capture (or a crop with no height) has no pages; the Studio says so.
+  if (!(H > 0)) return { slices: [], candidates: [], forbidden: [], opaque: [] };
 
   const overlap = Math.min(0.25 * T, opts.overlap === 'auto' ? autoOverlap(input) : opts.overlap);
   const start = Math.max(0, Math.min(H, input.range?.y0 ?? 0));
-  const end = Math.max(start, Math.min(H, input.range?.y1 ?? H));
+  let end = Math.max(start, Math.min(H, input.range?.y1 ?? H));
+  if (input.trimBlankEnd && input.rows && !input.range) {
+    const last = lastContentY(input.rows, input.hints ?? null);
+    // A capture with no ink at all keeps its blank page rather than becoming nothing.
+    if (last !== null) end = Math.min(end, Math.max(start + 1, last + TRIM_PAD));
+  }
   const pinned = [...new Set(opts.pinned.filter((y) => y > start && y < end))].sort(
     (a, b) => a - b,
   );
@@ -193,6 +205,23 @@ export function paginateDebug(input: PaginateInput): PaginationDebug {
   };
 }
 
+/** Space kept after the last ink when trimming, CSS px. */
+const TRIM_PAD = 16;
+
+/** Bottom of the last row with ink, or of the last DOM text/image, whichever is lower. */
+function lastContentY(rows: RowProfile, hints: DomHints | null): Px | null {
+  let y: Px | null = null;
+  for (let r = rows.height - 1; r >= 0; r--) {
+    if (rows.safe[r] === 0) {
+      y = (r + 1) / rows.rowsPerPx;
+      break;
+    }
+  }
+  for (const f of hints?.forbidden ?? []) y = Math.max(y ?? 0, f.y1);
+  for (const o of hints?.opaque ?? []) y = Math.max(y ?? 0, o.y + o.height);
+  return y;
+}
+
 /** Forbidden runs and opaque regions; images taller than half a page count as opaque. */
 function regions(hints: DomHints | null, T: Px): { forbidden: Interval[]; opaque: Interval[] } {
   const bigImage = (f: { kind: string; y0: number; y1: number }) =>
@@ -241,7 +270,8 @@ function buildCandidates(input: PaginateInput, T: Px): Cand[] {
 
   // Images taller than half a page are probably pictures of text: let pixels decide.
   const { forbidden, opaque } = regions(hints ?? null, T);
-  const inside = (y: Px, list: readonly Interval[]) => list.some((iv) => y > iv.y0 && y < iv.y1);
+  // `forbidden` and `opaque` come merged and sorted, so lookups can bisect.
+  const inside = (y: Px, list: readonly Interval[]) => insideSorted(y, list);
   const opaqueAt = (y: Px) => opaque.find((iv) => y > iv.y0 && y < iv.y1);
 
   const pixel = rows ? pixelCandidates(rows, findGaps(rows)) : [];
@@ -249,6 +279,7 @@ function buildCandidates(input: PaginateInput, T: Px): Cand[] {
   if (hints) {
     // DOM candidates: positions in the gaps between forbidden runs.
     const boundaries = [...hints.blockEnds].sort((a, b) => a.y - b.y);
+    const boundaryYs = boundaries.map((b) => b.y);
     const blockLevel = boundaries.filter((b) => b.kind !== 'line').map((b) => b.y);
     const lineCenters = (hints.forbidden ?? [])
       .filter((f) => f.kind === 'line')
@@ -262,8 +293,9 @@ function buildCandidates(input: PaginateInput, T: Px): Cand[] {
       if (b <= a) continue;
       let bad = EMPTY_SPACE_BADNESS;
       let kind: BreakKind = 'line';
-      for (const bd of boundaries) {
-        if (bd.y < a - 2 || bd.y > b + 2) continue;
+      for (let k = lowerBound(boundaryYs, a - 2); k < boundaries.length; k++) {
+        const bd = boundaries[k]!;
+        if (bd.y > b + 2) break;
         const v = BOUNDARY_BADNESS[bd.kind];
         if (v < bad || (v === bad && kind === 'line')) {
           bad = v;
@@ -285,7 +317,7 @@ function buildCandidates(input: PaginateInput, T: Px): Cand[] {
             unconfirmed = true;
           }
         }
-        if (inside(y, hints.keepWithNext)) b2 += KEEP_WITH_NEXT;
+        if (hints.keepWithNext.some((iv) => y > iv.y0 && y < iv.y1)) b2 += KEEP_WITH_NEXT;
         if (kind === 'line' && widowOrOrphan(y, blockLevel, lineCenters)) b2 += WIDOW_ORPHAN;
         add({ y, b: b2, kind, unconfirmed });
       }
@@ -326,24 +358,52 @@ function buildCandidates(input: PaginateInput, T: Px): Cand[] {
   return dedupe(out);
 }
 
-/** A line-level cut leaving fewer than 2 lines of a block on either side. */
+/** A line-level cut leaving fewer than 2 lines of a block on either side. Inputs are sorted. */
 function widowOrOrphan(y: Px, blockLevel: readonly Px[], lineCenters: readonly Px[]): boolean {
-  let above = 0;
-  let below = Infinity;
-  for (const b of blockLevel) {
-    if (b <= y) above = b;
-    else {
-      below = b;
-      break;
-    }
-  }
-  let before = 0;
-  let after = 0;
-  for (const c of lineCenters) {
-    if (c > above && c < y) before++;
-    else if (c > y && c < below) after++;
-  }
+  // Binary searches: a long page has tens of thousands of lines and candidates.
+  const k = upperBound(blockLevel, y);
+  const above = k > 0 ? blockLevel[k - 1]! : 0;
+  const below = k < blockLevel.length ? blockLevel[k]! : Infinity;
+  const before = lowerBound(lineCenters, y) - upperBound(lineCenters, above);
+  const after = lowerBound(lineCenters, below) - upperBound(lineCenters, y);
   return before < 2 || after < 2;
+}
+
+/** First index with arr[i] >= x. */
+function lowerBound(arr: readonly number[], x: number): number {
+  let lo = 0;
+  let hi = arr.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (arr[mid]! < x) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/** First index with arr[i] > x. */
+function upperBound(arr: readonly number[], x: number): number {
+  let lo = 0;
+  let hi = arr.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (arr[mid]! <= x) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/** Strictly inside one of the sorted, non-overlapping intervals. */
+function insideSorted(y: Px, list: readonly Interval[]): boolean {
+  let lo = 0;
+  let hi = list.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (list[mid]!.y0 < y) lo = mid + 1;
+    else hi = mid;
+  }
+  const iv = list[lo - 1];
+  return !!iv && y > iv.y0 && y < iv.y1;
 }
 
 function dedupe(cands: Cand[]): Cand[] {
