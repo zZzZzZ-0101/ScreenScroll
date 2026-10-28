@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>中文分页测试 · CJK fixture</title>
+<style>
+  body { margin: 0 auto; max-width: 720px; font: 17px/1.7 "WenQuanYi Zen Hei", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; padding: 24px; color: #222; }
+  h2 { margin-top: 40px; }
+  p { margin: 0 0 14px; }
+</style>
+</head>
+<body data-expect='{"text": ["汉字分页测试", "日本語のテキスト", "Searchable English sentence"]}'>
+<h1 id="top">中文分页测试</h1>
+<nav>
+  <p>目录：<a href="#s2">第二节</a> · <a href="#s3">第三节</a> · <a href="#s3-1">小节</a> · <a href="https://example.org/zh">外部链接</a></p>
+</nav>
+<p>汉字分页测试：这一段中文用于检查生成的 PDF 是否可以搜索和复制文字。</p>
+<p>Searchable English sentence in the middle of Chinese text.</p>
+<p>日本語のテキストも含まれています。ページの区切りで文字が切れないことを確認します。</p>
+<script>
+  // Enough paragraphs to fill several pages; deterministic text.
+  const zh = '分页截图文字页面段落表格图片导出阅读边距标题列表代码搜索复制链接书签';
+  const make = (n, seed) => Array.from({ length: n }, (_, i) => zh[(i * 7 + seed * 3) % zh.length]).join('');
+  for (let i = 0; i < 10; i++) document.write(`<p>第一节第${i + 1}段：${make(70, i)}。</p>`);
+</script>
+<h2 id="s2">第二节 Section two</h2>
+<script>for (let i = 0; i < 12; i++) document.write(`<p>第二节第${i + 1}段：${make(80, i + 20)}。</p>`);</script>
+<h2 id="s3">第三节 Section three</h2>
+<h3 id="s3-1">小节 3.1</h3>
+<script>for (let i = 0; i < 12; i++) document.write(`<p>第三节第${i + 1}段：${make(80, i + 40)}。</p>`);</script>
+<p id="end">结束 End of document.</p>
+</body>
+</html>

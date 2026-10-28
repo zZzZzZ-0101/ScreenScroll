@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Modal fixture</title>
+<style>
+  body { margin: 0 auto; max-width: 700px; font: 16px/1.6 system-ui, sans-serif; padding: 16px; }
+  .backdrop { position: fixed; inset: 0; background: rgb(0 0 0 / 0.4); }
+  .modal { position: fixed; top: 50%; left: 50%; width: 420px; height: 260px; margin: -130px 0 0 -210px;
+    background: #fff; border-radius: 8px; padding: 20px; box-sizing: border-box; }
+</style></head>
+<body data-expect='{"warning": "pop-up or overlay"}'>
+<h1>Modal fixture</h1>
+<p>Page text under a newsletter pop-up. Paragraph one.</p>
+<p style="height: 1600px">Long filler block so the page scrolls.</p>
+<p>End.</p>
+<div class="backdrop"></div>
+<div class="modal" role="dialog" aria-label="Subscribe">Subscribe to our newsletter</div>
+</body>
+</html>

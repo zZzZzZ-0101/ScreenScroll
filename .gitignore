@@ -1,0 +1,14 @@
+node_modules/
+.output/
+dist/
+.wxt/
+coverage/
+playwright-report/
+test-results/
+*.log
+.DS_Store
+Thumbs.db
+fixtures/private/
+packages/fixtures/private/
+e2e-artifacts/
+packages/fixtures/out/

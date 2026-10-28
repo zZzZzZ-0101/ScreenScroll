@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Inner scroll fixture</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font: 15px/1.5 system-ui, sans-serif; }
+  .top { position: absolute; top: 0; left: 0; right: 0; height: 56px; background: #34495e; color: #fff;
+    display: flex; align-items: center; padding: 0 16px; }
+  .side { position: absolute; top: 56px; bottom: 0; left: 0; width: 220px; background: #ecf0f1; padding: 16px;
+    box-sizing: border-box; }
+  .main { position: absolute; top: 56px; bottom: 0; left: 220px; right: 0; overflow-y: auto; padding: 0 24px; }
+</style></head>
+<body data-expect='{"innerOnly": true}'>
+<div class="top">APP TOP BAR</div>
+<nav class="side">SIDEBAR<br>Inbox<br>Sent</nav>
+<section class="main" id="panel">
+<h1>Inner scroll fixture</h1>
+<p>Message 1: Delta page alpha text footer page scroll footer line delta section header fixed text gamma header gamma line scroll gamma capture page text line sticky gamma panel section fixed capture.</p>
+<p>Message 2: Sticky sticky alpha gamma fixed line gamma alpha delta text page text gamma text gamma beta scroll capture fixed section sticky beta page footer section footer beta section fixed sticky.</p>
+<p>Message 3: Text sticky capture alpha line delta header delta page panel beta line text footer delta alpha sticky header sticky footer gamma text capture scroll capture header beta sticky capture footer.</p>
+<p>Message 4: Panel section beta scroll beta panel gamma beta panel header panel footer section line text beta panel footer alpha text header section section footer delta capture fixed beta footer line.</p>
+<p>Message 5: Alpha text text line section delta page fixed gamma capture panel header page sticky section capture scroll line header sticky panel beta capture delta delta header section beta scroll capture.</p>
+<p>Message 6: Capture fixed footer section panel scroll footer text header beta beta gamma fixed beta gamma panel panel section gamma gamma delta header alpha text footer fixed section beta beta delta.</p>
+<p>Message 7: Alpha gamma beta header header line beta scroll page text header page sticky gamma panel delta line gamma text section header footer scroll page header fixed alpha section header fixed.</p>
+<p>Message 8: Section scroll line line delta panel fixed sticky alpha capture scroll delta scroll capture panel footer beta sticky header delta sticky scroll line capture text beta fixed section gamma capture.</p>
+<p>Message 9: Line sticky page capture sticky delta scroll fixed sticky sticky gamma fixed section delta page sticky section section text page delta fixed alpha panel panel delta line beta gamma delta.</p>
+<p>Message 10: Footer fixed header section scroll scroll beta page text scroll capture footer page beta footer section gamma delta page fixed sticky sticky sticky beta sticky page capture gamma page section.</p>
+<p>Message 11: Page text scroll fixed gamma beta page text alpha capture panel page scroll delta line fixed scroll text gamma gamma fixed sticky line beta footer alpha header gamma line page.</p>
+<p>Message 12: Panel gamma capture line panel text section page header fixed fixed panel line line alpha gamma delta header footer alpha gamma sticky header beta fixed header gamma scroll sticky gamma.</p>
+<p>Message 13: Capture delta fixed page scroll alpha panel line alpha section panel line gamma header footer fixed beta footer scroll header page fixed page section fixed line header line capture footer.</p>
+<p>Message 14: Page footer text page text section header text header beta fixed beta page sticky scroll sticky sticky header header page alpha scroll page alpha capture section fixed page header section.</p>
+<p>Message 15: Header fixed scroll line line capture page fixed page beta delta beta text footer delta sticky text header alpha footer section beta sticky page delta sticky capture panel header delta.</p>
+<p>Message 16: Page beta page section text panel scroll text sticky header fixed line gamma delta panel section header fixed beta page beta beta sticky line gamma beta page sticky fixed footer.</p>
+<p>Message 17: Alpha capture delta section capture alpha scroll gamma beta footer page footer text sticky header gamma scroll section fixed delta alpha capture alpha footer page scroll capture scroll footer gamma.</p>
+<p>Message 18: Page line line footer page delta delta capture text page section page alpha delta scroll text text scroll page footer alpha gamma panel page section sticky delta sticky panel delta.</p>
+<p>Message 19: Delta page alpha panel beta capture section text scroll page capture text header section page gamma scroll section line footer header beta gamma delta text capture beta section section delta.</p>
+<p>Message 20: Capture gamma section delta sticky panel capture line capture scroll line panel sticky page beta fixed sticky delta capture page page gamma panel delta capture gamma panel panel beta footer.</p>
+<p>Message 21: Beta footer page sticky beta sticky page alpha alpha fixed fixed capture sticky capture header line fixed beta gamma capture line delta delta gamma capture section sticky alpha gamma line.</p>
+<p>Message 22: Page gamma page alpha fixed footer page line fixed header alpha page page footer alpha gamma beta sticky line panel page scroll scroll panel footer line alpha sticky capture sticky.</p>
+<p>Message 23: Text text panel panel sticky section sticky gamma fixed line line gamma beta fixed header delta panel footer sticky line capture line section line section delta capture footer sticky delta.</p>
+<p>Message 24: Text fixed fixed footer capture alpha delta fixed section alpha fixed footer text page gamma scroll gamma fixed alpha fixed footer line header sticky footer section capture text line alpha.</p>
+<p>Message 25: Beta beta page gamma fixed panel sticky fixed line section delta fixed gamma alpha capture header alpha section scroll text fixed section sticky line capture line fixed footer beta panel.</p>
+<p>Message 26: Text sticky gamma header capture delta gamma footer section panel text fixed line footer alpha scroll header footer scroll section delta section alpha gamma footer line line fixed gamma gamma.</p>
+<p>Message 27: Section footer sticky section alpha alpha delta header page sticky gamma beta header sticky capture footer header page beta alpha panel section line section fixed delta capture capture beta sticky.</p>
+<p>Message 28: Text delta header footer beta page delta scroll capture scroll page fixed delta alpha gamma header fixed panel alpha section scroll fixed section page text page fixed page page gamma.</p>
+<p>Message 29: Footer text header page text delta header header line alpha delta header scroll delta gamma line sticky line gamma footer delta header delta fixed footer line capture footer footer footer.</p>
+<p>Message 30: Panel panel gamma text footer delta sticky header header beta alpha section capture scroll capture fixed alpha sticky gamma section capture sticky header fixed page panel section delta capture beta.</p>
+<p>Message 31: Scroll alpha gamma section page line scroll gamma line delta section text page beta alpha scroll text header footer beta text page header scroll capture line page sticky panel alpha.</p>
+<p>Message 32: Capture header fixed delta footer alpha delta gamma sticky fixed gamma alpha delta capture header header footer sticky section gamma sticky section sticky capture scroll section footer panel header gamma.</p>
+<p>Message 33: Page delta text capture sticky section footer header gamma header sticky text scroll delta beta capture scroll scroll fixed delta gamma alpha text alpha section panel footer fixed alpha line.</p>
+<p>Message 34: Line section capture panel panel beta page text delta sticky section scroll panel beta line text scroll delta line panel capture beta line header beta header footer alpha footer header.</p>
+<p>Message 35: Page scroll capture footer section capture delta gamma page header delta footer line gamma scroll panel section delta sticky beta section scroll page header line gamma footer fixed capture section.</p>
+<p>Message 36: Text sticky capture section page alpha page header beta scroll page beta page header capture alpha header footer text fixed capture footer section scroll page capture beta alpha alpha scroll.</p>
+<p>Message 37: Scroll page scroll fixed capture capture text panel page gamma panel footer header fixed scroll page scroll alpha fixed section delta line beta panel alpha fixed sticky header fixed header.</p>
+<p>Message 38: Beta capture beta text footer page footer header page header alpha line gamma panel sticky capture capture footer scroll footer alpha gamma fixed delta capture delta capture panel delta delta.</p>
+<p>Message 39: Sticky alpha page sticky header alpha delta sticky footer text panel line sticky beta fixed text sticky page text section line scroll capture scroll beta page alpha scroll line section.</p>
+<p>Message 40: Delta section header panel gamma delta text gamma gamma scroll fixed section footer line fixed capture scroll header capture scroll section panel sticky footer delta panel delta scroll scroll section.</p>
+<p>Message 41: Gamma page sticky section gamma page beta beta text beta page section capture beta text footer sticky line panel footer alpha gamma fixed text header text footer alpha scroll capture.</p>
+<p>Message 42: Header sticky section line section header capture section panel capture scroll section panel scroll gamma scroll text line delta text fixed text gamma fixed header panel section gamma fixed section.</p>
+<p>Message 43: Text capture line gamma gamma delta header fixed panel capture delta panel gamma alpha footer fixed section line page gamma capture section capture header capture panel panel header header page.</p>
+<p>Message 44: Panel gamma alpha gamma section beta text alpha delta capture scroll section sticky line beta header scroll page alpha text sticky text footer gamma scroll beta capture footer line text.</p>
+<p>Message 45: Text panel capture delta header section fixed header line gamma fixed header panel section delta sticky capture line text gamma footer gamma text beta sticky page page capture page footer.</p>
+<p>Message 46: Header beta gamma scroll page alpha capture fixed fixed gamma capture panel header capture scroll delta beta footer delta scroll sticky capture sticky alpha gamma beta alpha page line capture.</p>
+<p>Message 47: Panel beta alpha gamma scroll footer gamma line delta text header footer alpha header scroll line sticky header sticky alpha delta sticky fixed panel text fixed capture capture delta capture.</p>
+<p>Message 48: Text delta line footer fixed text section alpha gamma text alpha gamma sticky beta panel beta capture scroll alpha line sticky capture beta sticky footer alpha page delta beta scroll.</p>
+<p>Message 49: Alpha line sticky capture line delta line page section footer header capture line sticky text panel line line line beta page footer header text section header capture page page fixed.</p>
+<p>Message 50: Alpha alpha fixed gamma delta scroll header section scroll sticky panel capture line scroll panel panel footer scroll capture capture beta page panel scroll fixed beta capture scroll delta section.</p>
+<p>Message 51: Gamma delta alpha section gamma sticky capture panel delta gamma scroll beta gamma gamma scroll scroll gamma header alpha alpha header sticky alpha header beta scroll sticky text line delta.</p>
+<p>Message 52: Alpha page gamma scroll beta line fixed beta fixed scroll header footer delta footer header line section page gamma text capture beta panel header page scroll page gamma line scroll.</p>
+<p>Message 53: Sticky alpha gamma section panel panel header page panel alpha delta fixed fixed scroll page footer text section panel header sticky fixed page beta beta text section section section footer.</p>
+<p>Message 54: Header panel footer header text header sticky delta header fixed sticky fixed alpha sticky page alpha sticky panel footer footer capture fixed alpha fixed alpha page scroll gamma sticky footer.</p>
+<p>Message 55: Scroll capture section fixed scroll delta section footer sticky header alpha text gamma line page footer beta delta gamma text page panel line gamma text beta line beta sticky capture.</p>
+<p>Message 56: Capture beta gamma text alpha section scroll capture sticky line scroll footer delta sticky alpha text header delta footer capture panel delta beta beta sticky footer line line footer page.</p>
+<p>Message 57: Delta beta line footer text alpha line text sticky page beta line gamma line scroll gamma beta scroll alpha page scroll text delta text capture beta header gamma fixed header.</p>
+<p>Message 58: Alpha text panel fixed footer page footer beta beta panel delta sticky panel scroll page section delta sticky panel header header alpha text scroll section scroll text panel capture panel.</p>
+<p>Message 59: Fixed delta section delta gamma line gamma gamma section fixed footer alpha gamma capture beta capture scroll fixed fixed scroll capture delta alpha beta section delta section section scroll text.</p>
+<p>Message 60: Capture line header delta gamma beta panel capture header scroll text fixed header capture footer gamma sticky beta beta scroll sticky section header delta footer fixed beta capture beta text.</p>
+<p id="end">END OF PANEL</p>
+</section>
+</body></html>

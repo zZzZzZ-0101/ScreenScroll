@@ -1,0 +1,8 @@
+node_modules
+.output
+.wxt
+dist
+pnpm-lock.yaml
+docs
+reference
+packages/fixtures/pages

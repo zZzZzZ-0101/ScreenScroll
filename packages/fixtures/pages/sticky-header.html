@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Sticky header fixture</title>
+<style>
+  body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: #222; }
+  .fixed-top { position: fixed; top: 0; left: 0; right: 0; height: 48px; background: #c0392b; color: #fff;
+    display: flex; align-items: center; padding: 0 16px; z-index: 10; }
+  .sticky { position: sticky; top: 48px; background: #f1c40f; padding: 8px 16px; z-index: 5; }
+  .cookie { position: fixed; bottom: 0; left: 0; right: 0; height: 56px; background: #2c3e50; color: #fff;
+    display: flex; align-items: center; padding: 0 16px; }
+  main { padding: 64px 24px 24px; max-width: 760px; margin: 0 auto; }
+</style></head>
+<body data-expect='{"headerOnce": true, "cookieAbsent": true}'>
+<div class="fixed-top" id="fixed-top">FIXED TOP BAR</div>
+<main>
+<h1>Sticky header fixture</h1>
+<div class="sticky" id="sticky">STICKY SUBHEADER</div>
+<h2>Part 1</h2>
+<p>Footer text sticky text page line footer footer sticky text fixed delta gamma line sticky footer panel fixed line gamma beta footer capture gamma beta sticky line page section panel alpha fixed header footer panel section fixed panel gamma fixed.</p>
+<p>Alpha text sticky beta alpha alpha delta page delta fixed alpha line footer scroll footer fixed text delta sticky delta panel capture footer alpha panel beta footer panel capture header sticky page text beta section capture scroll line delta sticky capture alpha beta fixed line beta header beta text capture header beta alpha text panel alpha delta delta page page.</p>
+<h2>Part 2</h2>
+<p>Alpha footer header section header header beta fixed panel delta line panel capture scroll beta capture scroll alpha header line page beta gamma delta section beta alpha alpha footer line footer gamma panel sticky delta footer sticky delta section line.</p>
+<p>Gamma header panel header beta header header delta alpha capture text line fixed capture page alpha delta gamma header text fixed panel fixed beta alpha gamma delta footer capture alpha line fixed scroll text capture header beta beta beta delta fixed panel delta alpha fixed scroll scroll fixed footer gamma fixed footer text fixed gamma text header gamma panel gamma.</p>
+<h2>Part 3</h2>
+<p>Capture page delta text fixed delta section delta gamma section panel sticky delta panel header page footer fixed beta header alpha beta beta alpha sticky capture delta section section header capture header text page fixed footer capture sticky gamma page.</p>
+<p>Section beta gamma delta footer sticky panel text fixed fixed beta capture delta page page delta section alpha beta capture header footer delta alpha alpha gamma capture scroll sticky fixed gamma beta scroll gamma page footer scroll panel section section sticky fixed gamma fixed alpha page alpha footer page scroll section capture alpha alpha fixed panel beta footer beta section.</p>
+<h2>Part 4</h2>
+<p>Capture scroll gamma beta beta footer sticky scroll section alpha page page section section section gamma line page scroll scroll beta panel footer page beta text text header line alpha text footer fixed alpha fixed panel header header fixed alpha.</p>
+<p>Fixed beta beta beta panel beta capture page header section scroll header page section section fixed footer footer footer text sticky beta sticky line sticky alpha capture fixed beta footer alpha delta section beta footer line fixed panel page footer capture page alpha scroll capture gamma panel fixed delta sticky gamma line page scroll panel page footer footer page delta.</p>
+<h2>Part 5</h2>
+<p>Scroll header panel capture delta panel header line line line page delta page delta header delta fixed page scroll delta gamma gamma footer scroll text page text alpha section beta capture text gamma beta footer footer capture page delta text.</p>
+<p>Header header panel sticky footer panel scroll section text text fixed footer scroll beta text alpha capture text fixed alpha panel section capture fixed scroll capture panel line fixed alpha panel gamma header footer delta alpha line text capture delta line gamma line alpha panel beta footer beta panel sticky panel panel line scroll beta panel delta delta text footer.</p>
+<h2>Part 6</h2>
+<p>Capture gamma section alpha line footer sticky section alpha gamma delta capture line scroll sticky section sticky sticky fixed line gamma header text line section page delta beta header page page section header gamma footer footer delta panel page page.</p>
+<p>Alpha header sticky fixed panel page sticky line text scroll footer scroll panel delta beta section text text line panel page section beta delta delta page header beta capture sticky line page scroll capture page section text alpha scroll sticky beta alpha footer scroll sticky header line capture footer page alpha delta line text beta header line alpha gamma sticky.</p>
+<h2>Part 7</h2>
+<p>Scroll panel line page gamma footer gamma sticky page section sticky text panel section footer page footer fixed section beta line delta footer sticky sticky capture text section sticky panel gamma sticky sticky text page sticky capture capture panel header.</p>
+<p>Text text page fixed delta capture text gamma sticky sticky capture fixed footer delta header sticky beta sticky alpha fixed header alpha sticky alpha sticky page header sticky line fixed beta footer beta section gamma beta page sticky footer header page line page header capture delta footer footer gamma scroll header page text page page page footer sticky scroll beta.</p>
+<h2>Part 8</h2>
+<p>Delta header fixed alpha page capture gamma section line alpha alpha delta gamma delta alpha panel capture scroll section scroll delta fixed footer beta footer section fixed beta text sticky fixed capture section delta section sticky page header alpha header.</p>
+<p>Panel header text sticky fixed gamma sticky delta text panel sticky panel delta sticky delta text sticky fixed fixed text gamma delta page section panel line scroll page gamma scroll fixed scroll page page delta delta line delta page beta gamma page delta gamma section beta capture header beta header text header sticky line section gamma delta header panel panel.</p>
+<h2>Part 9</h2>
+<p>Line alpha beta delta fixed panel scroll page text scroll beta section sticky panel line scroll sticky panel text delta line beta footer beta alpha alpha line sticky fixed sticky page fixed footer gamma delta gamma beta delta gamma text.</p>
+<p>Gamma capture page panel beta fixed alpha gamma panel footer beta line beta scroll header footer header sticky scroll header delta fixed scroll alpha panel section alpha text delta gamma header footer scroll section scroll header page delta fixed gamma beta sticky line alpha scroll page beta line text section page text page panel header fixed fixed delta sticky fixed.</p>
+<h2>Part 10</h2>
+<p>Scroll line line capture capture page beta section section line gamma text page header gamma page scroll page sticky section scroll line header line gamma header delta section gamma beta line scroll capture footer beta alpha page scroll panel page.</p>
+<p>Fixed alpha delta capture panel capture scroll delta panel header fixed gamma sticky beta header sticky footer panel delta section beta line header fixed alpha beta fixed beta section delta capture footer header sticky alpha line delta panel header alpha beta capture capture capture page scroll sticky sticky sticky header sticky fixed text beta panel footer line panel beta sticky.</p>
+<h2>Part 11</h2>
+<p>Fixed panel line alpha header page gamma header footer gamma text footer sticky fixed fixed alpha header footer header capture sticky header fixed capture scroll sticky capture footer panel capture sticky page capture panel section section capture alpha alpha line.</p>
+<p>Delta fixed alpha panel gamma header line panel header alpha page scroll section header alpha fixed section scroll beta line page delta header section footer capture line delta alpha sticky beta page line section page footer gamma text delta fixed section beta alpha fixed header footer beta delta text alpha scroll sticky gamma beta scroll footer gamma panel header footer.</p>
+<h2>Part 12</h2>
+<p>Fixed capture panel fixed panel header scroll line section sticky text gamma capture section gamma delta footer beta sticky page capture line sticky fixed text scroll capture capture fixed panel section fixed section fixed delta panel capture line delta delta.</p>
+<p>Delta sticky panel page delta page panel alpha panel alpha alpha capture capture header alpha fixed alpha beta delta sticky capture beta line beta page panel gamma sticky delta panel scroll footer footer scroll delta scroll scroll footer section gamma text text beta line beta footer line text fixed text line line delta footer header section capture header line gamma.</p>
+<h2>Part 13</h2>
+<p>Scroll gamma panel text fixed scroll capture sticky line section text page gamma header panel scroll fixed beta footer page scroll beta sticky beta header fixed fixed footer text panel footer capture text line alpha beta capture delta page panel.</p>
+<p>Fixed beta section capture footer section line section scroll capture page gamma delta scroll panel section scroll scroll page beta scroll section footer fixed fixed page page panel page capture footer sticky line capture footer scroll delta header page section page sticky delta beta scroll text scroll alpha scroll panel header fixed header line delta section fixed scroll line header.</p>
+<h2>Part 14</h2>
+<p>Sticky gamma text fixed fixed gamma gamma beta line footer page text capture line alpha delta sticky alpha sticky gamma fixed capture alpha panel text line header beta fixed sticky capture line sticky beta scroll beta capture section beta page.</p>
+<p>Scroll beta alpha panel panel gamma beta section text panel header delta section delta footer line page sticky scroll line footer header scroll scroll line scroll panel gamma footer footer sticky line section beta section fixed page alpha header line text panel scroll text alpha line header text beta page footer sticky panel alpha sticky scroll section alpha line beta.</p>
+<h2>Part 15</h2>
+<p>Header page header page gamma delta section gamma panel header panel gamma scroll delta header header sticky capture capture page alpha footer capture section beta capture panel gamma line page gamma page alpha line footer alpha fixed footer page line.</p>
+<p>Alpha scroll beta delta gamma scroll delta fixed delta fixed section footer fixed sticky delta footer gamma page capture header gamma page line page capture panel sticky text sticky footer text capture footer page header page scroll panel sticky line beta footer text delta header alpha delta gamma line line header sticky line sticky line capture line alpha panel page.</p>
+</main>
+<div class="cookie" id="cookie">COOKIE BAR — we use cookies</div>
+</body></html>

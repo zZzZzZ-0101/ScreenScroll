@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Lazy images fixture</title>
+<style> body { margin: 0 auto; max-width: 640px; font: 16px/1.5 system-ui, sans-serif; padding: 16px; }
+img { display: block; margin: 24px 0; background: #fff; } </style></head>
+<body data-expect='{"imagesLoaded": true}'>
+<h1>Lazy images fixture</h1>
+<p>Paragraph 0. Lorem text to push the next image below the fold, line one.<br>Line two of filler text.<br>Line three.</p>
+<img class="t" loading="lazy" src="img/tile.svg?delay=2500&n=0" width="600" height="300" alt="lazy 0">
+<p>Paragraph 1. Lorem text to push the next image below the fold, line one.<br>Line two of filler text.<br>Line three.</p>
+<img class="t js-lazy" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-src="img/tile.svg?delay=2500&n=1" width="600" height="300" alt="data-src 1">
+<p>Paragraph 2. Lorem text to push the next image below the fold, line one.<br>Line two of filler text.<br>Line three.</p>
+<img class="t" loading="lazy" src="img/tile.svg?delay=2500&n=2" width="600" height="300" alt="lazy 2">
+<p>Paragraph 3. Lorem text to push the next image below the fold, line one.<br>Line two of filler text.<br>Line three.</p>
+<img class="t js-lazy" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-src="img/tile.svg?delay=2500&n=3" width="600" height="300" alt="data-src 3">
+<p>Paragraph 4. Lorem text to push the next image below the fold, line one.<br>Line two of filler text.<br>Line three.</p>
+<img class="t" loading="lazy" src="img/tile.svg?delay=2500&n=4" width="600" height="300" alt="lazy 4">
+<p>Paragraph 5. Lorem text to push the next image below the fold, line one.<br>Line two of filler text.<br>Line three.</p>
+<img class="t js-lazy" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-src="img/tile.svg?delay=2500&n=5" width="600" height="300" alt="data-src 5">
+<p>Paragraph 6. Lorem text to push the next image below the fold, line one.<br>Line two of filler text.<br>Line three.</p>
+<img class="t" loading="lazy" src="img/tile.svg?delay=2500&n=6" width="600" height="300" alt="lazy 6">
+<p>Paragraph 7. Lorem text to push the next image below the fold, line one.<br>Line two of filler text.<br>Line three.</p>
+<img class="t js-lazy" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-src="img/tile.svg?delay=2500&n=7" width="600" height="300" alt="data-src 7">
+<p>Paragraph 8. Lorem text to push the next image below the fold, line one.<br>Line two of filler text.<br>Line three.</p>
+<img class="t" loading="lazy" src="img/tile.svg?delay=2500&n=8" width="600" height="300" alt="lazy 8">
+<p>Paragraph 9. Lorem text to push the next image below the fold, line one.<br>Line two of filler text.<br>Line three.</p>
+<img class="t js-lazy" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-src="img/tile.svg?delay=2500&n=9" width="600" height="300" alt="data-src 9">
+<p>Paragraph 10. Lorem text to push the next image below the fold, line one.<br>Line two of filler text.<br>Line three.</p>
+<img class="t" loading="lazy" src="img/tile.svg?delay=2500&n=10" width="600" height="300" alt="lazy 10">
+<p>Paragraph 11. Lorem text to push the next image below the fold, line one.<br>Line two of filler text.<br>Line three.</p>
+<img class="t js-lazy" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-src="img/tile.svg?delay=2500&n=11" width="600" height="300" alt="data-src 11">
+<p>End.</p>
+<script>
+  // Minimal scroll-triggered loader, like the ones real sites ship.
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) if (e.isIntersecting) { e.target.src = e.target.dataset.src; io.unobserve(e.target); }
+  });
+  document.querySelectorAll('.js-lazy').forEach((img) => io.observe(img));
+</script>
+</body></html>
