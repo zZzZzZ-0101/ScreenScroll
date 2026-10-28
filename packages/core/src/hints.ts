@@ -32,6 +32,15 @@ export interface TextRun {
 export interface LinkRect {
   href: string;
   rect: Rect;
+  /** For links to an anchor on the captured page: the target's y, for an in-PDF jump. */
+  targetY?: Px;
+}
+
+/** h1–h3 for PDF bookmarks (PDF_OUTPUT §5). */
+export interface Heading {
+  level: 1 | 2 | 3;
+  text: string;
+  y: Px;
 }
 
 /** All coordinates are CSS px relative to the captured region's top-left (document coords). */
@@ -43,6 +52,7 @@ export interface DomHints {
   tables: TableInfo[];
   textRuns: TextRun[];
   links: LinkRect[];
+  headings: Heading[];
 }
 
 export function emptyHints(): DomHints {
@@ -54,6 +64,7 @@ export function emptyHints(): DomHints {
     tables: [],
     textRuns: [],
     links: [],
+    headings: [],
   };
 }
 
@@ -74,6 +85,8 @@ export function mergeHints(parts: readonly DomHints[]): DomHints {
     out.tables.push(...p.tables);
     out.textRuns.push(...p.textRuns);
     out.links.push(...p.links);
+    // Frames stored before headings existed have none.
+    out.headings.push(...(p.headings ?? []));
   }
   return {
     forbidden: uniq(out.forbidden, (f) => `${f.kind}:${r(f.y0)}:${r(f.y1)}`).sort(
@@ -91,6 +104,7 @@ export function mergeHints(parts: readonly DomHints[]): DomHints {
       byRect(a.rect, b.rect),
     ),
     links: uniq(out.links, (l) => `${rk(l.rect)}:${l.href}`).sort((a, b) => byRect(a.rect, b.rect)),
+    headings: uniq(out.headings, (h) => `${h.level}:${r(h.y)}:${h.text}`).sort((a, b) => a.y - b.y),
   };
 }
 

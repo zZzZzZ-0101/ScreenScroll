@@ -97,10 +97,11 @@ class Builder {
     });
   }
 
-  heading(text: string) {
+  heading(text: string, level: 1 | 2 | 3 = 2) {
     this.y += 18;
     this.hints.blockEnds.push({ y: this.y - 8, kind: 'section' });
     const top = this.y;
+    this.hints.headings.push({ level, text, y: top });
     this.line(text, 40, this.y + 26, 26);
     this.y += 40;
     this.hints.keepWithNext.push({ y0: top, y1: this.y + 26 });
@@ -259,11 +260,33 @@ class Builder {
 
 function articleBody(b: Builder, cjk = false) {
   for (let s = 0; s < 6; s++) {
-    b.heading(`Section ${s + 1} ${b.words(2)}`);
+    b.heading(`Section ${s + 1} ${b.words(2)}`, s % 3 === 0 ? 1 : 2);
+    if (s % 3 === 2) b.heading(`Subsection ${s + 1}.1`, 3);
     for (let p = 0; p < 3; p++)
       b.paragraph(3 + Math.floor(b.rand() * 6), { cjk: cjk && p % 2 === 1 });
     if (s % 2 === 1) b.list(4);
   }
+  // Links: an external one at each heading, and in-page anchors from the first body line to
+  // every later heading (as a table of contents would).
+  const firstRun = b.hints.textRuns[1]!;
+  b.hints.headings.forEach((h, i) => {
+    b.hints.links.push({
+      href: `https://example.org/section-${i}`,
+      rect: { x: 40, y: h.y, width: 120, height: 30 },
+    });
+    if (i > 0) {
+      b.hints.links.push({
+        href: `#h${i}`,
+        rect: {
+          x: firstRun.rect.x + 30 * (i - 1),
+          y: firstRun.rect.y,
+          width: 28,
+          height: firstRun.rect.height,
+        },
+        targetY: h.y,
+      });
+    }
+  });
 }
 
 /** All fixtures listed in TESTING §1. */

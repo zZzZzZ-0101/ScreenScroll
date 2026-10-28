@@ -1,7 +1,17 @@
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage } from 'pdf-lib';
-import type { TextRun } from '../hints.js';
+import { PDFDocument, StandardFonts, rgb, type PDFImage, type PDFPage } from 'pdf-lib';
+import type { Heading, LinkRect, TextRun } from '../hints.js';
 import type { PageLayout } from '../layout.js';
 import type { PageSlice } from '../paginate.js';
+import {
+  bandTokens,
+  DEFAULT_FOOTER,
+  drawBand,
+  EMPTY_BAND,
+  type BandTemplate,
+  type TextRenderer,
+} from './bands.js';
+import { addLinks } from './links.js';
+import { addOutline } from './outline.js';
 import { drawTextRuns, placeRuns, TextLayerFont } from './textlayer.js';
 
 /** One composed page image (never taller than one page plus overlap, PDF_OUTPUT §1). */
@@ -18,29 +28,44 @@ export interface PdfMeta {
 }
 
 export interface PdfOptions {
-  /** Default footer: "{domain} · {date}" left, "{page}/{pages}" right (PDF_OUTPUT §4). */
-  footer: boolean;
+  /** Header and footer templates (PDF_OUTPUT §4); empty slots draw nothing. Space for them
+   * must be reserved in the layout (headerPt / footerPt). */
+  header: BandTemplate;
+  footer: BandTemplate;
   /** Small "continued" note above pages that start with a forced-cut overlap. */
   continuedMarker: boolean;
   /** Invisible, searchable text from the DOM (PDF_OUTPUT §2). */
   textLayer: boolean;
+  /** Clickable links (PDF_OUTPUT §3). */
+  links: boolean;
+  /** Bookmarks from h1–h3 (PDF_OUTPUT §5). */
+  outline: boolean;
+  /** Renders header/footer text Helvetica can't (non-Latin titles). */
+  renderText?: TextRenderer;
 }
 
 export const DEFAULT_PDF_OPTIONS: PdfOptions = {
-  footer: true,
+  header: EMPTY_BAND,
+  footer: DEFAULT_FOOTER,
   continuedMarker: true,
   textLayer: true,
+  links: true,
+  outline: true,
 };
 
 /** What the DOM told us about the page, in document CSS px. */
 export interface PdfContent {
   textRuns?: readonly TextRun[];
+  links?: readonly LinkRect[];
+  headings?: readonly Heading[];
 }
 
 /** Acrobat's maximum page side is 200 in = 14,400 pt; stay below it (PDF_OUTPUT §6). */
 export const MAX_PAGE_PT = 14_000;
 
 const GREY = rgb(0.45, 0.45, 0.45);
+/** Gap between the content box and header/footer text, pt. */
+const BAND_GAP = 4;
 
 /**
  * PDF_OUTPUT §1: one PDF page per slice, the image top-aligned in the printable box at
@@ -60,17 +85,22 @@ export async function buildPdf(
   setMeta(doc, meta);
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const runs = opts.textLayer ? (content.textRuns ?? []) : [];
-  const textFont = runs.length ? new TextLayerFont(doc) : null;
+  let textFont: TextLayerFont | null = null;
+  const getTextFont = () => (textFont ??= new TextLayerFont(doc));
+  const added: PDFPage[] = [];
+  const slices: PageSlice[] = [];
   let n = 0;
   for await (const p of pages) {
     n++;
     const page = doc.addPage([layout.paperW, layout.paperH]);
+    added.push(page);
+    slices.push(p.slice);
     const img = await embed(doc, p);
     const w = (p.slice.x1 - p.slice.x0) * layout.s;
     const h = (p.slice.y1 - p.slice.y0) * layout.s;
     const top = layout.paperH - layout.box.y; // pdf-lib's origin is bottom-left
     page.drawImage(img, { x: layout.box.x, y: top - h, width: w, height: h });
-    if (textFont) drawTextRuns(page, textFont, placeRuns(runs, p.slice, layout));
+    if (runs.length) drawTextRuns(page, getTextFont(), placeRuns(runs, p.slice, layout));
     if (opts.continuedMarker && p.slice.overlapTop > 0) {
       const text = 'continued from previous page';
       const size = 6.5;
@@ -82,9 +112,36 @@ export async function buildPdf(
         color: GREY,
       });
     }
-    if (opts.footer) drawFooter(page, font, layout, meta, n, pageCount);
+    const tokens = bandTokens(meta, n, pageCount);
+    const footerY = layout.paperH - (layout.box.y + layout.box.h) - BAND_GAP - 8;
+    const headerY = layout.paperH - layout.box.y + BAND_GAP;
+    await drawBand(
+      doc,
+      page,
+      font,
+      getTextFont,
+      layout,
+      opts.header,
+      tokens,
+      headerY,
+      opts.renderText,
+    );
+    await drawBand(
+      doc,
+      page,
+      font,
+      getTextFont,
+      layout,
+      opts.footer,
+      tokens,
+      footerY,
+      opts.renderText,
+    );
   }
-  textFont?.finish();
+  if (opts.links && content.links?.length) addLinks(doc, added, slices, layout, content.links);
+  if (opts.outline && content.headings?.length)
+    addOutline(doc, added, slices, layout, content.headings);
+  (textFont as TextLayerFont | null)?.finish();
   return doc.save();
 }
 
@@ -133,41 +190,4 @@ function setMeta(doc: PDFDocument, meta: PdfMeta): void {
 
 async function embed(doc: PDFDocument, p: PageImage): Promise<PDFImage> {
   return p.format === 'png' ? doc.embedPng(p.bytes) : doc.embedJpg(p.bytes);
-}
-
-function drawFooter(
-  page: ReturnType<PDFDocument['addPage']>,
-  font: PDFFont,
-  layout: PageLayout,
-  meta: PdfMeta,
-  n: number,
-  total: number,
-): void {
-  const size = 8;
-  const y = layout.paperH - (layout.box.y + layout.box.h) - size - 4;
-  let domain = '';
-  try {
-    domain = new URL(meta.url).hostname.replace(/^www\./, '');
-  } catch {
-    // Imported files have no URL; the footer then shows only the date.
-  }
-  const date = meta.capturedAt.toISOString().slice(0, 10);
-  const left = winAnsiSafe(domain ? `${domain} · ${date}` : date);
-  const right = `${n}/${total}`;
-  page.drawText(left, { x: layout.box.x, y, size, font, color: GREY });
-  page.drawText(right, {
-    x: layout.box.x + layout.box.w - font.widthOfTextAtSize(right, size),
-    y,
-    size,
-    font,
-    color: GREY,
-  });
-}
-
-/** Helvetica only covers WinAnsi; anything else becomes "?" (Unicode footers come in M3). */
-function winAnsiSafe(s: string): string {
-  return Array.from(s, (ch) => {
-    const c = ch.codePointAt(0)!;
-    return (c >= 0x20 && c <= 0x7e) || (c >= 0xa0 && c <= 0xff) ? ch : '?';
-  }).join('');
 }

@@ -97,6 +97,8 @@ async function run(msg: StartCapture): Promise<void> {
       offset: 0,
       seen: new Set<string>(),
       skipTextRuns: false,
+      order: new WeakMap<Node, number>(),
+      nextOrder: 0,
     };
     for (let index = 0; ; index++) {
       if (cancelled) {

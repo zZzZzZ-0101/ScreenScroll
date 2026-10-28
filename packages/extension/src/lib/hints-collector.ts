@@ -17,6 +17,9 @@ export interface CollectContext {
   seen: Set<string>;
   /** Skip text runs (the most expensive part) once a frame blows the time budget. */
   skipTextRuns: boolean;
+  /** DOM order of text nodes, numbered on first sight; stable across frames. */
+  order: WeakMap<Node, number>;
+  nextOrder: number;
 }
 
 const ATOMIC = 'img, svg, video, picture, input, textarea, select, button, math, tr';
@@ -79,6 +82,8 @@ export function collectHints(ctx: CollectContext): DomHints {
   const walker = document.createTreeWalker(ctx.root, NodeFilter.SHOW_TEXT);
   const range = document.createRange();
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    // Every node gets its number on the first walk (in DOM order), even outside the band.
+    if (!ctx.order.has(n)) ctx.order.set(n, ctx.nextOrder++);
     const text = n.nodeValue ?? '';
     if (!text.trim()) continue;
     const parent = n.parentElement;
@@ -108,7 +113,7 @@ export function collectHints(ctx: CollectContext): DomHints {
         out.forbidden.push({ y0: d.y - 1, y1: d.y + d.height + 1, kind: 'line' });
       }
       if (!ctx.skipTextRuns && runText.trim() && fresh(`t:${k(d.x)},${k(d.y)}:${runText}`)) {
-        out.textRuns.push({ text: runText, rect: d, fontSizePx });
+        out.textRuns.push({ text: runText, rect: d, fontSizePx, order: ctx.order.get(n)! });
       }
     });
   }
@@ -139,7 +144,14 @@ export function collectHints(ctx: CollectContext): DomHints {
     const kind = BLOCK_KIND[el.tagName]!;
     const add = (b: Boundary) => fresh(`b:${b.kind}:${k(b.y)}`) && out.blockEnds.push(b);
     add({ y: docY(r.bottom), kind });
-    if (/^H[1-3]$/.test(el.tagName)) add({ y: docY(r.top), kind: 'section' });
+    if (/^H[1-3]$/.test(el.tagName)) {
+      add({ y: docY(r.top), kind: 'section' });
+      const text = (el.textContent ?? '').replace(/\s+/g, ' ').trim();
+      const level = Number(el.tagName[1]) as 1 | 2 | 3;
+      if (text && fresh(`h:${level}:${k(docY(r.top))}:${text}`)) {
+        out.headings.push({ level, text: text.slice(0, 200), y: docY(r.top) });
+      }
+    }
     if (/^H[1-6]$/.test(el.tagName)) {
       // Keep the heading with the first line of whatever follows it.
       const next = el.nextElementSibling;
@@ -168,10 +180,24 @@ export function collectHints(ctx: CollectContext): DomHints {
 
   for (const a of ctx.root.querySelectorAll<HTMLAnchorElement>('a[href]')) {
     if (!a.href || a.href.startsWith('javascript:')) continue;
+    let targetY: number | undefined;
+    const samePage =
+      a.origin === location.origin &&
+      a.pathname === location.pathname &&
+      a.search === location.search;
+    if (samePage && a.hash.length > 1) {
+      const id = decodeURIComponent(a.hash.slice(1));
+      const target = document.getElementById(id) ?? document.getElementsByName(id)[0];
+      if (target && ctx.root.contains(target)) targetY = docY(target.getBoundingClientRect().top);
+    }
     for (const r of a.getClientRects()) {
       if (!inBand(r)) continue;
       const d = docRect(r);
-      if (fresh(`a:${k(d.x)},${k(d.y)}:${a.href}`)) out.links.push({ href: a.href, rect: d });
+      if (fresh(`a:${k(d.x)},${k(d.y)}:${a.href}`)) {
+        out.links.push(
+          targetY === undefined ? { href: a.href, rect: d } : { href: a.href, rect: d, targetY },
+        );
+      }
     }
   }
   return out;
