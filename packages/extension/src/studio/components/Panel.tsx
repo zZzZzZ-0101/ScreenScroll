@@ -277,7 +277,7 @@ const BANDS: Array<['header' | 'footer', string]> = [
   ['footer', 'Footer'],
 ];
 
-/** PDF options (UI §3): text layer, links, bookmarks, header and footer. */
+/** PDF options (UI §3): text layer, links, bookmarks. */
 function PdfOptions({ settings, onSettings }: Pick<PagesProps, 'settings' | 'onSettings'>) {
   const pdf = settings.pdf;
   const toggles: Array<['textLayer' | 'links' | 'outline', string]> = [
@@ -298,9 +298,68 @@ function PdfOptions({ settings, onSettings }: Pick<PagesProps, 'settings' | 'onS
           {label}
         </label>
       ))}
+      <p className="pt-1 text-[12px] text-neutral-500">
+        Page labels and watermark: Mark up → Page.
+      </p>
+    </div>
+  );
+}
+
+const LABEL_PRESETS: Array<[string, { left: string; center: string; right: string }]> = [
+  ['Page number', { left: '', center: '', right: '{page}/{pages}' }],
+  ['Date + page', { left: '{date}', center: '', right: '{page}/{pages}' }],
+  ['Site + date + page', { left: '{domain} · {date}', center: '', right: '{page}/{pages}' }],
+  ['Title + page', { left: '{title}', center: '', right: '{page}/{pages}' }],
+  ['None', { left: '', center: '', right: '' }],
+];
+const WATERMARKS = ['CONFIDENTIAL', 'DRAFT', 'COPY', '机密', '仅供参考'];
+const WM_COLOURS: Array<[string, string]> = [
+  ['#808080', 'Grey'],
+  ['#d93025', 'Red'],
+  ['#1a73e8', 'Blue'],
+];
+
+/**
+ * Mark up → Page: what goes on every page, like a scanning app: labels at the top and bottom
+ * (any text, with {date}, {page}…) and a watermark on every page or chosen pages.
+ */
+export function PageMarkPanel({
+  settings,
+  onSettings,
+}: {
+  settings: Settings;
+  onSettings: (patch: Partial<Settings>) => void;
+}) {
+  const pdf = settings.pdf;
+  const wm = pdf.watermark;
+  const setWm = (patch: Partial<typeof wm>) =>
+    onSettings({ pdf: { ...pdf, watermark: { ...wm, ...patch } } });
+  const mode = wm.pages === 'all' || wm.pages === 'first' ? wm.pages : 'some';
+  return (
+    <aside className={aside} aria-label="Page">
+      <h2 className="font-semibold">Page labels</h2>
+      <p className="pb-1 text-[12px] text-neutral-500">
+        On every page, above and below the content.
+      </p>
       {BANDS.map(([band, label]) => (
-        <fieldset key={band} className="pt-2">
-          <legend className="pb-1">{label}</legend>
+        <fieldset key={band} className="pt-1">
+          <legend className="flex w-full items-center justify-between pb-1">
+            {label}
+            <select
+              aria-label={`${label} preset`}
+              value=""
+              onChange={(e) => {
+                const preset = LABEL_PRESETS.find(([name]) => name === e.target.value);
+                if (preset) onSettings({ pdf: { ...pdf, [band]: preset[1] } });
+              }}
+              className="rounded border border-neutral-300 bg-white px-1 text-[12px] dark:border-neutral-700 dark:bg-neutral-900"
+            >
+              <option value="">Presets…</option>
+              {LABEL_PRESETS.map(([name]) => (
+                <option key={name}>{name}</option>
+              ))}
+            </select>
+          </legend>
           <div className="grid grid-cols-3 gap-1">
             {(['left', 'center', 'right'] as const).map((slot) => (
               <input
@@ -317,8 +376,131 @@ function PdfOptions({ settings, onSettings }: Pick<PagesProps, 'settings' | 'onS
           </div>
         </fieldset>
       ))}
-      <p className="pt-1 text-[12px] text-neutral-500">{'{page} {pages} {title} {date}'}</p>
-    </div>
+      <p className="pt-1 text-[12px] text-neutral-500">
+        {'{date} {time} {page} {pages} {title} {domain} {url}, or any text'}
+      </p>
+
+      <h2 className="mt-4 border-t border-neutral-200 pt-3 font-semibold dark:border-neutral-800">
+        Watermark
+      </h2>
+      <input
+        aria-label="Watermark text"
+        placeholder="Text, e.g. CONFIDENTIAL"
+        className={`${control} mt-1 w-full`}
+        value={wm.text}
+        onChange={(e) => setWm({ text: e.target.value })}
+      />
+      <div className="flex flex-wrap gap-1 pt-1">
+        {WATERMARKS.map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setWm({ text: t })}
+            className="rounded border border-neutral-300 px-1.5 text-[12px] hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+      <label className={field}>
+        Opacity
+        <input
+          type="range"
+          min={0.05}
+          max={0.6}
+          step={0.05}
+          value={wm.opacity}
+          onChange={(e) => setWm({ opacity: Number(e.target.value) })}
+          className="w-28 accent-[#0e7c7b]"
+        />
+      </label>
+      <label className={field}>
+        Size
+        <input
+          type="range"
+          min={16}
+          max={140}
+          step={2}
+          value={wm.sizePt}
+          onChange={(e) => setWm({ sizePt: Number(e.target.value) })}
+          className="w-28 accent-[#0e7c7b]"
+        />
+      </label>
+      <div className={field}>
+        <span id="wm-angle">Angle</span>
+        <div role="radiogroup" aria-labelledby="wm-angle" className="flex gap-1">
+          {[45, 0, -45].map((a) => (
+            <button
+              key={a}
+              type="button"
+              role="radio"
+              aria-checked={wm.angle === a}
+              onClick={() => setWm({ angle: a })}
+              className={`${button} ${wm.angle === a ? 'border-accent bg-accent/10 text-accent' : ''}`}
+            >
+              {a}°
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className={field}>
+        <span id="wm-colour">Colour</span>
+        <div role="radiogroup" aria-labelledby="wm-colour" className="flex gap-1">
+          {WM_COLOURS.map(([c, name]) => (
+            <button
+              key={c}
+              type="button"
+              role="radio"
+              aria-checked={wm.color === c}
+              aria-label={name}
+              onClick={() => setWm({ color: c })}
+              className={`h-5 w-5 rounded-full border border-neutral-300 ${wm.color === c ? 'ring-2 ring-accent ring-offset-1' : ''}`}
+              style={{ background: c }}
+            />
+          ))}
+        </div>
+      </div>
+      <fieldset className="pt-1">
+        <legend className="pb-1">Apply to</legend>
+        {(
+          [
+            ['all', 'Every page'],
+            ['first', 'First page only'],
+            ['some', 'These pages:'],
+          ] as const
+        ).map(([v, label]) => (
+          <label key={v} className="flex items-center gap-2 py-0.5">
+            <input
+              type="radio"
+              name="wm-pages"
+              checked={mode === v}
+              onChange={() => setWm({ pages: v === 'some' ? '1' : v })}
+              className="accent-[#0e7c7b]"
+            />
+            {label}
+            {v === 'some' && mode === 'some' && (
+              <input
+                aria-label="Watermark pages"
+                className={`${control} w-24`}
+                value={wm.pages}
+                placeholder="1-3, 5"
+                onChange={(e) => setWm({ pages: e.target.value })}
+              />
+            )}
+          </label>
+        ))}
+      </fieldset>
+      {wm.text.trim() && (
+        <button
+          type="button"
+          onClick={() => setWm({ text: '' })}
+          className="mt-2 text-[12px] text-accent underline-offset-2 hover:underline"
+        >
+          Remove watermark
+        </button>
+      )}
+      <p className="pt-2 text-[12px] text-neutral-500">Shown in Pages and in the saved PDF.</p>
+    </aside>
   );
 }
 

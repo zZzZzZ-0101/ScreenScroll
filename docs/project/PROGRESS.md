@@ -119,6 +119,12 @@ Edge cases now tested (and the bugs they found, all fixed — see DECISIONS):
 
 Suite: `pnpm test` 219, `pnpm e2e` 53 (see the commit), lint and typecheck clean.
 
+### Mark up for scanning, saved-captures delete (2026-10-28)
+- Mark up toolbar trimmed to scanning tools (crop, text, rectangle, arrow, step number, mosaic, blur; three ink colours). Mark up → Page holds page labels and the watermark (every page / first / chosen pages); it shows in the Pages preview and is drawn in the PDF (rendered and checked: diagonal, faint, only on the chosen page).
+- Saved captures: delete is immediate and complete; select several or all and delete for good. e2e checks the database is empty afterwards (0 sessions, 0 frames, 0 KB).
+- Not yet: watermark on the single long-page PDF; details panel and export quality presets; WeChat-style area toolbar with left/right edges; OCR; background capture.
+- Suite: `pnpm test` 233, affected e2e specs 20/20, lint and typecheck clean.
+
 ## Manual site checks
 | Site | Date | Capture | Header once | Images loaded | No text cut | Text searchable | Links | Time | Notes |
 |---|---|---|---|---|---|---|---|---|---|

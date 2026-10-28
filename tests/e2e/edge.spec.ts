@@ -170,6 +170,11 @@ test('fast typing in settings fields keeps every character', async ({ context, s
   const typed = 'Quarterly report {date} final-final v2';
   await name.pressSequentially(typed, { delay: 0 });
   await expect(name).toHaveValue(typed);
+  await expect(
+    studio.getByText(/^Quarterly report \d{4}-\d{2}-\d{2} final-final v2\.pdf$/),
+  ).toBeVisible();
+  // Page labels live in Mark up → Page.
+  await studio.getByRole('tab', { name: 'Mark up' }).click();
   const header = studio.getByRole('textbox', { name: 'Header left' });
   await header.pressSequentially('{title} · draft', { delay: 0 });
   await expect(header).toHaveValue('{title} · draft');
@@ -185,9 +190,6 @@ test('fast typing in settings fields keeps every character', async ({ context, s
       }),
     )
     .toEqual([typed, '{title} · draft']);
-  await expect(
-    studio.getByText(/^Quarterly report \d{4}-\d{2}-\d{2} final-final v2\.pdf$/),
-  ).toBeVisible();
 });
 
 test('keyboard only: modes and the Save menu', async ({ context, serviceWorker }) => {
@@ -342,4 +344,48 @@ test('break edits survive switching modes', async ({ context, serviceWorker }) =
   await expect(studio.getByRole('button', { name: 'Reset breaks' })).toBeEnabled();
   await studio.getByRole('button', { name: 'Reset breaks' }).click();
   expect(await ys()).toEqual(before);
+});
+
+test('Mark up → Page: watermark on chosen pages, in the preview and the PDF', async ({
+  context,
+  serviceWorker,
+}) => {
+  const studio = await capture(context, serviceWorker, 'article.html');
+  await studio.getByRole('tab', { name: 'Mark up' }).click();
+  const page = studio.getByRole('complementary', { name: 'Page' });
+  await expect(page).toBeVisible();
+  await page.getByRole('textbox', { name: 'Watermark text' }).fill('DRAFT ONLY');
+  await page.getByRole('radio', { name: 'These pages:' }).check();
+  await page.getByRole('textbox', { name: 'Watermark pages' }).fill('2');
+  await studio.getByRole('tab', { name: 'Pages' }).click();
+  // Exactly one preview page carries it: page 2.
+  await expect(studio.getByTestId('watermark-preview')).toHaveCount(1);
+  await expect(studio.getByTestId('watermark-preview')).toHaveText('DRAFT ONLY');
+
+  const b64 = (await studio.evaluate(() =>
+    (window as unknown as { __spStudio: { pdfBase64(): Promise<string> } }).__spStudio.pdfBase64(),
+  )) as string;
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const pdf = await pdfjs.getDocument({
+    data: new Uint8Array(Buffer.from(b64, 'base64')),
+    standardFontDataUrl: new URL('../../node_modules/pdfjs-dist/standard_fonts/', import.meta.url)
+      .pathname,
+  }).promise;
+  const textOf = async (n: number) =>
+    (await (await pdf.getPage(n)).getTextContent()).items
+      .map((it) => ('str' in it ? it.str : ''))
+      .join('');
+  expect(pdf.numPages).toBeGreaterThan(2);
+  expect(await textOf(1)).not.toContain('DRAFT ONLY');
+  expect(await textOf(2)).toContain('DRAFT ONLY');
+
+  // Every page, then remove.
+  await studio.getByRole('tab', { name: 'Mark up' }).click();
+  await page.getByRole('radio', { name: 'Every page' }).check();
+  await studio.getByRole('tab', { name: 'Pages' }).click();
+  await expect(studio.getByTestId('watermark-preview')).toHaveCount(pdf.numPages);
+  await studio.getByRole('tab', { name: 'Mark up' }).click();
+  await page.getByRole('button', { name: 'Remove watermark' }).click();
+  await studio.getByRole('tab', { name: 'Pages' }).click();
+  await expect(studio.getByTestId('watermark-preview')).toHaveCount(0);
 });

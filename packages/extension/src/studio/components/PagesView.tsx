@@ -1,4 +1,10 @@
-import type { Annotation, PageLayout, PageSlice } from '@screenscroll/core';
+import {
+  watermarkOn,
+  type Annotation,
+  type PageLayout,
+  type PageSlice,
+  type Watermark,
+} from '@screenscroll/core';
 import { useEffect, useRef, useState } from 'react';
 import type { Analysis } from '@/studio/engine/analysis';
 import { composePage, paintAnnotations } from '@/studio/engine/compose';
@@ -23,6 +29,7 @@ export function PagesView(p: {
   annotations: Annotation[];
   zoom: Zoom;
   onZoom: (z: Zoom) => void;
+  watermark: Watermark;
   /** Reports the scale shown (share of actual size), for the zoom control's label. */
   onEffective: (scale: number) => void;
 }) {
@@ -95,6 +102,21 @@ export function PagesView(p: {
               pageW={pageW}
             />
             <span className="absolute bottom-1 right-2 text-[11px] text-neutral-400">{i + 1}</span>
+            {watermarkOn(p.watermark, i + 1, p.slices.length) && (
+              <span
+                aria-hidden
+                data-testid="watermark-preview"
+                className="pointer-events-none absolute top-1/2 left-1/2 font-[Helvetica,Arial,sans-serif] whitespace-nowrap"
+                style={{
+                  color: p.watermark.color,
+                  opacity: p.watermark.opacity,
+                  fontSize: p.watermark.sizePt * (pageW / p.layout.paperW),
+                  transform: `translate(-50%, -50%) rotate(${-p.watermark.angle}deg)`,
+                }}
+              >
+                {p.watermark.text}
+              </span>
+            )}
           </div>
         ))}
       </div>

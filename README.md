@@ -12,10 +12,10 @@ A free, ad-free, fully offline browser extension for desktop Chrome and Edge. It
 2. **The Studio opens** with the pages as they will be saved. Adjust only if you want to:
    - **Pages**: paper and orientation (everything else is under _More options_).
    - **Breaks**: drag, add or remove page breaks.
-   - **Mark up**: arrows, boxes, text, numbers, highlighter, blur, crop.
+   - **Mark up**: crop, text, boxes, arrows, numbers, mosaic and blur; page labels (date, page number…) and a watermark on every page or chosen pages.
 3. **Save PDF.** The arrow next to it has the other outputs (images, one long page, copy, print).
 
-**Saved captures** (in the panel) lists what is kept on this computer, with sizes: reopen, delete, or auto-delete after some days. Keys: Alt+Shift+P / V / S / E (full page / visible / selection / element).
+**Saved captures** (in the panel) lists what is kept on this computer, with sizes: reopen, delete one, several or all for good, or auto-delete after some days. Keys: Alt+Shift+P / V / S / E (full page / visible / selection / element).
 
 ## Install (from source)
 

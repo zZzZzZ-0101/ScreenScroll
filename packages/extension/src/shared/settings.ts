@@ -3,7 +3,9 @@ import {
   DEFAULT_FOOTER,
   DEFAULT_PAGE_SETTINGS,
   EMPTY_BAND,
+  NO_WATERMARK,
   PAPERS,
+  type Watermark,
   type BandTemplate,
   type PageSettings,
 } from '@screenscroll/core';
@@ -59,6 +61,8 @@ export interface PdfSettings {
   outline: boolean;
   header: BandTemplate;
   footer: BandTemplate;
+  /** Text across the pages (Mark up → Watermark); empty = none. */
+  watermark: Watermark;
 }
 
 export const DEFAULT_PDF_SETTINGS: PdfSettings = {
@@ -67,6 +71,7 @@ export const DEFAULT_PDF_SETTINGS: PdfSettings = {
   outline: true,
   header: EMPTY_BAND,
   footer: DEFAULT_FOOTER,
+  watermark: NO_WATERMARK,
 };
 
 /** Header/footer space is reserved only when the band has something to show. */
@@ -155,7 +160,23 @@ export function normalizeSettings(stored: unknown): Settings {
       outline: typeof pdf.outline === 'boolean' ? pdf.outline : d.pdf.outline,
       header: band(pdf.header, d.pdf.header),
       footer: band(pdf.footer, d.pdf.footer),
+      watermark: watermark(pdf.watermark),
     },
+  };
+}
+
+function watermark(v: unknown): Watermark {
+  if (!isObject(v)) return NO_WATERMARK;
+  const n = (x: unknown, lo: number, hi: number, def: number) =>
+    num(x) && x >= lo && x <= hi ? x : def;
+  return {
+    text: typeof v.text === 'string' ? v.text : '',
+    opacity: n(v.opacity, 0.03, 0.8, NO_WATERMARK.opacity),
+    sizePt: n(v.sizePt, 8, 200, NO_WATERMARK.sizePt),
+    angle: n(v.angle, -90, 90, NO_WATERMARK.angle),
+    color:
+      typeof v.color === 'string' && /^#[0-9a-f]{6}$/i.test(v.color) ? v.color : NO_WATERMARK.color,
+    pages: typeof v.pages === 'string' ? v.pages : 'all',
   };
 }
 

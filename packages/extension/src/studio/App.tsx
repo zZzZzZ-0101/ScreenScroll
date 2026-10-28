@@ -51,12 +51,12 @@ import {
 import { FrameCache, loadSession, type LoadedSession } from '@/studio/engine/session';
 import { composePage, encodePage } from '@/studio/engine/compose';
 import { AnnotateView } from './components/AnnotateView';
-import { MarkupToolbar, type MarkupControls } from './components/MarkupToolbar';
+import { MARKUP_TOOLS, MarkupToolbar, type MarkupControls } from './components/MarkupToolbar';
 import { DEFAULT_PANEL, SidePanel, type PanelPrefs } from './components/SidePanel';
 import { ZoomControl, stepZoom, type Zoom } from './components/ZoomControl';
 import { useTheme } from '@/shared/theme';
 import type { Theme } from '@/shared/settings';
-import { BreaksPanel, PagesPanel } from './components/Panel';
+import { BreaksPanel, PageMarkPanel, PagesPanel } from './components/Panel';
 import { SaveMenu, type ExportFormat } from './components/SaveMenu';
 import { PagesView } from './components/PagesView';
 import { StripView } from './components/StripView';
@@ -530,7 +530,13 @@ export function App() {
       } else if (mod && key === 'z') {
         e.preventDefault();
         doUndo();
-      } else if (view === 'markup' && !mod && !e.altKey && TOOL_KEYS[key]) {
+      } else if (
+        view === 'markup' &&
+        !mod &&
+        !e.altKey &&
+        TOOL_KEYS[key] &&
+        MARKUP_TOOLS.has(TOOL_KEYS[key])
+      ) {
         setTool(TOOL_KEYS[key]);
       } else if (view === 'markup' && (e.key === 'Delete' || e.key === 'Backspace')) {
         e.preventDefault();
@@ -659,6 +665,8 @@ export function App() {
         onReset={() => setEdits({ pinned: [], removed: [] })}
         locked={result.ok && result.sheets}
       />
+    ) : view === 'markup' ? (
+      <PageMarkPanel settings={settings} onSettings={updateSettings} />
     ) : null;
   const panel = panelBody && (
     <SidePanel prefs={panelPrefs} onPrefs={changePanel} label="panel">
@@ -803,6 +811,7 @@ export function App() {
               )}
               {view === 'pages' ? (
                 <PagesView
+                  watermark={settings.pdf.watermark}
                   session={session}
                   frames={frames.current!}
                   analysis={analysis}

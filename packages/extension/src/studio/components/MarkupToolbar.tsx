@@ -1,15 +1,11 @@
 import { TOOL_KEYS, type Style, type Tool } from '@screenscroll/core';
 import {
-  Circle,
   Crop,
   Droplets,
   Grid3x3,
   Hash,
-  Highlighter,
-  Minus,
   MousePointer2,
   MoveUpRight,
-  Pencil,
   Redo2,
   Square,
   Trash2,
@@ -17,26 +13,27 @@ import {
   Undo2,
 } from 'lucide-react';
 
+/**
+ * Tools for scanned and captured documents (like a scanning app), not a paint box: select,
+ * crop, text, box, arrow, numbers, and hiding private details.
+ */
 const GROUPS: Array<Array<[Tool, string, typeof Square]>> = [
   [['select', 'Select', MousePointer2]],
+  [['crop', 'Crop', Crop]],
   [
-    ['arrow', 'Arrow', MoveUpRight],
-    ['rect', 'Rectangle', Square],
-    ['ellipse', 'Ellipse', Circle],
-    ['line', 'Line', Minus],
-  ],
-  [
-    ['pen', 'Pen', Pencil],
-    ['highlighter', 'Highlighter', Highlighter],
     ['text', 'Text', Type],
+    ['rect', 'Rectangle', Square],
+    ['arrow', 'Arrow', MoveUpRight],
     ['step', 'Step number', Hash],
   ],
   [
+    ['pixelate', 'Mosaic', Grid3x3],
     ['blur', 'Blur', Droplets],
-    ['pixelate', 'Pixelate', Grid3x3],
   ],
-  [['crop', 'Crop', Crop]],
 ];
+
+/** The tools offered (and the only ones whose keys work). */
+export const MARKUP_TOOLS = new Set<Tool>(GROUPS.flat().map(([t]) => t));
 
 /** What each tool does, in one line, shown under the toolbar. */
 const HINTS: Record<Tool, string> = {
@@ -54,7 +51,7 @@ const HINTS: Record<Tool, string> = {
   crop: 'Drag over the part to keep. Only that part is paginated and saved.',
 };
 
-export const SWATCHES = ['#d93025', '#f29900', '#188038', '#1a73e8', '#202124', '#ffffff'];
+export const SWATCHES = ['#202124', '#d93025', '#1a73e8'];
 const SIZES: Array<[string, string, Pick<Style, 'width' | 'fontSize'>]> = [
   ['S', 'Small', { width: 2, fontSize: 14 }],
   ['M', 'Medium', { width: 3, fontSize: 18 }],

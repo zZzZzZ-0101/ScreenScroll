@@ -1,5 +1,5 @@
 import { ExternalLink, Search, Trash2 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { deleteCapture, deleteOlderThan, listCaptures, type StoredCapture } from '@/shared/db';
 import { loadSettings, saveSettings } from '@/shared/settings';
 
@@ -10,12 +10,11 @@ const KEEP: Array<[number, string]> = [
   [30, '30 days'],
   [90, '90 days'],
 ];
-/** Deletions wait this long so they can be undone (no "are you sure?" dialogs). */
-const UNDO_MS = 6000;
 
 /**
  * Saved captures (UI §4, first part): everything ScreenScroll keeps on this computer, how much
- * space it takes, and a way to reopen, delete or auto-clean it. Nothing is ever uploaded.
+ * space it takes, and a way to reopen, delete (for good, nothing left behind) or auto-clean it.
+ * Nothing is ever uploaded.
  */
 export function App() {
   const [items, setItems] = useState<StoredCapture[] | null>(null);
@@ -23,10 +22,10 @@ export function App() {
   const [keepDays, setKeepDays] = useState(0);
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [pending, setPending] = useState<{ ids: string[]; timer: number } | null>(null);
+  const [busy, setBusy] = useState(false);
+  /** Deleting several at once asks once more, in place: "Delete 5 captures?". */
+  const [confirm, setConfirm] = useState<string[] | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  const pendingRef = useRef(pending);
-  pendingRef.current = pending;
 
   const refresh = useCallback(async () => {
     setItems(await listCaptures());
@@ -50,43 +49,30 @@ export function App() {
     })();
   }, [refresh]);
 
-  // Leaving the page carries out a deletion that is still waiting for its undo window.
-  useEffect(() => {
-    const flush = () => {
-      const p = pendingRef.current;
-      if (p) for (const id of p.ids) void deleteCapture(id);
-    };
-    addEventListener('pagehide', flush);
-    return () => removeEventListener('pagehide', flush);
-  }, []);
-
-  const remove = (ids: string[]) => {
-    if (pending) {
-      clearTimeout(pending.timer);
-      for (const id of pending.ids) void deleteCapture(id);
-    }
-    const timer = window.setTimeout(async () => {
+  /** Deletes for good: the capture's record and every frame image, then re-reads the list. */
+  const remove = async (ids: string[]) => {
+    if (busy || !ids.length) return;
+    setBusy(true);
+    setConfirm(null);
+    try {
       for (const id of ids) await deleteCapture(id);
-      setPending(null);
+      setSelected(new Set());
+      setNote(ids.length === 1 ? 'Capture deleted.' : `${ids.length} captures deleted.`);
+    } catch (e) {
+      setNote(`Could not delete: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
       await refresh();
-    }, UNDO_MS);
-    setPending({ ids, timer });
-    setSelected(new Set());
-  };
-  const undo = () => {
-    if (!pending) return;
-    clearTimeout(pending.timer);
-    setPending(null);
+      setBusy(false);
+    }
   };
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return (items ?? []).filter(
-      (c) =>
-        !pending?.ids.includes(c.session.id) &&
-        (!q || `${c.session.title} ${c.session.url}`.toLowerCase().includes(q)),
+      (c) => !q || `${c.session.title} ${c.session.url}`.toLowerCase().includes(q),
     );
-  }, [items, query, pending]);
+  }, [items, query]);
+  const allSelected = visible.length > 0 && visible.every((c) => selected.has(c.session.id));
   const total = (items ?? []).reduce((n, c) => n + c.bytes, 0);
 
   return (
@@ -141,20 +127,72 @@ export function App() {
             className="flex-1 bg-transparent outline-none"
           />
         </label>
-        <button
-          type="button"
-          disabled={!selected.size}
-          onClick={() => remove([...selected])}
-          className="flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
-        >
-          <Trash2 aria-hidden size={15} /> Delete selected
-          {selected.size ? ` (${selected.size})` : ''}
-        </button>
+        {confirm ? (
+          <span className="flex items-center gap-1" role="group" aria-label="Confirm deletion">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void remove(confirm)}
+              className="rounded-md bg-red-700 px-2 py-1 font-medium text-white hover:bg-red-800 disabled:opacity-50"
+            >
+              Delete {confirm.length} for good
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirm(null)}
+              className="rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
+            >
+              Cancel
+            </button>
+          </span>
+        ) : (
+          <button
+            type="button"
+            disabled={!selected.size || busy}
+            onClick={() => setConfirm([...selected])}
+            className="flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
+          >
+            <Trash2 aria-hidden size={15} /> Delete selected
+            {selected.size ? ` (${selected.size})` : ''}
+          </button>
+        )}
       </div>
 
-      {note && <p className="mt-2 text-neutral-500">{note}</p>}
+      {note && (
+        <p role="status" className="mt-2 text-neutral-500">
+          {note}
+        </p>
+      )}
 
-      <ul className="mt-3 divide-y divide-neutral-200 rounded-lg border border-neutral-200 bg-white dark:divide-neutral-800 dark:border-neutral-800 dark:bg-neutral-900">
+      {visible.length > 0 && (
+        <div className="mt-3 flex items-center justify-between px-2">
+          <label className="flex items-center gap-2 text-neutral-600 dark:text-neutral-300">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={(e) =>
+                setSelected(
+                  e.target.checked ? new Set(visible.map((c) => c.session.id)) : new Set(),
+                )
+              }
+              className="accent-[#0e7c7b]"
+            />
+            Select all{query ? ' shown' : ''} ({visible.length})
+          </label>
+          {!confirm && (items?.length ?? 0) > 0 && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setConfirm((items ?? []).map((c) => c.session.id))}
+              className="text-red-700 underline-offset-2 hover:underline disabled:opacity-50 dark:text-red-400"
+            >
+              Delete all captures
+            </button>
+          )}
+        </div>
+      )}
+
+      <ul className="mt-2 divide-y divide-neutral-200 rounded-lg border border-neutral-200 bg-white dark:divide-neutral-800 dark:border-neutral-800 dark:bg-neutral-900">
         {items !== null && !visible.length && (
           <li className="p-4 text-neutral-500">
             {query ? 'No capture matches.' : 'No saved captures.'}
@@ -173,24 +211,11 @@ export function App() {
                 return n;
               })
             }
-            onDelete={() => remove([c.session.id])}
+            onDelete={() => void remove([c.session.id])}
+            busy={busy}
           />
         ))}
       </ul>
-
-      {pending && (
-        <div
-          role="status"
-          className="fixed bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-md bg-neutral-900 px-3 py-2 text-white shadow-sm dark:bg-neutral-100 dark:text-neutral-900"
-        >
-          {pending.ids.length === 1
-            ? 'Capture deleted.'
-            : `${pending.ids.length} captures deleted.`}
-          <button type="button" onClick={undo} className="font-medium underline underline-offset-2">
-            Undo
-          </button>
-        </div>
-      )}
     </main>
   );
 }
@@ -200,6 +225,7 @@ function Row(p: {
   checked: boolean;
   onCheck: (on: boolean) => void;
   onDelete: () => void;
+  busy: boolean;
 }) {
   const { session, bytes, preview } = p.item;
   const [src, setSrc] = useState<string | null>(null);
@@ -262,7 +288,8 @@ function Row(p: {
       <button
         type="button"
         aria-label={`Delete ${title}`}
-        title="Delete"
+        title="Delete for good"
+        disabled={p.busy}
         onClick={p.onDelete}
         className="rounded-md p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-red-700 dark:hover:bg-neutral-800"
       >
