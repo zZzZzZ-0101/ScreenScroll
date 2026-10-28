@@ -1,6 +1,8 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage } from 'pdf-lib';
+import type { TextRun } from '../hints.js';
 import type { PageLayout } from '../layout.js';
 import type { PageSlice } from '../paginate.js';
+import { drawTextRuns, placeRuns, TextLayerFont } from './textlayer.js';
 
 /** One composed page image (never taller than one page plus overlap, PDF_OUTPUT §1). */
 export interface PageImage {
@@ -20,9 +22,20 @@ export interface PdfOptions {
   footer: boolean;
   /** Small "continued" note above pages that start with a forced-cut overlap. */
   continuedMarker: boolean;
+  /** Invisible, searchable text from the DOM (PDF_OUTPUT §2). */
+  textLayer: boolean;
 }
 
-export const DEFAULT_PDF_OPTIONS: PdfOptions = { footer: true, continuedMarker: true };
+export const DEFAULT_PDF_OPTIONS: PdfOptions = {
+  footer: true,
+  continuedMarker: true,
+  textLayer: true,
+};
+
+/** What the DOM told us about the page, in document CSS px. */
+export interface PdfContent {
+  textRuns?: readonly TextRun[];
+}
 
 /** Acrobat's maximum page side is 200 in = 14,400 pt; stay below it (PDF_OUTPUT §6). */
 export const MAX_PAGE_PT = 14_000;
@@ -39,12 +52,15 @@ export async function buildPdf(
   layout: PageLayout,
   meta: PdfMeta,
   options: Partial<PdfOptions> = {},
+  content: PdfContent = {},
 ): Promise<Uint8Array> {
   const opts = { ...DEFAULT_PDF_OPTIONS, ...options };
   // updateMetadata: false, or pdf-lib stamps its own producer over ours.
   const doc = await PDFDocument.create({ updateMetadata: false });
   setMeta(doc, meta);
   const font = await doc.embedFont(StandardFonts.Helvetica);
+  const runs = opts.textLayer ? (content.textRuns ?? []) : [];
+  const textFont = runs.length ? new TextLayerFont(doc) : null;
   let n = 0;
   for await (const p of pages) {
     n++;
@@ -54,6 +70,7 @@ export async function buildPdf(
     const h = (p.slice.y1 - p.slice.y0) * layout.s;
     const top = layout.paperH - layout.box.y; // pdf-lib's origin is bottom-left
     page.drawImage(img, { x: layout.box.x, y: top - h, width: w, height: h });
+    if (textFont) drawTextRuns(page, textFont, placeRuns(runs, p.slice, layout));
     if (opts.continuedMarker && p.slice.overlapTop > 0) {
       const text = 'continued from previous page';
       const size = 6.5;
@@ -67,6 +84,7 @@ export async function buildPdf(
     }
     if (opts.footer) drawFooter(page, font, layout, meta, n, pageCount);
   }
+  textFont?.finish();
   return doc.save();
 }
 

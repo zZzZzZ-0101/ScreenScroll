@@ -25,6 +25,8 @@ export interface TextRun {
   text: string;
   rect: Rect;
   fontSizePx: number;
+  /** Position of the text node in DOM order, for reading order (PDF_OUTPUT §2). */
+  order?: number;
 }
 
 export interface LinkRect {
