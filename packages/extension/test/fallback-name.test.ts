@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fallbackName } from '../src/lib/studio/export';
+import { fallbackName } from '../src/studio/engine/export';
 
 describe('fallback download name', () => {
   it.each([

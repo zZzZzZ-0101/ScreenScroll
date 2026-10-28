@@ -1,5 +1,5 @@
 {
-  "name": "scrollpress",
+  "name": "screenscroll",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -8,10 +8,10 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "pnpm --filter @scrollpress/extension dev",
-    "build": "pnpm --filter @scrollpress/extension build",
-    "build:e2e": "pnpm --filter @scrollpress/extension build:e2e",
-    "zip": "pnpm --filter @scrollpress/extension zip",
+    "dev": "pnpm --filter @screenscroll/extension dev",
+    "build": "pnpm --filter @screenscroll/extension build",
+    "build:e2e": "pnpm --filter @screenscroll/extension build:e2e",
+    "zip": "pnpm --filter @screenscroll/extension zip",
     "test": "vitest run",
     "e2e": "pnpm build:e2e && playwright test",
     "fixtures": "node packages/fixtures/scripts/serve.mjs",

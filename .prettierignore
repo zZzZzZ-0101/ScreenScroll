@@ -4,5 +4,5 @@ node_modules
 dist
 pnpm-lock.yaml
 docs
-reference
+docs/reference
 packages/fixtures/pages

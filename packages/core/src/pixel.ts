@@ -1,7 +1,7 @@
 import type { GreyImage } from './image.js';
 
 /**
- * First port of the reference prototype (reference/split_tall_pdf.py):
+ * First port of the reference prototype (docs/reference/split_tall_pdf.py):
  * "ink" = pixels darker than a threshold. Kept as a baseline; the row-uniformity
  * analysis from PAGINATION §4 replaces it in M2.
  */

@@ -7,7 +7,7 @@ import {
   buildSingleLongPagePdf,
   chooseImageFormat,
   type PageImage,
-} from '@scrollpress/core/pdf';
+} from '@screenscroll/core/pdf';
 import {
   analyzeRows,
   computeLayout,
@@ -15,7 +15,7 @@ import {
   paginate,
   toGrey,
   type PageSlice,
-} from '@scrollpress/core';
+} from '@screenscroll/core';
 import { synthFixtures, type SynthDoc } from '../src/synth.js';
 
 const OUT = new URL('../out/', import.meta.url);

@@ -1,5 +1,5 @@
 {
-  "name": "@scrollpress/fixtures",
+  "name": "@screenscroll/fixtures",
   "version": "0.0.0",
   "private": true,
   "license": "MIT",
@@ -9,7 +9,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@scrollpress/core": "workspace:*"
+    "@screenscroll/core": "workspace:*"
   },
   "devDependencies": {
     "pdf-lib": "1.17.1"

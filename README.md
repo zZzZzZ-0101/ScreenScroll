@@ -1,58 +1,97 @@
 # ScreenScroll
 
-> Working name — rename freely (search-and-replace `ScreenScroll` / `scrollpress`).
+A free, ad-free, fully offline browser extension for desktop Chrome and Edge. It captures a whole web page (or one area, one element, or one scrolling panel) and turns it into a clean multi-page PDF whose page breaks never cut through a line of text. The PDF keeps searchable text, clickable links and bookmarks.
 
-A free, ad-free, fully offline browser extension for **desktop Chrome / Edge (and later Firefox)** that captures any web page — including pages that scroll inside an inner panel — and turns it into **clean, standard-size, multi-page PDFs whose page breaks never slice through a line of text**. It also does everything people normally buy FireShot Pro for: area/element capture, an annotation editor, searchable text and clickable links in the PDF, headers/footers, batch capture, and a local history.
+一个免费、无广告、完全离线的桌面浏览器插件：整页、区域、元素或内部滚动区域截图，自动按 A4/Letter 等纸张分页，分页处绝不切断文字；PDF 文字可搜索、链接可点击。
 
-一个免费、无广告、完全离线的桌面浏览器插件：整页截图（包括页面内部滚动区域），自动按 A4/Letter 等标准纸张分页，**分页处绝不切断文字**，PDF 里文字可搜索、可复制、链接可点击；同时覆盖 FireShot Pro 的大部分功能（区域/元素截图、标注编辑器、页眉页脚、批量截图、本地历史），再加上它没有的功能。
+![The Studio: pages, breaks, mark up, save](docs/screenshots/overview.png)
 
-## Why this exists
+## Use it
 
-The capture tool I was using (FireShot Lite) shows ads, keeps the multi-page-PDF feature behind the Pro paywall, and outputs one giant single-page PDF that nobody — human or AI — can read without zooming. Every other free tool either cuts pages at fixed heights (slicing through text), or doesn't paginate at all.
+1. **Click the ScreenScroll icon.** The whole page is captured; nothing to choose first.
+2. **The Studio opens** with the pages as they will be saved. Adjust only if you want to:
+   - **Pages**: paper and orientation (everything else is under _More options_).
+   - **Breaks**: drag, add or remove page breaks.
+   - **Mark up**: arrows, boxes, text, numbers, highlighter, blur, crop.
+3. **Save PDF.** The arrow next to it has the other outputs (images, one long page, copy, print).
 
-The key insight: **an extension that takes the screenshot itself can read the page's DOM**, so it knows exactly where every line of text, table row and image is. It can choose page breaks the way a typesetter would, instead of guessing from pixels afterwards. Pixel analysis is kept as a fallback for content the DOM can't describe (canvas, images of text, cross-origin iframes, PDF viewers).
+Right-click the icon for: visible area, selection, element, a 5-second timer, and _skip the preview_. Keys: Alt+Shift+P / V / S / E (full page / visible / selection / element).
 
-## Principles (non-negotiable)
+## Install (from source)
 
-1. **Offline & private.** No network requests at runtime, no analytics, no accounts, no remote code. Everything is processed on the machine.
-2. **No ads, no nags, no paywall.**
-3. **Never cut through text** unless physically impossible (an element taller than a page) — and then say so, and repeat a small overlap so nothing is lost.
-4. **Readable output by default.** Pages should be legible at 100% on A4. Text layer + links on by default.
-5. **Desktop first.** Mobile is explicitly out of scope.
-
-## Repository map
-
-| Path | What it is |
-|---|---|
-| `CLAUDE.md` | Instructions for the coding agent (read first) |
-| `TODO.md` | The master checklist — every feature, fix and lesson, grouped by milestone |
-| `KICKOFF_PROMPT.md` | The message to paste into Claude Code to start work |
-| `docs/PRODUCT.md` | Goals, users, scope, feature parity table vs FireShot |
-| `docs/PRIOR_ART.md` | Research: how FireShot, GoFullPage, OpenCapture & co. work, what they do well and badly, user complaints |
-| `docs/ARCHITECTURE.md` | Tech stack, modules, data flow, memory/perf constraints |
-| `docs/CAPTURE.md` | The capture engine: scroll-and-stitch, sticky/fixed elements, lazy loading, inner scroll containers |
-| `docs/PAGINATION.md` | The smart page-break algorithm (DOM hints + pixel analysis + optimal breaking) |
-| `docs/PDF_OUTPUT.md` | PDF assembly: page geometry, invisible text layer, links, headers/footers |
-| `docs/UI.md` | Screens, interactions, keyboard shortcuts, visual design |
-| `docs/TESTING.md` | Fixture pages, automated tests, manual checklist |
-| `packages/core` | Pure TypeScript logic (pixel analysis, pagination, layout) with unit tests |
-| `packages/extension` | The WXT browser extension |
-| `packages/fixtures` | Local fixture pages and their static server |
-| `e2e/` | Playwright tests with the extension loaded |
-| `reference/` | A working Python prototype of whitespace-aware splitting, tested on a real capture |
-
-## Status
-
-M0 (scaffold) is done. See `docs/PROGRESS.md` for the current milestone.
-
-## Development
+Requirements: Node 20+, pnpm 10.
 
 ```
 pnpm install
-pnpm dev          # WXT dev mode
-pnpm build        # → packages/extension/.output/chrome-mv3 (load unpacked)
+pnpm build
+```
+
+Then in Chrome or Edge open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked** and choose `packages/extension/.output/chrome-mv3`.
+
+## Where to start reading
+
+| If you want to…                     | Start here                                                                                                            |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Understand the product              | [`docs/product/PRODUCT.md`](docs/product/PRODUCT.md), then [`docs/product/UI.md`](docs/product/UI.md)                 |
+| See what is done and what is next   | [`docs/project/PROGRESS.md`](docs/project/PROGRESS.md), [`docs/product/ROADMAP.md`](docs/product/ROADMAP.md)          |
+| Change the extension                | [`packages/extension/src/entrypoints/`](packages/extension/src/entrypoints) — every flow starts in one of these files |
+| Change the page-break or PDF logic  | [`packages/core/src/paginate.ts`](packages/core/src/paginate.ts), [`packages/core/src/pdf/`](packages/core/src/pdf)   |
+| Know why something is the way it is | [`docs/project/DECISIONS.md`](docs/project/DECISIONS.md) (dated, append-only)                                         |
+| Work on it with Claude Code         | [`CLAUDE.md`](CLAUDE.md)                                                                                              |
+
+## Repository layout
+
+```
+.
+├── README.md                 ← you are here
+├── CLAUDE.md                 rules for the coding agent
+├── packages/
+│   ├── core/                 pure TypeScript, no browser APIs, unit-tested
+│   │   ├── src/              capture planning, pixel analysis, pagination, layout, annotations
+│   │   │   └── pdf/          PDF assembly: text layer, links, bookmarks, header/footer
+│   │   └── test/
+│   ├── extension/            the browser extension (WXT + React + Tailwind)
+│   │   ├── src/
+│   │   │   ├── entrypoints/  what the browser loads — start here
+│   │   │   │   ├── background.ts   icon click, menus, keys, frame grabbing
+│   │   │   │   ├── capture.ts      runs in the page: scrolls, freezes, measures, restores
+│   │   │   │   └── studio/         the Studio page (HTML + mount)
+│   │   │   ├── studio/       Studio UI: App.tsx, components/, engine/ (compose, export)
+│   │   │   ├── content/      in-page helpers: pickers, scroll targets, DOM hints
+│   │   │   └── shared/       storage, settings, messages
+│   │   └── test/
+│   └── fixtures/             test web pages, their server, synthetic captures
+├── tests/e2e/                Playwright tests with the extension loaded
+├── scripts/                  icon rendering, PDF search check
+└── docs/
+    ├── product/              PRODUCT, UI, ROADMAP, PRIOR_ART
+    ├── spec/                 ARCHITECTURE, CAPTURE, PAGINATION, PDF_OUTPUT, TESTING
+    ├── project/              PROGRESS, DECISIONS, KICKOFF_PROMPT
+    ├── screenshots/          the UI, regenerated by tests/e2e/screenshots.spec.ts
+    └── reference/            the original Python prototype
+```
+
+## Commands
+
+```
+pnpm dev          # WXT dev mode with hot reload
+pnpm build        # production build → packages/extension/.output/chrome-mv3
 pnpm zip          # installable zip
 pnpm test         # unit tests + offline guard
-pnpm e2e          # Playwright with the extension loaded
+pnpm e2e          # Playwright with the extension loaded (builds first)
 pnpm fixtures     # fixture pages on localhost:5177 and :5178
+pnpm lint         # ESLint (network APIs are banned)
+pnpm typecheck    # TypeScript, all packages
 ```
+
+## Principles
+
+1. **Offline and private.** No network requests at runtime, no analytics, no accounts, no remote code.
+2. **No ads, no nags, no paywall.**
+3. **Never cut through text**, unless an element is taller than a page; then say so and repeat a small overlap.
+4. **Readable by default**: legible at 100% on A4, with a text layer and links.
+5. **Desktop first.** Mobile is out of scope.
+
+## Licence
+
+MIT. Third-party packages are listed in [`THIRD_PARTY.md`](THIRD_PARTY.md).

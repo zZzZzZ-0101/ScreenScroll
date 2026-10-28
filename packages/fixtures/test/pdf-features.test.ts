@@ -2,8 +2,8 @@ import { createCanvas, ImageData as SkImageData } from '@napi-rs/canvas';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { buildPdf, type PageImage, type TextRenderer } from '@scrollpress/core/pdf';
-import { computeLayout, DEFAULT_PAGE_SETTINGS, paginate, type PageSlice } from '@scrollpress/core';
+import { buildPdf, type PageImage, type TextRenderer } from '@screenscroll/core/pdf';
+import { computeLayout, DEFAULT_PAGE_SETTINGS, paginate, type PageSlice } from '@screenscroll/core';
 import { synthFixtures, type SynthDoc } from '../src/synth.js';
 
 const OUT = new URL('../out/', import.meta.url);
@@ -135,7 +135,7 @@ describe('links, outline, header and footer', () => {
 
 describe('merged PDF', () => {
   it('numbers pages across parts and gives each part a bookmark with its headings', async () => {
-    const { buildMergedPdf } = await import('@scrollpress/core/pdf');
+    const { buildMergedPdf } = await import('@screenscroll/core/pdf');
     const settings = { ...DEFAULT_PAGE_SETTINGS, footerPt: 14 };
     const layout = computeLayout(settings, doc.width);
     const slices = paginate({
@@ -183,7 +183,7 @@ describe('merged PDF', () => {
   });
 
   it('skips empty parts without breaking the outline', async () => {
-    const { buildMergedPdf } = await import('@scrollpress/core/pdf');
+    const { buildMergedPdf } = await import('@screenscroll/core/pdf');
     const layout = computeLayout(DEFAULT_PAGE_SETTINGS, doc.width);
     const slices = paginate({ height: doc.height, width: doc.width, T: layout.T });
     const meta = { title: 'A', url: '', capturedAt: new Date(2026, 9, 28) };

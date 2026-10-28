@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SETTINGS, normalizeSettings } from '../src/lib/settings';
+import { DEFAULT_SETTINGS, normalizeSettings } from '../src/shared/settings';
 
 describe('stored settings', () => {
   it.each([undefined, null, 'garbage', 42, [], [1, 2], {}])('%j falls back to defaults', (v) => {

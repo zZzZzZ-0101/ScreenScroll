@@ -1,5 +1,5 @@
 {
-  "name": "@scrollpress/extension",
+  "name": "@screenscroll/extension",
   "version": "0.0.1",
   "private": true,
   "license": "MIT",
@@ -21,7 +21,7 @@
     "wxt": "^0.21.5"
   },
   "dependencies": {
-    "@scrollpress/core": "workspace:*",
+    "@screenscroll/core": "workspace:*",
     "fflate": "^0.8.3",
     "idb": "^8.0.4",
     "lucide-react": "0.468.0",

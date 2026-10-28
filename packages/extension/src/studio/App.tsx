@@ -1,0 +1,791 @@
+import {
+  annotationForbidden,
+  buildFilename,
+  commit,
+  cropAround,
+  computeLayout,
+  DEFAULT_STYLE,
+  emptyHistory,
+  redo,
+  TOOL_KEYS,
+  undo,
+  contentCrop,
+  medianFontPx,
+  paginateDebug,
+  readabilityAdvice,
+  sliderWeights,
+  type Annotation,
+  type History,
+  type PageLayout,
+  type PaginationDebug,
+  type Region,
+  type Style,
+  type Tool,
+} from '@screenscroll/core';
+import { FileText, PenLine, SeparatorHorizontal, TriangleAlert } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { EMPTY_PROJECT, saveProject, type Project } from '@/shared/db';
+import { bandHeight, loadSettings, saveSettings, type Settings } from '@/shared/settings';
+import { analyze, type Analysis } from '@/studio/engine/analysis';
+import {
+  copyPageImage,
+  download,
+  exportLongImage,
+  exportLongPagePdf,
+  exportPageImagesZip,
+  exportPdf,
+  ext,
+  openPdfForPrint,
+  zipBlobs,
+} from '@/studio/engine/export';
+import { FrameCache, loadSession, type LoadedSession } from '@/studio/engine/session';
+import { composePage, encodePage } from '@/studio/engine/compose';
+import { AnnotateView } from './components/AnnotateView';
+import { MarkupToolbar, type MarkupControls } from './components/MarkupToolbar';
+import { BreaksPanel, PagesPanel } from './components/Panel';
+import { SaveMenu, type ExportFormat } from './components/SaveMenu';
+import { PagesView } from './components/PagesView';
+import { StripView } from './components/StripView';
+import { Thumbnails } from './components/Thumbnails';
+import { exportDebugOverlay } from './debug-export';
+
+type Stage =
+  | { kind: 'loading' }
+  | { kind: 'analysing'; done: number; total: number }
+  | { kind: 'ready' }
+  | { kind: 'error'; message: string };
+
+type PageResult =
+  | { ok: false; error: string }
+  | {
+      ok: true;
+      crop: { x0: number; x1: number; cropped: boolean };
+      layout: PageLayout;
+      debug: PaginationDebug;
+    };
+
+type View = 'pages' | 'breaks' | 'markup';
+
+/** Three modes, named by what you do in them (UI §3, distilled). */
+const MODES: Array<[View, string, typeof FileText, string]> = [
+  ['pages', 'Pages', FileText, 'See the pages as they will be saved'],
+  ['breaks', 'Breaks', SeparatorHorizontal, 'Move, add or remove page breaks'],
+  ['markup', 'Mark up', PenLine, 'Draw, write, hide private details, crop'],
+];
+
+export interface Edits {
+  pinned: number[];
+  removed: number[];
+}
+
+const params = new URLSearchParams(location.search);
+const SESSION_ID = params.get('session') ?? '';
+const AUTO = params.get('auto'); // 'pdf' = UI §1 "Save PDF directly"
+
+export function App() {
+  const [stage, setStage] = useState<Stage>({ kind: 'loading' });
+  const [session, setSession] = useState<LoadedSession | null>(null);
+  const [analysis, setAnalysis] = useState<Analysis | null>(null);
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [edits, setEdits] = useState<Edits>({ pinned: [], removed: [] });
+  const [view, setViewState] = useState<View>('pages');
+  const [history, setHistory] = useState<History<Project>>(() => emptyHistory(EMPTY_PROJECT));
+  const [tool, setTool] = useState<Tool>('rect');
+  const [style, setStyle] = useState<Style>(DEFAULT_STYLE);
+  const [selected, setSelected] = useState<string | null>(null);
+  const project = history.present;
+  const annotations = project.annotations;
+  const [page, setPage] = useState(0);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const [showWarnings, setShowWarnings] = useState(false);
+  const frames = useRef<FrameCache | null>(null);
+  const running = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [s, st] = await Promise.all([loadSession(SESSION_ID), loadSettings()]);
+        if (cancelled) return;
+        document.title = `${s.session.title || 'Capture'} · ScreenScroll`;
+        frames.current = new FrameCache(s.frames);
+        setHistory(emptyHistory(s.project));
+        setSession(s);
+        setSettings(st);
+        const a = await analyze(s, frames.current, (done, total) =>
+          setStage({ kind: 'analysing', done, total }),
+        );
+        if (cancelled) return;
+        setAnalysis(a);
+        setStage({ kind: 'ready' });
+      } catch (e) {
+        setStage({ kind: 'error', message: e instanceof Error ? e.message : String(e) });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const result = useMemo((): PageResult | null => {
+    if (!session || !analysis || !settings) return null;
+    // A crop drawn in the Annotate view wins over automatic side cropping.
+    const manual = project.crop;
+    const crop = manual
+      ? { x0: manual.x0, x1: manual.x1, cropped: true }
+      : settings.crop === 'auto'
+        ? cropAround(
+            contentCrop(session.width, { rows: analysis.rows, hints: session.hints }),
+            annotations,
+            session.width,
+          )
+        : { x0: 0, x1: session.width, cropped: false };
+    let layout: PageLayout;
+    try {
+      // Header/footer space only when the band shows something (PDF_OUTPUT §4).
+      const page = {
+        ...settings.page,
+        headerPt: bandHeight(settings.pdf.header),
+        footerPt: bandHeight(settings.pdf.footer),
+      };
+      layout = computeLayout(page, crop.x1 - crop.x0);
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+    const debug: PaginationDebug = paginateDebug({
+      height: session.height,
+      width: session.width,
+      T: layout.T,
+      hints: {
+        ...session.hints,
+        forbidden: [...session.hints.forbidden, ...annotationForbidden(annotations)],
+      },
+      rows: analysis.rows,
+      crop,
+      range: manual ? { y0: manual.y0, y1: manual.y1 } : undefined,
+      trimBlankEnd: true,
+      options: { ...sliderWeights(settings.breakStyle), ...edits },
+    });
+    if (!debug.slices.length)
+      return { ok: false, error: 'Nothing to show: the captured area is empty.' };
+    return { ok: true, crop, layout, debug };
+  }, [session, analysis, settings, edits, project.crop, annotations]);
+
+  // Projects are saved as they change, so they can be re-edited later (TODO M4).
+  const loaded = useRef<Project | null>(null);
+  useEffect(() => {
+    if (!session) return;
+    if (loaded.current === null) {
+      loaded.current = project;
+      return;
+    }
+    const t = setTimeout(() => void saveProject(SESSION_ID, project), 250);
+    const flush = () => void saveProject(SESSION_ID, project);
+    addEventListener('pagehide', flush);
+    return () => {
+      clearTimeout(t);
+      removeEventListener('pagehide', flush);
+    };
+  }, [session, project]);
+
+  const changeProject = useCallback(
+    (patch: Partial<Project>) => setHistory((h) => commit(h, { ...h.present, ...patch })),
+    [],
+  );
+  const setAnnotations = useCallback(
+    (next: Annotation[]) => changeProject({ annotations: next }),
+    [changeProject],
+  );
+  const setCrop = useCallback((crop: Region | null) => changeProject({ crop }), [changeProject]);
+  const doUndo = useCallback(() => {
+    setHistory(undo);
+    setSelected(null);
+  }, []);
+  const doRedo = useCallback(() => {
+    setHistory(redo);
+    setSelected(null);
+  }, []);
+  const deleteSelected = useCallback(() => {
+    if (!selected) return;
+    setHistory((h) =>
+      commit(h, {
+        ...h.present,
+        annotations: h.present.annotations.filter((a) => a.id !== selected),
+      }),
+    );
+    setSelected(null);
+  }, [selected]);
+  const changeStyle = useCallback(
+    (next: Style) => {
+      setStyle(next);
+      if (selected)
+        setHistory((h) =>
+          commit(h, {
+            ...h.present,
+            annotations: h.present.annotations.map((a) =>
+              a.id === selected ? { ...a, style: next } : a,
+            ),
+          }),
+        );
+    },
+    [selected],
+  );
+  const setView = setViewState;
+
+  const slices = result && result.ok ? result.debug.slices : [];
+
+  const warnings = useMemo(() => {
+    if (!session || !result || !result.ok) return [];
+    const list = [...session.session.warnings];
+    const advice = readabilityAdvice(
+      medianFontPx(session.hints.textRuns.map((t) => t.fontSizePx)),
+      result.layout.s,
+    );
+    if (advice) list.push(advice);
+    if (result.layout.scaleClamped)
+      list.push('The fixed scale was reduced so the page fits the paper width.');
+    for (const s of result.debug.slices) list.push(...s.warnings);
+    if (session.session.status === 'cancelled')
+      list.unshift('Capture was cancelled; this is what was captured.');
+    if (session.session.status === 'error')
+      list.unshift('Capture stopped early; this is what was captured.');
+    return list;
+  }, [session, result]);
+
+  // Export tab "estimated file size" (UI §3): encode the first and a middle page, extrapolate.
+  const [estimate, setEstimate] = useState<number | null>(null);
+  useEffect(() => {
+    if (!session || !result?.ok || !settings || !frames.current) return;
+    const f = frames.current;
+    let cancelled = false;
+    setEstimate(null);
+    const t = setTimeout(async () => {
+      const sample = [...new Set([0, Math.floor(slices.length / 2)])].filter((i) => slices[i]);
+      let bytes = 0;
+      for (const i of sample) {
+        const img = await encodePage(
+          await composePage(session, f, slices[i]!, 1, annotations),
+          slices[i]!,
+          settings.imageMode,
+        );
+        bytes += img.bytes.length;
+      }
+      if (!cancelled && sample.length) setEstimate((bytes / sample.length) * slices.length);
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [session, result, settings, slices, annotations]);
+
+  // The UI changes at once; writes are queued so they land in order (fast typing in a text
+  // field would otherwise lose characters, or an older write could finish last).
+  const saving = useRef<Promise<unknown>>(Promise.resolve());
+  const updateSettings = useCallback((patch: Partial<Settings>) => {
+    setSettings((prev) => prev && { ...prev, ...patch });
+    saving.current = saving.current.then(() => saveSettings(patch)).catch(() => undefined);
+  }, []);
+
+  const filename = useCallback(
+    (extension: string) =>
+      session && settings
+        ? buildFilename(
+            settings.filenameTemplate,
+            {
+              title: session.session.title,
+              url: session.session.url,
+              date: new Date(session.session.capturedAt),
+            },
+            extension,
+          )
+        : `capture.${extension}`,
+    [session, settings],
+  );
+
+  const run = useCallback(
+    async (
+      label: string,
+      job: (progress: (d: number, t: number) => void) => Promise<string | void>,
+    ) => {
+      // One job at a time: a double click or a held Ctrl+S must not save twice.
+      if (running.current) return;
+      running.current = true;
+      setBusy(label);
+      try {
+        const done = await job((d, t) => setBusy(`${label} ${d}/${t}`));
+        if (done) setToast(done);
+      } catch (e) {
+        setToast(e instanceof Error ? e.message : String(e));
+      } finally {
+        running.current = false;
+        setBusy(null);
+      }
+    },
+    [],
+  );
+
+  const doExport = useCallback(
+    async (format: ExportFormat) => {
+      if (!session || !result || !result.ok || !settings || !frames.current) return;
+      const f = frames.current;
+      const { layout, crop } = result;
+      await run('Exporting', async (progress) => {
+        switch (format) {
+          case 'pdf': {
+            const bytes = await exportPdf(
+              session,
+              f,
+              slices,
+              layout,
+              settings.imageMode,
+              settings.pdf,
+              progress,
+              annotations,
+            );
+            return saved(
+              await download(bytes, filename('pdf'), 'application/pdf'),
+              filename('pdf'),
+            );
+          }
+          case 'pdf-long': {
+            const bytes = await exportLongPagePdf(
+              session,
+              f,
+              slices,
+              layout,
+              settings.imageMode,
+              settings.pdf,
+              progress,
+              annotations,
+            );
+            return saved(
+              await download(bytes, filename('pdf'), 'application/pdf'),
+              filename('pdf'),
+            );
+          }
+          case 'png':
+          case 'jpeg':
+          case 'webp': {
+            const base = filename('zip').replace(/\.zip$/, '');
+            const bytes = await exportPageImagesZip(
+              session,
+              f,
+              slices,
+              format,
+              base,
+              progress,
+              annotations,
+            );
+            return saved(
+              await download(bytes, filename('zip'), 'application/zip'),
+              filename('zip'),
+            );
+          }
+          case 'long-png': {
+            const parts = await exportLongImage(session, f, crop, 'png', progress, annotations, {
+              y0: slices[0]!.y0,
+              y1: slices.at(-1)!.y1,
+            });
+            if (parts.length === 1) {
+              return saved(
+                await download(parts[0]!, filename('png'), 'image/png'),
+                filename('png'),
+              );
+            }
+            const base = filename('png').replace(/\.png$/, '');
+            const zip = zipBlobs(
+              await Promise.all(
+                parts.map(async (p, i) => ({
+                  name: `${base}-part${i + 1}.${ext('png')}`,
+                  bytes: new Uint8Array(await p.arrayBuffer()),
+                })),
+              ),
+            );
+            const name = await download(zip, filename('zip'), 'application/zip');
+            return `The image was too tall for one file; ${saved(name, filename('zip')).replace('Saved', 'saved')} (${parts.length} parts)`;
+          }
+        }
+      });
+    },
+    [session, result, settings, slices, filename, run, annotations],
+  );
+
+  const doPrint = useCallback(async () => {
+    if (!session || !result || !result.ok || !settings || !frames.current) return;
+    const f = frames.current;
+    await run('Preparing PDF', async (progress) => {
+      openPdfForPrint(
+        await exportPdf(
+          session,
+          f,
+          slices,
+          result.layout,
+          settings.imageMode,
+          settings.pdf,
+          progress,
+          annotations,
+        ),
+      );
+    });
+  }, [session, result, settings, slices, run, annotations]);
+
+  const doCopy = useCallback(async () => {
+    if (!session || !frames.current || !slices[page]) return;
+    const f = frames.current;
+    await run('Copying', async () => {
+      await copyPageImage(session, f, slices[page]!, annotations);
+      return `Page ${page + 1} copied as an image`;
+    });
+  }, [session, slices, page, run, annotations]);
+
+  const doDebug = useCallback(async () => {
+    if (!session || !analysis || !result || !result.ok) return;
+    await run('Exporting overlay', async () => {
+      const { png, json } = await exportDebugOverlay(analysis, result.debug, session.width);
+      await download(png, filename('png').replace(/\.png$/, '-breaks.png'), 'image/png');
+      await download(
+        new Blob([json], { type: 'application/json' }),
+        filename('json').replace(/\.json$/, '-breaks.json'),
+        'application/json',
+      );
+      return 'Saved break overlay (PNG and JSON)';
+    });
+  }, [session, analysis, result, filename, run]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  // UI §1 fast path: save the PDF with automatic breaks, then close this tab.
+  const autoDone = useRef(false);
+  useEffect(() => {
+    if (AUTO !== 'pdf' || autoDone.current || stage.kind !== 'ready' || !result || !result.ok)
+      return;
+    autoDone.current = true;
+    void doExport('pdf').then(() => setTimeout(() => window.close(), 500));
+  }, [stage, result, doExport]);
+
+  // Keyboard (UI §3).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('input, select, textarea')) return;
+      const mod = e.ctrlKey || e.metaKey;
+      const key = e.key.toLowerCase();
+      if (mod && (key === 'y' || (key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        doRedo();
+      } else if (mod && key === 'z') {
+        e.preventDefault();
+        doUndo();
+      } else if (view === 'markup' && !mod && !e.altKey && TOOL_KEYS[key]) {
+        setTool(TOOL_KEYS[key]);
+      } else if (view === 'markup' && (e.key === 'Delete' || e.key === 'Backspace')) {
+        e.preventDefault();
+        deleteSelected();
+      } else if (view === 'markup' && e.key === 'Escape') {
+        setSelected(null);
+      } else if (mod && e.shiftKey && key === 'd') {
+        // Developer aid (PAGINATION §9): the break overlay, kept out of the visible UI.
+        e.preventDefault();
+        void doDebug();
+      } else if (mod && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        void doExport('pdf');
+      } else if (mod && e.shiftKey && e.key.toLowerCase() === 'c') {
+        e.preventDefault();
+        void doCopy();
+      } else if (mod && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        void doPrint();
+      } else if (view !== 'markup' && e.key === 'ArrowRight')
+        setPage((p) => Math.min(slices.length - 1, p + 1));
+      else if (view !== 'markup' && e.key === 'ArrowLeft') setPage((p) => Math.max(0, p - 1));
+    };
+    addEventListener('keydown', onKey);
+    return () => removeEventListener('keydown', onKey);
+  }, [doExport, doCopy, doPrint, doDebug, doUndo, doRedo, deleteSelected, view, slices.length]);
+
+  // e2e hook (stripped from production builds).
+  useEffect(() => {
+    if (!__SP_E2E__ || !session || !result || !result.ok || !settings || !frames.current) return;
+    const f = frames.current;
+    Object.assign(window, {
+      __spStudio: {
+        slices: () => result.debug.slices,
+        layout: () => result.layout,
+        crop: () => result.crop,
+        warnings: () => warnings,
+        project: () => project,
+        size: () => ({ width: session.width, height: session.height }),
+        async pdfBase64() {
+          const bytes = await exportPdf(
+            session,
+            f,
+            result.debug.slices,
+            result.layout,
+            settings.imageMode,
+            settings.pdf,
+            undefined,
+            project.annotations,
+          );
+          let bin = '';
+          for (let i = 0; i < bytes.length; i += 0x8000)
+            bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+          return btoa(bin);
+        },
+      },
+    });
+  }, [session, result, settings, warnings, project]);
+
+  if (stage.kind === 'error') {
+    return (
+      <Centered>
+        <p role="alert" className="text-red-700 dark:text-red-300">
+          {stage.message}
+        </p>
+      </Centered>
+    );
+  }
+  if (!session || !analysis || !settings || !result) {
+    const text =
+      stage.kind === 'analysing'
+        ? `Reading the capture ${stage.done}/${stage.total}`
+        : 'Loading capture';
+    return (
+      <Centered>
+        <p aria-live="polite">{text}</p>
+      </Centered>
+    );
+  }
+
+  const domain = (() => {
+    try {
+      return new URL(session.session.url).hostname.replace(/^www\./, '');
+    } catch {
+      return '';
+    }
+  })();
+  const captured = new Date(session.session.capturedAt).toLocaleString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  const markup: MarkupControls = {
+    tool,
+    onTool: setTool,
+    style,
+    onStyle: changeStyle,
+    canUndo: history.past.length > 0,
+    canRedo: history.future.length > 0,
+    onUndo: doUndo,
+    onRedo: doRedo,
+    selected: !!selected && annotations.some((a) => a.id === selected),
+    onDelete: deleteSelected,
+    count: annotations.length,
+    onClear: () => {
+      setAnnotations([]);
+      setSelected(null);
+    },
+    cropped: !!project.crop,
+    onResetCrop: () => setCrop(null),
+  };
+
+  return (
+    <div className="flex h-screen flex-col bg-neutral-50 text-[13px] text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
+      <header className="flex items-center gap-3 border-b border-neutral-200 bg-white px-3 py-2 dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate font-semibold" title={session.session.title}>
+            {session.session.title || 'Untitled capture'}
+          </h1>
+          <p className="truncate text-[12px] text-neutral-500">
+            {[
+              domain,
+              captured,
+              result.ok ? `${slices.length} ${slices.length === 1 ? 'page' : 'pages'}` : '',
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </p>
+        </div>
+        <div
+          role="tablist"
+          aria-label="Mode"
+          className="flex rounded-lg bg-neutral-100 p-0.5 dark:bg-neutral-800"
+        >
+          {MODES.map(([v, label, Icon, hint]) => (
+            <button
+              key={v}
+              role="tab"
+              type="button"
+              aria-selected={view === v}
+              title={hint}
+              disabled={!result.ok}
+              onClick={() => setView(v)}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1 focus-visible:outline-2 focus-visible:outline-accent ${view === v ? 'bg-white font-medium shadow-sm dark:bg-neutral-700' : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-white'}`}
+            >
+              <Icon aria-hidden size={15} />
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-1 items-center justify-end gap-2">
+          {warnings.length > 0 && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowWarnings((v) => !v)}
+                aria-expanded={showWarnings}
+                className="flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-amber-900 focus-visible:outline-2 focus-visible:outline-accent dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100"
+              >
+                <TriangleAlert aria-hidden size={14} />
+                {warnings.length} {warnings.length === 1 ? 'note' : 'notes'}
+              </button>
+              {showWarnings && (
+                <ul
+                  data-testid="warnings"
+                  className="absolute right-0 z-20 mt-1 w-96 max-w-[80vw] rounded-md border border-neutral-200 bg-white p-2 shadow-sm dark:border-neutral-700 dark:bg-neutral-900"
+                >
+                  {warnings.map((w, i) => {
+                    const m = /^Page (\d+):/.exec(w);
+                    return (
+                      <li key={i} className="py-1">
+                        {m ? (
+                          <button
+                            type="button"
+                            className="text-left underline-offset-2 hover:underline"
+                            onClick={() => {
+                              setPage(Number(m[1]) - 1);
+                              setView('pages');
+                              setShowWarnings(false);
+                            }}
+                          >
+                            {w}
+                          </button>
+                        ) : (
+                          w
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          )}
+          <SaveMenu
+            disabled={!!busy || !result.ok}
+            onExport={doExport}
+            onCopy={doCopy}
+            onPrint={doPrint}
+          />
+        </div>
+      </header>
+
+      <div className="flex min-h-0 flex-1">
+        {result.ok ? (
+          <>
+            {view !== 'markup' && (
+              <Thumbnails
+                analysis={analysis}
+                slices={slices}
+                page={page}
+                onSelect={setPage}
+                annotations={annotations}
+              />
+            )}
+            <main className="flex min-w-0 flex-1 flex-col">
+              {view === 'pages' ? (
+                <PagesView
+                  session={session}
+                  frames={frames.current!}
+                  analysis={analysis}
+                  slices={slices}
+                  layout={result.layout}
+                  page={page}
+                  onSelect={setPage}
+                  annotations={annotations}
+                />
+              ) : view === 'markup' ? (
+                <>
+                  <MarkupToolbar {...markup} />
+                  <AnnotateView
+                    session={session}
+                    frames={frames.current!}
+                    annotations={annotations}
+                    crop={project.crop}
+                    tool={tool}
+                    style={style}
+                    selected={selected}
+                    onSelect={setSelected}
+                    onAnnotations={setAnnotations}
+                    onCrop={(c) => {
+                      setCrop(c);
+                      setTool('select');
+                    }}
+                  />
+                </>
+              ) : (
+                <StripView
+                  session={session}
+                  frames={frames.current!}
+                  analysis={analysis}
+                  debug={result.debug}
+                  crop={result.crop}
+                  edits={edits}
+                  onEdits={setEdits}
+                  page={page}
+                />
+              )}
+            </main>
+          </>
+        ) : (
+          <main className="flex flex-1 items-center justify-center p-6">
+            <p role="alert">{result.error}</p>
+          </main>
+        )}
+        {view === 'pages' || !result.ok ? (
+          <PagesPanel
+            settings={settings}
+            onSettings={updateSettings}
+            filename={filename('pdf')}
+            cropped={result.ok && result.crop.cropped}
+            estimate={estimate}
+          />
+        ) : view === 'breaks' ? (
+          <BreaksPanel edits={edits} onReset={() => setEdits({ pinned: [], removed: [] })} />
+        ) : null}
+      </div>
+
+      {(busy || toast) && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-md bg-neutral-900 px-3 py-2 text-white shadow-sm dark:bg-neutral-100 dark:text-neutral-900"
+          onClick={() => setToast(null)}
+        >
+          {busy ?? toast}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Toast text for a finished save, explaining a changed file name. */
+function saved(name: string, wanted: string): string {
+  return name === wanted
+    ? `Saved ${name}`
+    : `Saved as ${name}. The browser did not accept the page title as a file name.`;
+}
+
+function Centered({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex h-screen items-center justify-center text-[13px] text-neutral-700 dark:text-neutral-300">
+      {children}
+    </div>
+  );
+}

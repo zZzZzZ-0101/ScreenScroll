@@ -12,7 +12,7 @@ import {
   type PageSettings,
   type PageSlice,
   type RowProfile,
-} from '@scrollpress/core';
+} from '@screenscroll/core';
 import { synthFixtures, type SynthDoc } from '../src/synth.js';
 
 const PAPERS: Array<[string, PageSettings]> = [
