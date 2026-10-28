@@ -72,9 +72,9 @@ Built:
 
 Verified:
 - Synthetic capture: pdf.js and poppler (`pdftotext`, `pdffonts`) extract every line, English and Chinese, in reading order; pdf.js positions match the visible text within 0.5 pt; fontTools decodes the font; bookmarks, URI links and jumps resolve to the right pages; a Chinese header title is visible and searchable; rendered pages show no stray text and an intact footer.
-- e2e through the extension: `cjk.html` — Chinese, Japanese and English phrases each found on exactly one page by pdf.js and by poppler; Chinese title in the header on every page; external link, three in-document jumps to the right pages; nested bookmarks. `article.html` — text, external link, in-page jump and bookmarks.
+- e2e through the extension: `cjk.html` — Chinese, Japanese and English phrases each found on exactly one page by pdf.js, by poppler and by PDFium's own search API (the engine of Chrome's viewer, via `scripts/pdfium-search.py`, when `pypdfium2` is installed), with full-height highlight boxes; Chinese title in the header on every page; external link, three in-document jumps to the right pages; nested bookmarks. `article.html` — text, external link, in-page jump and bookmarks.
 
-Manual: Ctrl+F for an English word and a Chinese phrase in Chrome's PDF viewer and in Acrobat Reader; select text and copy-paste.
+Manual: Ctrl+F for an English word and a Chinese phrase in Chrome's PDF viewer UI and in Acrobat Reader; select text and copy-paste.
 
 ## Manual site checks
 | Site | Date | Capture | Header once | Images loaded | No text cut | Text searchable | Links | Time | Notes |

@@ -82,6 +82,15 @@ async function linkTargets(pdf: Awaited<ReturnType<typeof capturePdf>>['pdf']) {
   return { uris, jumps };
 }
 
+function hasPdfium(): boolean {
+  try {
+    execFileSync('python3', ['-I', '-c', 'import pypdfium2'], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function pageOf(slices: PageSlice[], y: number) {
   return slices.findIndex((s) => y >= s.y0 + s.overlapTop && y < s.y1);
 }
@@ -121,6 +130,20 @@ test('CJK page: Chinese, Japanese and English are searchable; links, jumps, book
   const poppler = execFileSync('pdftotext', [file, '-']).toString();
   expect(poppler).toContain('汉字分页测试');
   expect(poppler).toContain('日本語のテキスト');
+
+  // Chrome's viewer (PDFium): Ctrl+F finds each phrase once, with a real highlight box.
+  if (hasPdfium()) {
+    const phrases = ['汉字分页测试', '日本語のテキスト', 'Searchable English sentence'];
+    const hits = JSON.parse(
+      execFileSync('python3', ['-I', 'scripts/pdfium-search.py', file, ...phrases]).toString(),
+    ) as Record<string, Array<[number, number]>>;
+    for (const p of phrases) {
+      expect(hits[p], p).toHaveLength(1);
+      expect(hits[p]![0]![1]).toBeGreaterThan(8);
+    }
+  } else {
+    test.info().annotations.push({ type: 'skipped-check', description: 'pypdfium2 not installed' });
+  }
 
   // Header (Chinese title, drawn as an image + searchable twin) on every page.
   for (const t of texts) expect(t).toContain('中文分页测试 · CJK fixture');

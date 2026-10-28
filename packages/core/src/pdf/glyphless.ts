@@ -78,7 +78,31 @@ function nameTable(): Uint8Array {
   return w.done();
 }
 
-/** Builds the font file: 2 empty glyphs (.notdef and one blank), 500 units wide. */
+/** Simple glyph: one 4-point contour around the em box, padded to an even length. */
+const EM_BOX_GLYPH_BYTES = 36;
+function emBoxGlyph(): Uint8Array {
+  const pts: Array<[number, number]> = [
+    [0, GLYPHLESS_DESCENT],
+    [0, GLYPHLESS_ASCENT],
+    [GLYPHLESS_ADVANCE, GLYPHLESS_ASCENT],
+    [GLYPHLESS_ADVANCE, GLYPHLESS_DESCENT],
+  ];
+  const w = new Writer()
+    .i16(1) // numberOfContours
+    .i16(0)
+    .i16(GLYPHLESS_DESCENT)
+    .i16(GLYPHLESS_ADVANCE)
+    .i16(GLYPHLESS_ASCENT)
+    .u16(pts.length - 1) // endPtsOfContours[0]
+    .u16(0); // no instructions
+  for (let i = 0; i < pts.length; i++) w.u8(0x01); // on-curve, coordinates as int16 deltas
+  pts.forEach(([x], i) => w.i16(x - (i ? pts[i - 1]![0] : 0)));
+  pts.forEach(([, y], i) => w.i16(y - (i ? pts[i - 1]![1] : 0)));
+  while (w.length < EM_BOX_GLYPH_BYTES) w.u8(0);
+  return w.done();
+}
+
+/** Builds the font file: .notdef (empty) and one em-box glyph, both 500 units wide. */
 export function buildGlyphlessFont(): Uint8Array {
   const numGlyphs = 2;
   const tables: Record<string, Uint8Array> = {
@@ -102,9 +126,11 @@ export function buildGlyphlessFont(): Uint8Array {
       .i16(1)
       .u16(0)
       .done(),
-    // Glyph 0 (.notdef) is zero-length; glyph 1 is a valid outline with no contours (12 bytes),
-    // so the table isn't empty (pdf.js treats an empty glyf as missing).
-    glyf: new Writer().i16(0).i16(0).i16(0).i16(0).i16(0).u16(0).done(),
+    // Glyph 0 (.notdef) is zero-length. Glyph 1 is one rectangle covering the em box: the
+    // text is drawn in rendering mode 3, so it is never painted, but PDFium (Chrome's viewer)
+    // derives search and selection boxes from glyph outlines — an empty glyph gave
+    // zero-height highlights.
+    glyf: emBoxGlyph(),
     head: new Writer()
       .u32(0x00010000)
       .u32(0x00010000)
@@ -140,12 +166,16 @@ export function buildGlyphlessFont(): Uint8Array {
       .u16(1) // numberOfHMetrics
       .done(),
     hmtx: new Writer().u16(GLYPHLESS_ADVANCE).i16(0).i16(0).done(),
-    loca: new Writer().u16(0).u16(0).u16(6).done(), // short offsets (÷2): 0, 0, 12
+    loca: new Writer()
+      .u16(0)
+      .u16(0)
+      .u16(EM_BOX_GLYPH_BYTES / 2)
+      .done(), // short offsets (÷2)
     maxp: new Writer()
       .u32(0x00010000)
       .u16(numGlyphs)
-      .u16(0)
-      .u16(0)
+      .u16(4) // maxPoints
+      .u16(1) // maxContours
       .u16(0)
       .u16(0)
       .u16(2) // maxZones

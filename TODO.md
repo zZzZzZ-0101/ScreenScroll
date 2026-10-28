@@ -56,7 +56,7 @@ Legend: `[ ]` todo · `(L#)` = lesson from `docs/PRIOR_ART.md` §7 · `→ DOC` 
 
 ## M3 — Real-document PDF: text layer, links, headers (~3 h)
 
-- [ ] Invisible text layer from `TextRun`s: glyphless Identity-H font + ToUnicode (or the Noto subset fallback). Ctrl+F works for English **and Chinese** in Chrome's viewer and Acrobat (L7). → PDF_OUTPUT §2 _(built; verified with pdf.js and poppler, English + Chinese + Japanese; Chrome's viewer and Acrobat need a manual Ctrl+F check)_
+- [ ] Invisible text layer from `TextRun`s: glyphless Identity-H font + ToUnicode (or the Noto subset fallback). Ctrl+F works for English **and Chinese** in Chrome's viewer and Acrobat (L7). → PDF_OUTPUT §2 _(built; verified with pdf.js, poppler and PDFium — the engine of Chrome's viewer — for English, Chinese and Japanese, including highlight boxes; Acrobat and Chrome's actual UI need a manual Ctrl+F check)_
 - [x] Reading order sorting; runs assigned to the correct page at cuts.
 - [x] Link annotations (URI + in-document GoTo). → PDF_OUTPUT §3
 - [x] Header/footer templates with tokens; non-Latin titles render visibly. → PDF_OUTPUT §4
