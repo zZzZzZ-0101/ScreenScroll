@@ -136,3 +136,27 @@ describe('paginate', () => {
     expect(lineBreaks(clean)).toBeLessThanOrEqual(lineBreaks(packed));
   });
 });
+
+describe('paginate with a vertical crop range', () => {
+  it('paginates only [y0, y1) and never cuts text inside it', () => {
+    const { hints, height, lines } = article([5, 3, 8, 2, 6, 7, 4, 9, 3, 5]);
+    const range = { y0: 300, y1: height - 200 };
+    const slices = paginate({ height, width: 700, T: 250, hints, range });
+    expect(slices[0]!.y0).toBe(300);
+    expect(slices.at(-1)!.y1).toBe(height - 200);
+    for (let i = 0; i < slices.length; i++) {
+      const s = slices[i]!;
+      expect(s.y1 - s.y0).toBeLessThanOrEqual(250);
+      if (i > 0) expect(s.y0).toBe(slices[i - 1]!.y1);
+      if (i < slices.length - 1)
+        for (const [a, b] of lines) expect(s.y1 <= a || s.y1 >= b).toBe(true);
+    }
+  });
+
+  it('a short range is one page', () => {
+    const { hints, height } = article([5, 5]);
+    expect(
+      paginate({ height, width: 700, T: 1000, hints, range: { y0: 20, y1: 120 } }),
+    ).toHaveLength(1);
+  });
+});

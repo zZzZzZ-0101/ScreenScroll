@@ -55,6 +55,8 @@ export interface PaginateInput {
   rows?: RowProfile | null;
   /** Horizontal crop; defaults to the full width. */
   crop?: { x0: Px; x1: Px };
+  /** Vertical crop (the Studio's Crop tool): paginate only [y0, y1). Defaults to [0, H). */
+  range?: { y0: Px; y1: Px };
   options?: Partial<PaginateOptions>;
 }
 
@@ -123,21 +125,30 @@ export function paginateDebug(input: PaginateInput): PaginationDebug {
   if (!(T > 0) || !(H > 0)) throw new Error('paginate: height and T must be positive');
 
   const overlap = Math.min(0.25 * T, opts.overlap === 'auto' ? autoOverlap(input) : opts.overlap);
-  const pinned = [...new Set(opts.pinned.filter((y) => y > 0 && y < H))].sort((a, b) => a - b);
+  const start = Math.max(0, Math.min(H, input.range?.y0 ?? 0));
+  const end = Math.max(start, Math.min(H, input.range?.y1 ?? H));
+  const pinned = [...new Set(opts.pinned.filter((y) => y > start && y < end))].sort(
+    (a, b) => a - b,
+  );
 
   const { forbidden, opaque } = regions(input.hints ?? null, T);
-  if (H <= T && pinned.length === 0) {
-    return { slices: [slice(0, H, crop, 0, 'end', 0, [])], candidates: [], forbidden, opaque };
+  if (end - start <= T && pinned.length === 0) {
+    return {
+      slices: [slice(start, end, crop, 0, 'end', 0, [])],
+      candidates: [],
+      forbidden,
+      opaque,
+    };
   }
 
-  const base = buildCandidates(input, T);
-  let cands = applyEdits(base, pinned, opts.removed, H);
+  const base = buildCandidates(input, T).filter((c) => c.y > start && c.y < end);
+  let cands = applyEdits(base, pinned, opts.removed, start, end);
   let breaks = solve(cands, T, overlap, opts.alpha, opts.beta);
   if (!breaks) {
     // Some stretch has no usable candidate (pinned breaks too far apart, no hints and no
     // pixels...). Add last-resort cuts everywhere; they carry an overlap and a warning.
     const extra: Cand[] = [];
-    for (let y = FORCED_STEP; y < H; y += FORCED_STEP) {
+    for (let y = start + FORCED_STEP; y < end; y += FORCED_STEP) {
       extra.push({
         y,
         b: FALLBACK_BASE,
@@ -148,7 +159,7 @@ export function paginateDebug(input: PaginateInput): PaginationDebug {
         unconfirmed: false,
       });
     }
-    cands = applyEdits(dedupe([...base, ...extra]), pinned, opts.removed, H);
+    cands = applyEdits(dedupe([...base, ...extra]), pinned, opts.removed, start, end);
     breaks = solve(cands, T, overlap, opts.alpha, opts.beta);
     if (!breaks) throw new Error('paginate: no feasible page breaks');
   }
@@ -175,7 +186,7 @@ export function paginateDebug(input: PaginateInput): PaginationDebug {
   return {
     slices,
     candidates: cands
-      .filter((c) => c.y > 0 && c.y < H && !c.fallback)
+      .filter((c) => c.y > start && c.y < end && !c.fallback)
       .map((c) => ({ y: c.y, badness: c.b, kind: c.kind, forced: c.forced })),
     forbidden,
     opaque,
@@ -347,7 +358,13 @@ function dedupe(cands: Cand[]): Cand[] {
   return out;
 }
 
-function applyEdits(cands: Cand[], pinned: readonly Px[], removed: readonly Px[], H: Px): Cand[] {
+function applyEdits(
+  cands: Cand[],
+  pinned: readonly Px[],
+  removed: readonly Px[],
+  start: Px,
+  end: Px,
+): Cand[] {
   const kept = cands.filter(
     (c) =>
       !removed.some((r) => Math.abs(r - c.y) <= 3) && !pinned.some((p) => Math.abs(p - c.y) < 0.5),
@@ -364,7 +381,7 @@ function applyEdits(cands: Cand[], pinned: readonly Px[], removed: readonly Px[]
     });
   }
   kept.push({
-    y: 0,
+    y: start,
     b: 0,
     kind: 'end',
     forced: false,
@@ -373,7 +390,7 @@ function applyEdits(cands: Cand[], pinned: readonly Px[], removed: readonly Px[]
     unconfirmed: false,
   });
   kept.push({
-    y: H,
+    y: end,
     b: 0,
     kind: 'end',
     forced: false,

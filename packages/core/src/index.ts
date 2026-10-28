@@ -1,3 +1,4 @@
+export * from './annotations.js';
 export * from './blocked.js';
 export * from './capture-plan.js';
 export * from './compose.js';
