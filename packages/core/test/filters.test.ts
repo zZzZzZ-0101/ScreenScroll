@@ -18,8 +18,9 @@ function image(
   return { width: w, height: h, data };
 }
 
-const px = (img: Rgba, x: number, y: number) =>
-  [...img.data.subarray((y * img.width + x) * 4, (y * img.width + x) * 4 + 3)];
+const px = (img: Rgba, x: number, y: number) => [
+  ...img.data.subarray((y * img.width + x) * 4, (y * img.width + x) * 4 + 3),
+];
 
 /** Thin vertical strokes every 6 px, like a line of text. */
 const strokes = (x: number, y: number) => y >= 20 && y < 32 && x % 6 < 2;

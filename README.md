@@ -86,7 +86,7 @@ pnpm typecheck    # TypeScript, all packages
 
 ## Principles
 
-1. **Offline and private.** No network requests at runtime, no analytics, no accounts, no remote code.
+1. **Offline and private.** No network requests at runtime, no analytics, no accounts, no remote code. One exception, on request: the text recognition model (30 MB) is downloaded once and checked, then kept on this computer.
 2. **No ads, no nags, no paywall.**
 3. **Never cut through text**, unless an element is taller than a page; then say so and repeat a small overlap.
 4. **Readable by default**: legible at 100% on A4, with a text layer and links.

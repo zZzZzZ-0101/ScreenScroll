@@ -132,6 +132,13 @@ Suite: `pnpm test` 219, `pnpm e2e` 53 (see the commit), lint and typecheck clean
 - Checked by eye: pill mid-capture and with the paused notice; filter panel and black & white pages; area toolbar with marks.
 - Needs a real-browser check: Copy from the area toolbar on a real site (clipboard focus), the toolbar panel's Stop/Cancel while capturing, REC/WAIT on the icon.
 
+### Quality presets, Details, line-to-line edges, OCR (2026-10-29)
+- PDF quality presets wired into export (Compact ≤ 150 dpi … Lossless PNG); sizes ordered on the tall-image fixture (e2e).
+- Details panel with every number and its calculation; unit-tested against hand-worked numbers.
+- Line to line: side handles for left/right edges (e2e).
+- OCR: PP-OCRv6 small on onnxruntime-web in a worker; model downloaded on request, checksummed, kept in IndexedDB; canvas-only page becomes searchable in English and Chinese (e2e with the model served locally; `pnpm ocr:check` with the real model).
+- Needs the user's check: Download model from the real mirrors (jsDelivr/unpkg are blocked in the build sandbox), and OCR on a real Google Drive PDF preview.
+
 ## Manual site checks
 | Site | Date | Capture | Header once | Images loaded | No text cut | Text searchable | Links | Time | Notes |
 |---|---|---|---|---|---|---|---|---|---|

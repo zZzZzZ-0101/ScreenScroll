@@ -1,6 +1,9 @@
 import {
+  QUALITY,
+  exportScale,
   redactions,
   type Annotation,
+  type ExportPreset,
   type FilterId,
   type PageLayout,
   type PageSlice,
@@ -14,26 +17,48 @@ import {
   type PdfMeta,
   type PdfOptions,
 } from '@screenscroll/core/pdf';
+import { ocrRuns, type OcrLine } from '@screenscroll/core/ocr';
 import { zipSync } from 'fflate';
 import type { PdfSettings } from '@/shared/settings';
-import { composePage, encodePage, type ImageMode } from './compose';
+import { composePage, encodePage } from './compose';
 import { renderBandText } from './render-text';
 import type { FrameCache, LoadedSession } from './session';
 
 export type Progress = (done: number, total: number) => void;
 
+/** Text recognition for the pages that need it (Settings → Text recognition). */
+export interface PageOcr {
+  /** Indices of the pages to read. */
+  pages: ReadonlySet<number>;
+  read: (img: ImageData, detScale: number) => Promise<OcrLine[]>;
+}
+
 async function* pageImages(
   s: LoadedSession,
   frames: FrameCache,
   slices: PageSlice[],
-  mode: ImageMode,
+  layout: PageLayout,
+  preset: ExportPreset,
   onProgress?: Progress,
   annotations: readonly Annotation[] = [],
   filter: FilterId = 'original',
+  ocr?: PageOcr,
 ): AsyncGenerator<PageImage> {
+  const spec = QUALITY[preset];
+  const scale = exportScale(s.dpr, layout.s, spec);
+  const pxPerCss = s.dpr * scale;
   for (let i = 0; i < slices.length; i++) {
-    const canvas = await composePage(s, frames, slices[i]!, 1, annotations, filter);
-    yield await encodePage(canvas, slices[i]!, mode);
+    const slice = slices[i]!;
+    const canvas = await composePage(s, frames, slice, scale, annotations, filter);
+    const page = await encodePage(canvas, slice, spec);
+    if (ocr?.pages.has(i)) {
+      // Read the page as it will look (filter and redactions applied); small text is
+      // enlarged for detection.
+      const img = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height);
+      const lines = await ocr.read(img, pxPerCss < 1.5 ? 2 : 1);
+      page.textRuns = ocrRuns(lines, slice, pxPerCss, s.hints.textRuns);
+    }
+    yield page;
     onProgress?.(i + 1, slices.length);
   }
 }
@@ -70,13 +95,14 @@ export function exportPdf(
   frames: FrameCache,
   slices: PageSlice[],
   layout: PageLayout,
-  mode: ImageMode,
+  preset: ExportPreset,
   pdf: PdfSettings,
   onProgress?: Progress,
   annotations: readonly Annotation[] = [],
+  ocr?: PageOcr,
 ): Promise<Uint8Array> {
   return buildPdf(
-    pageImages(s, frames, slices, mode, onProgress, annotations, pdf.filter),
+    pageImages(s, frames, slices, layout, preset, onProgress, annotations, pdf.filter, ocr),
     slices.length,
     layout,
     metaOf(s),
@@ -90,14 +116,15 @@ export function exportLongPagePdf(
   frames: FrameCache,
   slices: PageSlice[],
   layout: PageLayout,
-  mode: ImageMode,
+  preset: ExportPreset,
   pdf: PdfSettings,
   onProgress?: Progress,
   annotations: readonly Annotation[] = [],
+  ocr?: PageOcr,
 ): Promise<Uint8Array> {
   const total = slices.reduce((h, sl) => h + sl.y1 - sl.y0 - sl.overlapTop, 0);
   return buildSingleLongPagePdf(
-    pageImages(s, frames, slices, mode, onProgress, annotations, pdf.filter),
+    pageImages(s, frames, slices, layout, preset, onProgress, annotations, pdf.filter, ocr),
     total,
     layout,
     metaOf(s),

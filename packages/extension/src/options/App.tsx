@@ -8,6 +8,9 @@ import {
   SETTINGS,
   type SettingEntry,
 } from '@/shared/settings-schema';
+import { DEFAULT_ENGINE } from '@screenscroll/core/ocr';
+import { downloadModel } from '@/ocr/client';
+import { modelStatus, removeModel, type ModelStatus } from '@/ocr/store';
 
 /**
  * Settings (UI §6): every option with a plain explanation, its default and the value we
@@ -83,6 +86,7 @@ export function App() {
             {SETTINGS.filter((e) => e.section === section).map((e) => (
               <Row key={e.id} entry={e} settings={s} onChange={(p) => void apply(p)} />
             ))}
+            {section === 'Text recognition' && <OcrModelRow />}
           </div>
         </section>
       ))}
@@ -93,8 +97,9 @@ export function App() {
       >
         <ShieldCheck aria-hidden size={18} className="mt-0.5 shrink-0 text-accent" />
         <p className="text-neutral-600 dark:text-neutral-300">
-          ScreenScroll never sends data anywhere. Captures, text recognition and PDFs are made on
-          this computer; the extension cannot contact any server.
+          ScreenScroll never sends your data anywhere. Captures, text recognition and PDFs are made
+          on this computer. The one connection it can make is downloading the text recognition
+          model, once, when you ask; nothing of yours is sent.
         </p>
       </section>
 
@@ -130,6 +135,72 @@ export function App() {
         </div>
       )}
     </main>
+  );
+}
+
+const mb = (n: number) => `${(n / 1048576).toFixed(1)} MB`;
+
+/** Settings → Text recognition: the model, kept on this computer, downloaded on request. */
+function OcrModelRow() {
+  const [status, setStatus] = useState<ModelStatus | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const refresh = () =>
+    void modelStatus(DEFAULT_ENGINE)
+      .then(setStatus)
+      .catch(() => setStatus(null));
+  useEffect(refresh, []);
+  const get = async () => {
+    setError(null);
+    setProgress({ done: 0, total: 1 });
+    try {
+      await downloadModel((done, total) => setProgress({ done, total }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setProgress(null);
+      refresh();
+    }
+  };
+  const remove = async () => {
+    await removeModel(DEFAULT_ENGINE);
+    refresh();
+  };
+  const e = DEFAULT_ENGINE;
+  return (
+    <div className="p-3" role="group" aria-label="Text recognition model">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="font-medium">Model: {e.name}</p>
+          <p className="text-[12px] text-neutral-500">
+            {e.languages}. {e.license}. Kept on this computer; downloaded once from{' '}
+            <span className="font-mono">{e.baseUrls.map((u) => new URL(u).host).join(' or ')}</span>{' '}
+            and checked (SHA-256).
+          </p>
+        </div>
+        {status?.ready ? (
+          <button type="button" className={`${control} shrink-0`} onClick={() => void remove()}>
+            Remove ({mb(status.stored)})
+          </button>
+        ) : progress ? null : (
+          <button type="button" className={`${control} shrink-0`} onClick={() => void get()}>
+            Download ({mb(status?.total ?? 0)})
+          </button>
+        )}
+      </div>
+      <p role="status" className="pt-1 text-[12px] text-neutral-600 dark:text-neutral-300">
+        {progress
+          ? `Downloading ${mb(progress.done)} of ${mb(progress.total)}`
+          : status?.ready
+            ? 'Ready.'
+            : 'Not downloaded. Pages without text of their own stay unsearchable until it is.'}
+      </p>
+      {error && (
+        <p role="alert" className="pt-1 text-[12px] text-red-700 dark:text-red-300">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }
 

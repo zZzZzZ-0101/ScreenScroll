@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Canvas text fixture</title>
+<style>
+  body { margin: 0; background: #e8eaed; }
+  canvas { display: block; margin: 0 auto; background: #fff; }
+</style>
+</head>
+<body>
+<!-- Text drawn into a canvas only: the page has no DOM text, like a document viewer that
+     paints its pages. Only text recognition can make it searchable. -->
+<canvas id="page" width="760" height="2400"></canvas>
+<script>
+  const c = document.getElementById('page');
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, c.width, c.height);
+  ctx.fillStyle = '#202124';
+  const lines = [
+    ['28px', 'Quarterly report 2026'],
+    ['18px', 'Revenue grew 14% to $2.3 million.'],
+    ['18px', 'Canvas text has no page text, so only recognition can read it.'],
+    ['20px', '季度报告：收入增长百分之十四。'],
+  ];
+  let y = 80;
+  for (let block = 0; block < 4; block++) {
+    for (const [size, text] of lines) {
+      ctx.font = `${size} "DejaVu Sans", "WenQuanYi Zen Hei", sans-serif`;
+      ctx.fillText(block ? `${text} (${block + 1})` : text, 48, y);
+      y += 64;
+    }
+    y += 300;
+  }
+</script>
+</body>
+</html>

@@ -9,6 +9,8 @@ import { contentY, isScroller, nearestScroller, targetFor, type Target } from '.
  */
 
 const ACCENT = '#0e7c7b';
+/** Narrowest a line-to-line capture can be made with its side handles. */
+const MIN_WIDTH = 40;
 
 export function overlay(interactive: boolean) {
   const host = document.createElement('div');
@@ -110,7 +112,8 @@ export interface Selection {
 /**
  * "From line to line" (UI §2): click the first line, scroll freely (wheel, keys, scrollbar),
  * click the last line. Everything between is captured at the full width of whatever scrolls
- * under the first click, however long. Enter ends at the bottom; Backspace picks the start
+ * under the first click (or narrower: the side handles set the left and right edges),
+ * however long. Enter ends at the bottom; Backspace picks the start
  * again; Esc cancels.
  */
 export function pickLines(): Promise<Selection | null> {
@@ -123,19 +126,60 @@ export function pickLines(): Promise<Selection | null> {
     startTag.textContent = 'Start';
     const line = ui.el('div', 'line');
     const tag = ui.el('div', 'tag', line);
+    const style = document.createElement('style');
+    style.textContent = `
+      .side { position: fixed; width: 13px; margin-left: -6px; cursor: ew-resize; pointer-events: auto; }
+      .side::after { content: ''; position: absolute; left: 5px; top: 0; bottom: 0;
+        border-left: 2px dashed ${ACCENT}; }
+      .side .grip { position: absolute; left: 1px; top: 50%; width: 11px; height: 34px; margin-top: -17px;
+        background: #fff; border: 2px solid ${ACCENT}; border-radius: 6px; box-sizing: border-box; }
+    `;
+    ui.root.append(style);
+    // Left and right edges, once the first line is chosen: drag to narrow the capture.
+    const sides = (['x0', 'x1'] as const).map((edge) => {
+      const el = ui.el('div', 'side');
+      el.dataset.edge = edge;
+      el.title = 'Drag to set the left or right edge';
+      ui.el('div', 'grip', el);
+      el.style.display = 'none';
+      el.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        el.setPointerCapture(e.pointerId);
+        dragging = edge;
+      });
+      el.addEventListener('pointermove', (e) => {
+        if (dragging !== edge || !target || !edges) return;
+        const lo = target.crop.x;
+        const hi = target.crop.x + target.crop.width;
+        const x = Math.max(lo, Math.min(hi, e.clientX));
+        edges =
+          edge === 'x0'
+            ? { x0: Math.min(x, edges.x1 - MIN_WIDTH), x1: edges.x1 }
+            : { x0: edges.x0, x1: Math.max(x, edges.x0 + MIN_WIDTH) };
+        render();
+      });
+      const stop = () => void (dragging = null);
+      el.addEventListener('pointerup', stop);
+      el.addEventListener('pointercancel', stop);
+      return el;
+    });
+    let dragging: 'x0' | 'x1' | null = null;
     let target: Target | null = null;
     let startY: number | null = null;
+    let edges: { x0: number; x1: number } | null = null;
     let pointer = { x: innerWidth / 2, y: innerHeight / 2 };
 
     const targetAt = (x: number, y: number) =>
       targetFor(nearestScroller(document.elementFromPoint(x, y)));
     const clampY = (t: Target, y: number) =>
       Math.max(t.crop.y, Math.min(t.crop.y + t.crop.height, y));
+    const span = (t: Target) => edges ?? { x0: t.crop.x, x1: t.crop.x + t.crop.width };
     const place = (el: HTMLElement, t: Target, y: number) =>
       Object.assign(el.style, {
         display: 'block',
-        left: `${t.crop.x}px`,
-        width: `${t.crop.width}px`,
+        left: `${span(t).x0}px`,
+        width: `${span(t).x1 - span(t).x0}px`,
         top: `${y}px`,
       });
 
@@ -148,11 +192,20 @@ export function pickLines(): Promise<Selection | null> {
         tag.textContent = 'Start here';
         startLine.style.display = 'none';
         band.style.display = 'none';
+        for (const el of sides) el.style.display = 'none';
         return;
       }
       hint.set(
-        'Scroll to the last line and click it · Enter = to the end · Backspace = new start · Esc to cancel',
+        'Scroll to the last line and click it · drag the side handles to narrow · Enter = to the end · Backspace = new start · Esc to cancel',
       );
+      const { x0, x1 } = span(t);
+      for (const el of sides)
+        Object.assign(el.style, {
+          display: 'block',
+          left: `${el.dataset.edge === 'x0' ? x0 : x1}px`,
+          top: `${t.crop.y}px`,
+          height: `${t.crop.height}px`,
+        });
       const sy = startY - t.offset + t.crop.y; // start line in viewport coordinates
       const shown = sy >= t.crop.y && sy <= t.crop.y + t.crop.height;
       startLine.style.display = shown ? 'block' : 'none';
@@ -161,13 +214,13 @@ export function pickLines(): Promise<Selection | null> {
       const bottom = clampY(t, Math.max(sy, y));
       Object.assign(band.style, {
         display: 'block',
-        left: `${t.crop.x}px`,
-        width: `${t.crop.width}px`,
+        left: `${x0}px`,
+        width: `${x1 - x0}px`,
         top: `${top}px`,
         height: `${bottom - top}px`,
       });
       const height = Math.round(Math.abs(contentY(t, y) - startY));
-      tag.textContent = `End here · ${height} px`;
+      tag.textContent = `End here · ${Math.round(x1 - x0)} × ${height} px`;
     };
 
     const finish = (result: Selection | null) => {
@@ -184,8 +237,8 @@ export function pickLines(): Promise<Selection | null> {
       finish({
         target: t,
         region: {
-          x0: t.crop.x,
-          x1: t.crop.x + t.crop.width,
+          x0: span(t).x0,
+          x1: span(t).x1,
           y0: Math.max(0, Math.min(a, b)),
           y1: Math.min(t.scrollHeight, Math.max(a, b)),
         },
@@ -207,6 +260,7 @@ export function pickLines(): Promise<Selection | null> {
       if (startY === null || !target) {
         target = targetAt(e.clientX, e.clientY);
         startY = contentY(target, clampY(target, e.clientY));
+        edges = { x0: target.crop.x, x1: target.crop.x + target.crop.width };
         render();
       } else {
         select(target, startY, contentY(target, clampY(target, e.clientY)));
@@ -225,6 +279,7 @@ export function pickLines(): Promise<Selection | null> {
       Backspace: () => {
         target = null;
         startY = null;
+        edges = null;
         render();
       },
     });
@@ -308,7 +363,9 @@ function pickWith(
     };
     const removeKeys = onKeys({
       Escape: () => finish(null),
-      Enter: () => current && finish(current),
+      Enter: () => {
+        if (current) finish(current);
+      },
       ArrowUp: () => {
         const parent = current?.parentElement;
         if (current && parent && parent !== document.documentElement) {

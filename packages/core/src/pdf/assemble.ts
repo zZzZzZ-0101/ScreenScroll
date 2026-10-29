@@ -29,6 +29,8 @@ export interface PageImage {
   bytes: Uint8Array;
   format: 'png' | 'jpeg';
   slice: PageSlice;
+  /** Text read from this page's image (OCR), in document coordinates, for the text layer. */
+  textRuns?: TextRun[];
 }
 
 export interface PdfMeta {
@@ -139,7 +141,8 @@ export async function buildMergedPdf(
       const h = (p.slice.y1 - p.slice.y0) * layout.s;
       const top = layout.paperH - layout.box.y; // pdf-lib's origin is bottom-left
       page.drawImage(img, { x: layout.box.x, y: top - h, width: w, height: h });
-      if (runs.length) drawTextRuns(page, getTextFont(), placeRuns(runs, p.slice, layout));
+      const pageRuns = opts.textLayer && p.textRuns?.length ? [...runs, ...p.textRuns] : runs;
+      if (pageRuns.length) drawTextRuns(page, getTextFont(), placeRuns(pageRuns, p.slice, layout));
       if (opts.continuedMarker && p.slice.overlapTop > 0) {
         const text = 'continued from previous page';
         const size = 6.5;
@@ -208,8 +211,10 @@ export async function buildSingleLongPagePdf(
   const page = doc.addPage([layout.paperW, height]);
   let y = height - margin;
   let crop: { x0: number; x1: number } | null = null;
+  const ocrRuns: TextRun[] = [];
   for await (const p of pages) {
     crop ??= { x0: p.slice.x0, x1: p.slice.x1 };
+    if (p.textRuns) ocrRuns.push(...p.textRuns);
     const img = await embed(doc, p);
     const w = (p.slice.x1 - p.slice.x0) * layout.s;
     const full = (p.slice.y1 - p.slice.y0) * layout.s;
@@ -236,7 +241,7 @@ export async function buildSingleLongPagePdf(
       paperH: height,
       box: { x: margin, y: margin, w: layout.box.w, h: height - 2 * margin },
     };
-    const runs = opts.textLayer ? (content.textRuns ?? []) : [];
+    const runs = opts.textLayer ? [...(content.textRuns ?? []), ...ocrRuns] : [];
     if (runs.length) {
       const font = new TextLayerFont(doc);
       drawTextRuns(page, font, placeRuns(runs, one, tall));

@@ -6,9 +6,9 @@ import {
   type AnnotationCtx,
   type FilterId,
   type PageSlice,
+  type QualitySpec,
 } from '@screenscroll/core';
 import { chooseImageFormat, type PageImage } from '@screenscroll/core/pdf';
-import type { ImageMode } from '@/shared/settings';
 import type { FrameCache, LoadedSession } from './session';
 
 /**
@@ -90,16 +90,14 @@ export function paintAnnotations(
   });
 }
 
-export type { ImageMode } from '@/shared/settings';
-
-/** Encodes a composed page, picking PNG or JPEG 90 by content when `mode` is auto. */
+/** Encodes a composed page as the quality preset says: PNG, or PNG/JPEG by content. */
 export async function encodePage(
   canvas: OffscreenCanvas,
   slice: PageSlice,
-  mode: ImageMode = 'auto',
+  quality: QualitySpec,
 ): Promise<PageImage> {
-  let format: 'png' | 'jpeg' = mode === 'jpeg' ? 'jpeg' : 'png';
-  if (mode === 'auto') {
+  let format: 'png' | 'jpeg' = 'png';
+  if (quality.format === 'auto') {
     // Decide on a small copy: counting colours on the full page would cost more than it saves.
     const probe = new OffscreenCanvas(
       200,
@@ -110,7 +108,7 @@ export async function encodePage(
     format = chooseImageFormat(pctx.getImageData(0, 0, probe.width, probe.height).data);
   }
   const blob = await canvas.convertToBlob(
-    format === 'png' ? { type: 'image/png' } : { type: 'image/jpeg', quality: 0.9 },
+    format === 'png' ? { type: 'image/png' } : { type: 'image/jpeg', quality: quality.jpegQuality },
   );
   return { bytes: new Uint8Array(await blob.arrayBuffer()), format, slice };
 }

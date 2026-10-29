@@ -1,4 +1,4 @@
-import { FILTERS, PAPERS } from '@screenscroll/core';
+import { EXPORT_PRESETS, FILTERS, PAPERS, QUALITY } from '@screenscroll/core';
 import { DEFAULT_SETTINGS, SPEED_TIMING, type Settings } from './settings';
 
 /**
@@ -173,18 +173,13 @@ export const SETTINGS: SettingEntry[] = [
     id: 'exportPreset',
     section: 'Pages and PDF',
     label: 'PDF quality',
-    help: 'Compact: small files that still read well (about 150 dpi, high-quality JPEG). Balanced: full resolution, PNG where it matters. Best: full resolution, PNG throughout. Lossless: exactly the captured pixels.',
+    help: EXPORT_PRESETS.map((q) => `${QUALITY[q].name}: ${QUALITY[q].summary}`).join(' '),
     kind: 'choice',
-    choices: [
-      { value: 'compact', label: 'Compact' },
-      { value: 'balanced', label: 'Balanced' },
-      { value: 'best', label: 'Best' },
-      { value: 'lossless', label: 'Lossless' },
-    ],
+    choices: EXPORT_PRESETS.map((q) => ({ value: q, label: QUALITY[q].name })),
     get: (s) => s.exportPreset,
     set: (_s, v) => ({ exportPreset: v as Settings['exportPreset'] }),
     recommended: 'balanced',
-    why: 'Sharp text at a reasonable size; choose Best for printing photos.',
+    why: '300 dpi is what printers resolve; more only makes the file bigger. Best or Lossless to keep every captured pixel.',
   },
   {
     id: 'pdf.filter',
@@ -232,7 +227,7 @@ export const SETTINGS: SettingEntry[] = [
     id: 'ocr',
     section: 'Text recognition',
     label: 'Recognise text in pictures (OCR)',
-    help: 'Reads text that is only a picture (scanned pages, document previews, canvas) so the PDF can be searched and copied there too. Runs on this computer; nothing is uploaded.',
+    help: 'Reads text that is only a picture (document previews, canvas, scanned pages) so the PDF can be searched and copied there too. Runs on this computer; nothing is uploaded. Needs the model below, downloaded once.',
     kind: 'choice',
     choices: [
       { value: 'auto', label: 'Where needed' },

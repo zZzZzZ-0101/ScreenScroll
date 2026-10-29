@@ -1,4 +1,12 @@
-import { FILTERS, PAPERS, type FilterId, type PaperId } from '@screenscroll/core';
+import {
+  EXPORT_PRESETS,
+  FILTERS,
+  PAPERS,
+  QUALITY,
+  type ExportPreset,
+  type FilterId,
+  type PaperId,
+} from '@screenscroll/core';
 import {
   ChevronRight,
   GripHorizontal,
@@ -17,7 +25,6 @@ import {
   type Presets,
   type Settings,
 } from '@/shared/settings';
-import type { ImageMode } from '@/studio/engine/compose';
 import type { Edits } from '../App';
 
 const field = 'flex items-center justify-between gap-2 py-1';
@@ -36,6 +43,75 @@ interface PagesProps {
   sheetCount: number | null;
   /** Estimated PDF size in bytes, or null while it is computed. */
   estimate: number | null;
+  ocr: OcrCardProps;
+}
+
+export interface OcrCardProps {
+  /** Pages (1-based) that have no text of their own and will be read. */
+  pages: number[];
+  ready: boolean;
+  /** Bytes to download for the model. */
+  size: number;
+  downloading: { done: number; total: number } | null;
+  error: string | null;
+  onDownload: () => void;
+}
+
+const mb = (n: number) => `${(n / 1048576).toFixed(1)} MB`;
+
+/**
+ * Pages without text of their own (a document viewer's page images, a canvas) can be made
+ * searchable by reading them. The model is fetched once, when the user asks, then kept.
+ */
+function OcrCard({ o }: { o: OcrCardProps }) {
+  if (!o.pages.length) return null;
+  const list = o.pages.length > 6 ? `${o.pages.slice(0, 6).join(', ')}…` : o.pages.join(', ');
+  return (
+    <div
+      className="mb-2 rounded-md border border-accent/40 bg-accent/5 p-2"
+      data-testid="ocr"
+      role="group"
+      aria-label="Text recognition"
+    >
+      <p className="font-medium">
+        {o.pages.length} page{o.pages.length === 1 ? '' : 's'} without text of their own
+      </p>
+      <p className="text-[12px] text-neutral-600 dark:text-neutral-300">Pages {list}.</p>
+      {o.ready ? (
+        <p className="pt-1 text-[12px]">
+          Their text is read when you save, so the PDF can be searched.
+        </p>
+      ) : o.downloading ? (
+        <div className="pt-1">
+          <progress
+            className="w-full accent-[#0e7c7b]"
+            max={o.downloading.total}
+            value={o.downloading.done}
+            aria-label="Downloading the text recognition model"
+          />
+          <p className="text-[12px] text-neutral-500">
+            {mb(o.downloading.done)} of {mb(o.downloading.total)}
+          </p>
+        </div>
+      ) : (
+        <>
+          <p className="pt-1 text-[12px] text-neutral-600 dark:text-neutral-300">
+            To make them searchable, ScreenScroll can read them on this computer. It needs a text
+            recognition model (PP-OCRv6, {mb(o.size)}), downloaded once from an npm mirror and
+            checked; nothing of yours is sent.
+          </p>
+          <button type="button" onClick={o.onDownload} className={`${button} mt-1`}>
+            Download model ({mb(o.size)})
+          </button>
+        </>
+      )}
+      {o.error && (
+        <p role="alert" className="pt-1 text-[12px] text-red-700 dark:text-red-300">
+          {o.error}
+        </p>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -50,6 +126,7 @@ export function PagesPanel(p: PagesProps) {
 
   return (
     <aside className={aside} aria-label="Page setup">
+      <OcrCard o={p.ocr} />
       {p.sheetCount !== null && (
         <div
           className="mb-2 rounded-md border border-accent/40 bg-accent/5 p-2"
@@ -188,17 +265,22 @@ export function PagesPanel(p: PagesProps) {
             </p>
           )}
           <label className={field}>
-            Images
+            PDF quality
             <select
               className={control}
-              value={p.settings.imageMode}
-              onChange={(e) => p.onSettings({ imageMode: e.target.value as ImageMode })}
+              value={p.settings.exportPreset}
+              onChange={(e) => p.onSettings({ exportPreset: e.target.value as ExportPreset })}
             >
-              <option value="auto">Auto</option>
-              <option value="png">Sharp (PNG)</option>
-              <option value="jpeg">Smaller file (JPEG)</option>
+              {EXPORT_PRESETS.map((q) => (
+                <option key={q} value={q}>
+                  {QUALITY[q].name}
+                </option>
+              ))}
             </select>
           </label>
+          <p className="pb-1 text-[12px] text-neutral-500">
+            {QUALITY[p.settings.exportPreset].summary}
+          </p>
           <PdfOptions settings={p.settings} onSettings={p.onSettings} />
           <label className="block py-1">
             File name

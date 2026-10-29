@@ -13,6 +13,7 @@ export * from './layout.js';
 export * from './lazy.js';
 export * from './mutation-log.js';
 export * from './paginate.js';
+export * from './quality.js';
 export * from './pixel.js';
 export * from './rate-limit.js';
 export * from './region.js';

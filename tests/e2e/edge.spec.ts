@@ -490,3 +490,101 @@ test('Mark up → Page: presets can be added, removed, restored, and are remembe
   await expect(wm.getByRole('button', { name: 'INTERNAL ONLY', exact: true })).toBeVisible();
   await expect(wm.getByRole('button', { name: /Restore defaults/ })).toHaveCount(0);
 });
+
+test('PDF quality presets order the file sizes; Details shows the numbers behind them', async ({
+  context,
+  serviceWorker,
+}) => {
+  const studio = await capture(context, serviceWorker, 'tall-image.html');
+  const pdfSize = async () =>
+    (
+      (await studio.evaluate(() =>
+        (
+          window as unknown as { __spStudio: { pdfBase64(): Promise<string> } }
+        ).__spStudio.pdfBase64(),
+      )) as string
+    ).length;
+  await studio.getByRole('button', { name: 'More options' }).click();
+  const quality = studio.getByRole('combobox', { name: 'PDF quality' });
+  const sizes: Record<string, number> = {};
+  for (const q of ['Compact', 'Best', 'Lossless']) {
+    await quality.selectOption({ label: q });
+    sizes[q] = await pdfSize();
+  }
+  expect(sizes.Compact!).toBeLessThan(sizes.Best!);
+  expect(sizes.Best!).toBeLessThan(sizes.Lossless!);
+
+  // Details: open with the header button, values and calculations shown, one row per page.
+  await studio.getByRole('button', { name: 'Details', exact: true }).click();
+  const panel = studio.getByRole('complementary', { name: 'Details' });
+  await expect(panel.getByText('PDF quality', { exact: true })).toBeVisible();
+  await expect(panel.getByText('Lossless', { exact: true })).toBeVisible();
+  await expect(panel.getByText(/^box width ÷ content width = /)).toBeVisible();
+  await expect(panel.getByText(/^dpr × 72 ÷ s = 1 × 72 ÷ /)).toBeVisible();
+  const pages = await studio.evaluate(
+    () => (window as unknown as { __spStudio: { slices(): unknown[] } }).__spStudio.slices().length,
+  );
+  await expect(panel.getByRole('table', { name: 'Pages' }).locator('tbody tr')).toHaveCount(pages);
+  // Forced cuts (the tall image) are counted and marked.
+  await expect(
+    panel
+      .getByText('Forced cuts')
+      .locator('..')
+      .getByText(/^[1-9]/),
+  ).toBeVisible();
+  // Copy all as text.
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await panel.getByRole('button', { name: 'Copy all as text' }).click();
+  await expect(panel.getByRole('status')).toHaveText('Copied');
+  // I toggles it; it stays closed after a reload.
+  await studio.keyboard.press('i');
+  await expect(panel).toHaveCount(0);
+  await studio.reload();
+  await expect(studio.getByRole('complementary', { name: 'Details' })).toHaveCount(0);
+});
+
+// Needs the model files: OCR_BUNDLE=<unpacked bundle dir> (served by the fixture server).
+test.describe('text recognition', () => {
+  test.skip(!process.env.OCR_BUNDLE, 'OCR_BUNDLE not set');
+
+  test('a page drawn in a canvas: download the model once, then its text is searchable', async ({
+    context,
+    serviceWorker,
+  }) => {
+    test.setTimeout(240_000);
+    await serviceWorker.evaluate(() =>
+      chrome.storage.local.set({ e2eOcrBase: 'http://localhost:5177/ocr-bundle/' }),
+    );
+    const studio = await capture(context, serviceWorker, 'canvas-text.html');
+    const card = studio.getByRole('group', { name: 'Text recognition' });
+    await expect(card).toContainText(/pages? without text of their own/);
+    await card.getByRole('button', { name: /^Download model \(\d+\.\d MB\)$/ }).click();
+    await expect(card).toContainText('Their text is read when you save', { timeout: 120_000 });
+
+    const b64 = (await studio.evaluate(() =>
+      (
+        window as unknown as { __spStudio: { pdfBase64(): Promise<string> } }
+      ).__spStudio.pdfBase64(),
+    )) as string;
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const pdf = await pdfjs.getDocument({
+      data: new Uint8Array(Buffer.from(b64, 'base64')),
+      standardFontDataUrl: new URL('../../node_modules/pdfjs-dist/standard_fonts/', import.meta.url)
+        .pathname,
+    }).promise;
+    let text = '';
+    for (let i = 1; i <= pdf.numPages; i++)
+      text += (await (await pdf.getPage(i)).getTextContent()).items
+        .map((it) => ('str' in it ? it.str : ''))
+        .join(' ');
+    expect(text).toContain('Revenue grew 14%');
+    expect(text).toContain('Quarterly report 2026');
+    expect(text.replace(/\s+/g, '')).toContain('季度报告');
+
+    // Kept on this computer: a new Studio finds the model ready.
+    await studio.reload();
+    await expect(studio.getByRole('group', { name: 'Text recognition' })).toContainText(
+      'Their text is read when you save',
+    );
+  });
+});

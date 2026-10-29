@@ -8,6 +8,7 @@ import {
   PAPERS,
   type Watermark,
   type BandTemplate,
+  type ExportPreset,
   type FilterId,
   type PageSettings,
 } from '@screenscroll/core';
@@ -21,7 +22,6 @@ export type Resolution = 'standard' | 'high' | 'max';
 /** Text recognition in images: where the page has no text of its own, everywhere, or never. */
 export type OcrMode = 'auto' | 'always' | 'off';
 /** PDF image quality: from small files that still read well, to lossless. */
-export type ExportPreset = 'compact' | 'balanced' | 'best' | 'lossless';
 
 export interface CaptureSettings {
   start: CaptureStart;
@@ -32,16 +32,12 @@ export interface CaptureSettings {
 /** Light, dark, or whatever the system uses. */
 export type Theme = 'system' | 'light' | 'dark';
 
-/** PDF page images: chosen per page by content, or forced. */
-export type ImageMode = 'auto' | 'png' | 'jpeg';
-
 export interface Settings {
   page: PageSettings;
   /** PAGINATION §6: crop empty side margins automatically, or keep the full width. */
   crop: 'auto' | 'off';
   /** "Fewer pages ↔ cleaner breaks", 0…1. */
   breakStyle: number;
-  imageMode: ImageMode;
   filenameTemplate: string;
   /** UI §1: what happens after a capture. */
   afterCapture: 'studio' | 'pdf';
@@ -54,6 +50,7 @@ export interface Settings {
   theme: Theme;
   capture: CaptureSettings;
   ocr: OcrMode;
+  /** PDF quality (core `QUALITY`): image resolution cap and encoding. */
   exportPreset: ExportPreset;
   /** Mark up → Page: the user's own presets (defaults included, all removable). */
   presets: Presets;
@@ -124,7 +121,6 @@ export const DEFAULT_SETTINGS: Settings = {
   page: DEFAULT_PAGE_SETTINGS,
   crop: 'auto',
   breakStyle: 0.5,
-  imageMode: 'auto',
   filenameTemplate: DEFAULT_FILENAME_TEMPLATE,
   afterCapture: 'studio',
   pdf: DEFAULT_PDF_SETTINGS,
@@ -178,7 +174,6 @@ export function normalizeSettings(stored: unknown): Settings {
     },
     crop: o.crop === 'off' ? 'off' : 'auto',
     breakStyle: num(o.breakStyle) ? Math.max(0, Math.min(1, o.breakStyle)) : d.breakStyle,
-    imageMode: o.imageMode === 'png' || o.imageMode === 'jpeg' ? o.imageMode : 'auto',
     filenameTemplate:
       typeof o.filenameTemplate === 'string' ? o.filenameTemplate : d.filenameTemplate,
     afterCapture: o.afterCapture === 'pdf' ? 'pdf' : 'studio',

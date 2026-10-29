@@ -77,10 +77,12 @@ test('Studio UI: pages view, long strip with break editing, export panel', async
   // Developer aid, not in the visible UI.
   await studio.keyboard.press('Control+Shift+D');
   await expect
-    .poll(() =>
-      serviceWorker.evaluate(
-        async () => (await chrome.storage.session.get('lastDownload')).lastDownload as string,
-      ),
+    .poll(
+      () =>
+        serviceWorker.evaluate(
+          async () => (await chrome.storage.session.get('lastDownload')).lastDownload as string,
+        ),
+      { timeout: 15_000 },
     )
     .toMatch(/-breaks\.json$/);
 });

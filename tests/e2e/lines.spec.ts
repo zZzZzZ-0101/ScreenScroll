@@ -85,3 +85,42 @@ test('full page picks the viewer in front, not the larger list behind it', async
   expect(result.done.docHeight).toBe(viewer.height);
   expect(result.done.docWidth).toBe(viewer.width);
 });
+
+test('line to line: the side handles set the left and right edges', async ({
+  context,
+  serviceWorker,
+}) => {
+  const page = await context.newPage();
+  const url = `${FIXTURES}/article.html`;
+  await page.goto(url);
+  await page.bringToFront();
+  const width = await page.evaluate(() => document.documentElement.clientWidth);
+  const id = await serviceWorker.evaluate(async (u) => {
+    const [tab] = await chrome.tabs.query({ active: true, url: u });
+    return (globalThis as unknown as { __spTest: Hook }).__spTest.start(tab!.id!, 'lines');
+  }, url);
+  await page.mouse.move(400, 200);
+  await page.waitForTimeout(200);
+  await page.mouse.click(400, 200);
+  // Grips sit at mid-height of the view, on the left (x 0) and right (x = width) edges.
+  const mid = await page.evaluate(() => innerHeight / 2);
+  for (const [from, to] of [
+    [1, 260],
+    [width - 1, width - 220],
+  ] as const) {
+    await page.mouse.move(from, mid);
+    await page.mouse.down();
+    await page.mouse.move(to, mid, { steps: 6 });
+    await page.mouse.up();
+  }
+  await page.mouse.wheel(0, 900);
+  await page.waitForTimeout(300);
+  await page.mouse.click(500, 500);
+  const result = await serviceWorker.evaluate(
+    (i) => (globalThis as unknown as { __spTest: Hook }).__spTest.wait(i),
+    id,
+  );
+  expect(result.done.status).toBe('complete');
+  expect(result.done.docWidth).toBe(width - 220 - 260);
+  expect(page.url()).toBe(url);
+});

@@ -17,7 +17,9 @@
     "fixtures": "node packages/fixtures/scripts/serve.mjs",
     "lint": "eslint .",
     "typecheck": "pnpm -r typecheck",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "ocr:bundle": "node scripts/ocr-bundle.mjs",
+    "ocr:check": "OCR_BUNDLE=$(node scripts/ocr-bundle.mjs) vitest run packages/extension/test/ocr-model.test.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

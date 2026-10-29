@@ -153,9 +153,14 @@ describe('nextStep with the pill always on screen', () => {
   });
 
   it('hides the pill for each grab when the box is too small to share', () => {
-    const { frames } = simulate(() => 1000, undefined, { top: 40, bottom: 40 }, {
-      viewportHeight: 100,
-    });
+    const { frames } = simulate(
+      () => 1000,
+      undefined,
+      { top: 40, bottom: 40 },
+      {
+        viewportHeight: 100,
+      },
+    );
     expect(frames.every((f) => f.pill === 'hidden' && f.keep.bottom === 100)).toBe(true);
     expectCovered(frames, 0, 1000);
   });

@@ -38,6 +38,12 @@ export default tseslint.config(
     },
   },
   {
+    // The one exception to "no network" (DECISIONS 2026-10-29): the OCR worker fetches the
+    // model files the user asked for, from the engine descriptor's address only.
+    files: ['packages/extension/src/ocr/ocr-worker.ts'],
+    rules: { 'no-restricted-globals': 'off' },
+  },
+  {
     files: ['packages/core/**/*.ts'],
     rules: { '@typescript-eslint/no-explicit-any': 'error' },
   },

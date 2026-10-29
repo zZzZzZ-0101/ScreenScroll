@@ -21,7 +21,7 @@ describe('stored settings', () => {
       },
       crop: 'off',
       breakStyle: 7,
-      imageMode: 'gif',
+      exportPreset: 'gif',
       filenameTemplate: 12,
       afterCapture: 'pdf',
       pdf: {
@@ -36,7 +36,7 @@ describe('stored settings', () => {
     expect(s.page.marginsMm).toEqual({ top: 10, right: 20, bottom: 10, left: 10 });
     expect(s.crop).toBe('off');
     expect(s.breakStyle).toBe(1);
-    expect(s.imageMode).toBe('auto');
+    expect(s.exportPreset).toBe('balanced');
     expect(s.filenameTemplate).toBe(DEFAULT_SETTINGS.filenameTemplate);
     expect(s.afterCapture).toBe('pdf');
     expect(s.pdf.textLayer).toBe(true);

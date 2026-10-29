@@ -6,6 +6,8 @@ import {
   computeLayout,
   DEFAULT_STYLE,
   emptyHistory,
+  exportScale,
+  QUALITY,
   fitSheets,
   sheetSlices,
   redo,
@@ -26,6 +28,7 @@ import {
 } from '@screenscroll/core';
 import {
   FileText,
+  Info,
   Monitor,
   Moon,
   PenLine,
@@ -57,6 +60,11 @@ import { ZoomControl, stepZoom, type Zoom } from './components/ZoomControl';
 import { useTheme } from '@/shared/theme';
 import type { Theme } from '@/shared/settings';
 import { BreaksPanel, PageMarkPanel, PagesPanel } from './components/Panel';
+import { DetailsPanel } from './components/DetailsPanel';
+import { buildDetails } from '@/studio/engine/details';
+import { DEFAULT_ENGINE, pagesNeedingOcr } from '@screenscroll/core/ocr';
+import { downloadModel, readImage, setE2eModelBase } from '@/ocr/client';
+import { modelStatus, type ModelStatus } from '@/ocr/store';
 import { SaveMenu, type ExportFormat } from './components/SaveMenu';
 import { PagesView } from './components/PagesView';
 import { StripView } from './components/StripView';
@@ -304,6 +312,61 @@ export function App() {
 
   // Export tab "estimated file size" (UI §3): encode the first and a middle page, extrapolate.
   const [estimate, setEstimate] = useState<number | null>(null);
+  // Text recognition (Settings → Text recognition): which pages need it, and the model.
+  const [ocrModel, setOcrModel] = useState<ModelStatus | null>(null);
+  const [ocrDownload, setOcrDownload] = useState<{ done: number; total: number } | null>(null);
+  const [ocrError, setOcrError] = useState<string | null>(null);
+  useEffect(() => {
+    void (async () => {
+      if (__SP_E2E__) {
+        const { e2eOcrBase } = await chrome.storage.local.get('e2eOcrBase');
+        setE2eModelBase(typeof e2eOcrBase === 'string' ? e2eOcrBase : undefined);
+      }
+      setOcrModel(await modelStatus(DEFAULT_ENGINE).catch(() => null));
+    })();
+  }, []);
+  const ocrPages = useMemo(
+    () =>
+      session && settings ? pagesNeedingOcr(settings.ocr, slices, session.hints.textRuns) : [],
+    [session, settings, slices],
+  );
+  const pageOcr = useMemo(
+    () =>
+      ocrModel?.ready && ocrPages.length
+        ? { pages: new Set(ocrPages), read: readImage }
+        : undefined,
+    [ocrModel, ocrPages],
+  );
+  const getOcrModel = useCallback(async () => {
+    setOcrError(null);
+    setOcrDownload({ done: 0, total: 1 });
+    try {
+      await downloadModel((done, total) => setOcrDownload({ done, total }));
+      setOcrModel(await modelStatus(DEFAULT_ENGINE));
+    } catch (e) {
+      setOcrError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setOcrDownload(null);
+    }
+  }, []);
+  const [showDetails, setShowDetails] = useState(() => readPref('sp.details', false));
+  useEffect(() => writePref('sp.details', showDetails), [showDetails]);
+  const details = useMemo(
+    () =>
+      session && settings && result?.ok
+        ? buildDetails({
+            session,
+            settings,
+            layout: result.layout,
+            crop: result.crop,
+            slices,
+            sheets: result.sheets,
+            estimate,
+            ocr: { pages: ocrPages, ready: !!ocrModel?.ready },
+          })
+        : null,
+    [session, settings, result, slices, estimate, ocrPages, ocrModel],
+  );
   useEffect(() => {
     if (!session || !result?.ok || !settings || !frames.current) return;
     const f = frames.current;
@@ -313,10 +376,12 @@ export function App() {
       const sample = [...new Set([0, Math.floor(slices.length / 2)])].filter((i) => slices[i]);
       let bytes = 0;
       for (const i of sample) {
+        const spec = QUALITY[settings.exportPreset];
+        const scale = exportScale(session.dpr, result.layout.s, spec);
         const img = await encodePage(
-          await composePage(session, f, slices[i]!, 1, annotations, settings.pdf.filter),
+          await composePage(session, f, slices[i]!, scale, annotations, settings.pdf.filter),
           slices[i]!,
-          settings.imageMode,
+          spec,
         );
         bytes += img.bytes.length;
       }
@@ -390,10 +455,11 @@ export function App() {
               f,
               slices,
               layout,
-              settings.imageMode,
+              settings.exportPreset,
               settings.pdf,
               progress,
               annotations,
+              pageOcr,
             );
             return saved(
               await download(bytes, filename('pdf'), 'application/pdf'),
@@ -406,10 +472,11 @@ export function App() {
               f,
               slices,
               layout,
-              settings.imageMode,
+              settings.exportPreset,
               settings.pdf,
               progress,
               annotations,
+              pageOcr,
             );
             return saved(
               await download(bytes, filename('pdf'), 'application/pdf'),
@@ -467,7 +534,7 @@ export function App() {
         }
       });
     },
-    [session, result, settings, slices, filename, run, annotations],
+    [session, result, settings, slices, filename, run, annotations, pageOcr],
   );
 
   const doPrint = useCallback(async () => {
@@ -480,14 +547,15 @@ export function App() {
           f,
           slices,
           result.layout,
-          settings.imageMode,
+          settings.exportPreset,
           settings.pdf,
           progress,
           annotations,
+          pageOcr,
         ),
       );
     });
-  }, [session, result, settings, slices, run, annotations]);
+  }, [session, result, settings, slices, run, annotations, pageOcr]);
 
   const doCopy = useCallback(async () => {
     if (!session || !frames.current || !slices[page]) return;
@@ -587,6 +655,8 @@ export function App() {
         deleteSelected();
       } else if (view === 'markup' && e.key === 'Escape') {
         setSelected(null);
+      } else if (!mod && !e.altKey && key === 'i') {
+        setShowDetails((v) => !v);
       } else if (!mod && (e.key === '+' || e.key === '=')) {
         changeZoom(stepZoom(effective, 1));
       } else if (!mod && e.key === '-') {
@@ -644,10 +714,11 @@ export function App() {
             f,
             result.debug.slices,
             result.layout,
-            settings.imageMode,
+            settings.exportPreset,
             settings.pdf,
             undefined,
             project.annotations,
+            pageOcr,
           );
           let bin = '';
           for (let i = 0; i < bytes.length; i += 0x8000)
@@ -656,7 +727,7 @@ export function App() {
         },
       },
     });
-  }, [session, result, settings, warnings, project]);
+  }, [session, result, settings, warnings, project, pageOcr]);
 
   if (stage.kind === 'error') {
     return (
@@ -694,7 +765,9 @@ export function App() {
   });
 
   const panelBody =
-    view === 'pages' || !result.ok ? (
+    showDetails && details ? (
+      <DetailsPanel details={details} onClose={() => setShowDetails(false)} />
+    ) : view === 'pages' || !result.ok ? (
       <PagesPanel
         settings={settings}
         onSettings={updateSettings}
@@ -702,6 +775,14 @@ export function App() {
         cropped={result.ok && result.crop.cropped}
         sheetCount={analysis.sheets?.sheets.length ?? null}
         estimate={estimate}
+        ocr={{
+          pages: ocrPages.map((i) => i + 1),
+          ready: !!ocrModel?.ready,
+          size: ocrModel?.total ?? 0,
+          downloading: ocrDownload,
+          error: ocrError,
+          onDownload: () => void getOcrModel(),
+        }}
       />
     ) : view === 'breaks' ? (
       <BreaksPanel
@@ -819,6 +900,16 @@ export function App() {
               )}
             </div>
           )}
+          <button
+            type="button"
+            aria-label="Details"
+            aria-pressed={showDetails}
+            title="Details: every number and how it was calculated (I)"
+            onClick={() => setShowDetails((v) => !v)}
+            className={`rounded-md p-1.5 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:hover:bg-neutral-800 ${showDetails ? 'bg-neutral-200 text-neutral-900 dark:bg-neutral-700 dark:text-white' : 'text-neutral-600 dark:text-neutral-300'}`}
+          >
+            <Info aria-hidden size={17} />
+          </button>
           <ThemeButton theme={theme} onTheme={setTheme} />
           <SaveMenu
             disabled={!!busy || !result.ok}

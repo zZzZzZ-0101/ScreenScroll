@@ -16,6 +16,11 @@ export default defineConfig({
     build: { modulePreload: { polyfill: false } },
   }),
   manifest: (env) => ({
+    // WebAssembly for text recognition (onnxruntime's .wasm, shipped in the package).
+    // 'wasm-unsafe-eval' allows compiling it; script-src stays 'self', so no remote code.
+    content_security_policy: {
+      extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';",
+    },
     name: 'ScreenScroll',
     description: 'Capture whole web pages as clean multi-page PDFs. Offline, no ads.',
     permissions: [

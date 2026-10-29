@@ -150,4 +150,4 @@ Goal: the most capable screen capture tool available, that still looks simple. A
 - Mobile browsers (explicitly out of scope).
 - Cloud upload/sharing, FTP, OneNote, email.
 - Video/GIF recording.
-- OCR for canvas/image-only regions with Tesseract.js (offline WASM). Only if image-heavy pages (e.g. Drive previews) need searchable text.
+- OCR for canvas/image-only pages: done with PP-OCRv6 small on onnxruntime-web instead of Tesseract.js (more accurate, Chinese included); model downloaded on request. See docs/spec/OCR.md.

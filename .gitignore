@@ -12,3 +12,4 @@ fixtures/private/
 packages/fixtures/private/
 e2e-artifacts/
 packages/fixtures/out/
+.cache/
