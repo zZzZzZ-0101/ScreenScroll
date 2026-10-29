@@ -88,7 +88,7 @@ Legend: `[ ]` todo · `(L#)` = lesson from `docs/product/PRIOR_ART.md` §7 · `�
 - [ ] **Overlay killer**: one click hides modals/cookie banners/chat bubbles, then recapture.
 - [ ] **Auto-redact**: detect emails/phones/card numbers in DOM text → checklist → blur.
 - [ ] Table header repetition across pages. → PAGINATION §7
-- [ ] Watermark. → PDF_OUTPUT §4
+- [x] Watermark. → PDF_OUTPUT §4 (multi-page PDF; Mark up → Page)
 - [ ] **Import**: open a tall PNG/JPEG/WebP or a tall single-page PDF (e.g. old FireShot output) in the Studio → pixel-mode pagination → export. Handle image-only PDFs by rendering at native image resolution via pdf.js.
 - [ ] Firefox desktop build (`wxt build -b firefox`), smoke-tested on the fixtures.
 - [ ] Experimental CDP capture engine toggle (`chrome.debugger`), compared against scroll-stitch on the fixtures.
@@ -111,6 +111,10 @@ Goal: the most capable screen capture tool available, that still looks simple. A
 - [ ] Overlay killer and auto-redact run as suggestions after capture (M6 items, surfaced here).
 
 **Capture scope — any part of the screen**
+- [x] Line to line: click the first line, scroll, click the last line (2026-10-28).
+- [x] Document viewers: one PDF page per document page, cropped to the page (2026-10-28).
+- [ ] **Capture in the background** while the user reads another tab (tabCapture stream instead of captureVisibleTab; the Studio opens without taking focus).
+- [ ] Viewers inside embedded frames (some document previews): find the frame's scroller and capture it.
 - [ ] Several areas in one capture (pick, add another, finish) → one document.
 - [ ] Horizontal and two-way scrolling (wide tables, boards, maps, canvases).
 - [ ] Several scroll areas in one page (e.g. both panes of a mail client).
@@ -124,6 +128,10 @@ Goal: the most capable screen capture tool available, that still looks simple. A
 - [ ] Brush blur, find-text-and-redact, redact-all-matches.
 - [ ] Page tools: reorder, delete, duplicate, insert blank, split one page, per-page crop.
 - [ ] Combine captures side by side or stacked; compare two captures (visual diff).
+
+**Interface**
+- [ ] Interface languages, starting with Chinese (Simplified and Traditional).
+- [ ] Export/import of saved captures and settings as a backup file.
 
 **Output**
 - [ ] Markdown/HTML with images, SVG, PDF/A; presets ("Print A4", "Share small", "Archive").
@@ -142,4 +150,4 @@ Goal: the most capable screen capture tool available, that still looks simple. A
 - Mobile browsers (explicitly out of scope).
 - Cloud upload/sharing, FTP, OneNote, email.
 - Video/GIF recording.
-- OCR for canvas/image-only regions with Tesseract.js (offline WASM). Only if image-heavy pages (e.g. Drive previews) need searchable text.
+- OCR for canvas/image-only pages: done with PP-OCRv6 small on onnxruntime-web instead of Tesseract.js (more accurate, Chinese included); model downloaded on request. See docs/spec/OCR.md.

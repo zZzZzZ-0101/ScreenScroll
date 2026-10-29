@@ -73,3 +73,57 @@ export async function framesOf(sessionId: string): Promise<FrameRecord[]> {
   const all = await (await db()).getAllFromIndex('frames', 'bySession', sessionId);
   return all.sort((a, b) => a.index - b.index);
 }
+
+/** The most recent capture with frames, for "Open last capture" in the panel. */
+export async function lastSession(): Promise<SessionRecord | null> {
+  const all = await (await db()).getAll('sessions');
+  let best: SessionRecord | null = null;
+  for (const s of all) if (s.frameCount > 0 && (!best || s.capturedAt > best.capturedAt)) best = s;
+  return best;
+}
+
+/** One saved capture as the library shows it. */
+export interface StoredCapture {
+  session: SessionRecord;
+  bytes: number;
+  /** First frame, for a thumbnail. */
+  preview: Blob | null;
+}
+
+/** Every capture, newest first, with the space its frames take. */
+export async function listCaptures(): Promise<StoredCapture[]> {
+  const d = await db();
+  const sessions = await d.getAll('sessions');
+  const out: StoredCapture[] = [];
+  for (const session of sessions) {
+    let bytes = 0;
+    let preview: Blob | null = null;
+    // Blobs in IndexedDB are references: summing sizes doesn't read the pixels.
+    for (const f of await d.getAllFromIndex('frames', 'bySession', session.id)) {
+      bytes += f.blob.size;
+      if (f.index === 0) preview = f.blob;
+    }
+    out.push({ session, bytes, preview });
+  }
+  return out.sort((a, b) => b.session.capturedAt.localeCompare(a.session.capturedAt));
+}
+
+/** Deletes a capture and all its frames. */
+export async function deleteCapture(id: string): Promise<void> {
+  const d = await db();
+  const tx = d.transaction(['sessions', 'frames'], 'readwrite');
+  const frames = tx.objectStore('frames');
+  for (const key of await frames.index('bySession').getAllKeys(id)) await frames.delete(key);
+  await tx.objectStore('sessions').delete(id);
+  await tx.done;
+}
+
+/** Auto-clean: deletes captures older than `days`. Returns how many went. */
+export async function deleteOlderThan(days: number, now = Date.now()): Promise<number> {
+  const cutoff = new Date(now - days * 86_400_000).toISOString();
+  const old = (await (await db()).getAll('sessions')).filter(
+    (s) => s.capturedAt < cutoff && s.status !== 'capturing',
+  );
+  for (const s of old) await deleteCapture(s.id);
+  return old.length;
+}

@@ -5,6 +5,7 @@ export * from './compose.js';
 export * from './crop.js';
 export * from './debug.js';
 export * from './filename.js';
+export * from './filters.js';
 export * from './geometry.js';
 export * from './hints.js';
 export * from './image.js';
@@ -12,12 +13,15 @@ export * from './layout.js';
 export * from './lazy.js';
 export * from './mutation-log.js';
 export * from './paginate.js';
+export * from './quality.js';
 export * from './pixel.js';
 export * from './rate-limit.js';
 export * from './region.js';
 export * from './registration.js';
 export * from './rows.js';
 export * from './scroll-target.js';
+export * from './sheets.js';
 export * from './templates.js';
+export * from './watermark.js';
 // PDF assembly lives at '@screenscroll/core/pdf' so pdf-lib never lands in the service
 // worker or the content script.

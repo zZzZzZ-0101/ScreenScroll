@@ -6,6 +6,10 @@ import {
   computeLayout,
   DEFAULT_STYLE,
   emptyHistory,
+  exportScale,
+  QUALITY,
+  fitSheets,
+  sheetSlices,
   redo,
   TOOL_KEYS,
   undo,
@@ -22,7 +26,16 @@ import {
   type Style,
   type Tool,
 } from '@screenscroll/core';
-import { FileText, PenLine, SeparatorHorizontal, TriangleAlert } from 'lucide-react';
+import {
+  FileText,
+  Info,
+  Monitor,
+  Moon,
+  PenLine,
+  SeparatorHorizontal,
+  Sun,
+  TriangleAlert,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EMPTY_PROJECT, saveProject, type Project } from '@/shared/db';
 import { bandHeight, loadSettings, saveSettings, type Settings } from '@/shared/settings';
@@ -41,8 +54,17 @@ import {
 import { FrameCache, loadSession, type LoadedSession } from '@/studio/engine/session';
 import { composePage, encodePage } from '@/studio/engine/compose';
 import { AnnotateView } from './components/AnnotateView';
-import { MarkupToolbar, type MarkupControls } from './components/MarkupToolbar';
-import { BreaksPanel, PagesPanel } from './components/Panel';
+import { MARKUP_TOOLS, MarkupToolbar, type MarkupControls } from './components/MarkupToolbar';
+import { DEFAULT_PANEL, SidePanel, type PanelPrefs } from './components/SidePanel';
+import { ZoomControl, stepZoom, type Zoom } from './components/ZoomControl';
+import { useTheme } from '@/shared/theme';
+import type { Theme } from '@/shared/settings';
+import { BreaksPanel, PageMarkPanel, PagesPanel } from './components/Panel';
+import { DetailsPanel } from './components/DetailsPanel';
+import { buildDetails } from '@/studio/engine/details';
+import { DEFAULT_ENGINE, pagesNeedingOcr } from '@screenscroll/core/ocr';
+import { downloadModel, readImage, setE2eModelBase } from '@/ocr/client';
+import { modelStatus, type ModelStatus } from '@/ocr/store';
 import { SaveMenu, type ExportFormat } from './components/SaveMenu';
 import { PagesView } from './components/PagesView';
 import { StripView } from './components/StripView';
@@ -59,6 +81,8 @@ type PageResult =
   | { ok: false; error: string }
   | {
       ok: true;
+      /** Pages follow a document viewer's own pages. */
+      sheets: boolean;
       crop: { x0: number; x1: number; cropped: boolean };
       layout: PageLayout;
       debug: PaginationDebug;
@@ -89,6 +113,22 @@ export function App() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [edits, setEdits] = useState<Edits>({ pinned: [], removed: [] });
   const [view, setViewState] = useState<View>('pages');
+  // Per-viewer UI memory (zoom, panel); nothing here needs to sync or persist reliably.
+  const [zoom, setZoom] = useState<Zoom>(() => readPref('ss-zoom', 'page' as Zoom));
+  const [effective, setEffective] = useState(1);
+  const changeZoom = useCallback((z: Zoom) => {
+    setZoom(z);
+    writePref('ss-zoom', z);
+  }, []);
+  const [panelPrefs, setPanelPrefs] = useState<PanelPrefs>(() => ({
+    ...DEFAULT_PANEL,
+    ...readPref('ss-panel', DEFAULT_PANEL),
+  }));
+  const changePanel = useCallback((p: PanelPrefs) => {
+    setPanelPrefs(p);
+    writePref('ss-panel', p);
+  }, []);
+  const [theme, setTheme] = useTheme();
   const [history, setHistory] = useState<History<Project>>(() => emptyHistory(EMPTY_PROJECT));
   const [tool, setTool] = useState<Tool>('rect');
   const [style, setStyle] = useState<Style>(DEFAULT_STYLE);
@@ -141,14 +181,31 @@ export function App() {
             session.width,
           )
         : { x0: 0, x1: session.width, cropped: false };
+    // Header/footer space only when the band shows something (PDF_OUTPUT §4).
+    const page = {
+      ...settings.page,
+      headerPt: bandHeight(settings.pdf.header),
+      footerPt: bandHeight(settings.pdf.footer),
+    };
+    // A document viewer: its own pages decide, one PDF page per sheet (a drawn crop wins).
+    const sheets = analysis.sheets;
+    if (sheets && settings.followSheets && !manual) {
+      try {
+        const layout = fitSheets(computeLayout(page, sheets.x1 - sheets.x0), sheets);
+        const slices = sheetSlices(sheets);
+        return {
+          ok: true,
+          sheets: true,
+          crop: { x0: sheets.x0, x1: sheets.x1, cropped: true },
+          layout,
+          debug: { slices, candidates: [], forbidden: [], opaque: [] },
+        };
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    }
     let layout: PageLayout;
     try {
-      // Header/footer space only when the band shows something (PDF_OUTPUT §4).
-      const page = {
-        ...settings.page,
-        headerPt: bandHeight(settings.pdf.header),
-        footerPt: bandHeight(settings.pdf.footer),
-      };
       layout = computeLayout(page, crop.x1 - crop.x0);
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -169,7 +226,7 @@ export function App() {
     });
     if (!debug.slices.length)
       return { ok: false, error: 'Nothing to show: the captured area is empty.' };
-    return { ok: true, crop, layout, debug };
+    return { ok: true, sheets: false, crop, layout, debug };
   }, [session, analysis, settings, edits, project.crop, annotations]);
 
   // Projects are saved as they change, so they can be re-edited later (TODO M4).
@@ -255,6 +312,61 @@ export function App() {
 
   // Export tab "estimated file size" (UI §3): encode the first and a middle page, extrapolate.
   const [estimate, setEstimate] = useState<number | null>(null);
+  // Text recognition (Settings → Text recognition): which pages need it, and the model.
+  const [ocrModel, setOcrModel] = useState<ModelStatus | null>(null);
+  const [ocrDownload, setOcrDownload] = useState<{ done: number; total: number } | null>(null);
+  const [ocrError, setOcrError] = useState<string | null>(null);
+  useEffect(() => {
+    void (async () => {
+      if (__SP_E2E__) {
+        const { e2eOcrBase } = await chrome.storage.local.get('e2eOcrBase');
+        setE2eModelBase(typeof e2eOcrBase === 'string' ? e2eOcrBase : undefined);
+      }
+      setOcrModel(await modelStatus(DEFAULT_ENGINE).catch(() => null));
+    })();
+  }, []);
+  const ocrPages = useMemo(
+    () =>
+      session && settings ? pagesNeedingOcr(settings.ocr, slices, session.hints.textRuns) : [],
+    [session, settings, slices],
+  );
+  const pageOcr = useMemo(
+    () =>
+      ocrModel?.ready && ocrPages.length
+        ? { pages: new Set(ocrPages), read: readImage }
+        : undefined,
+    [ocrModel, ocrPages],
+  );
+  const getOcrModel = useCallback(async () => {
+    setOcrError(null);
+    setOcrDownload({ done: 0, total: 1 });
+    try {
+      await downloadModel((done, total) => setOcrDownload({ done, total }));
+      setOcrModel(await modelStatus(DEFAULT_ENGINE));
+    } catch (e) {
+      setOcrError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setOcrDownload(null);
+    }
+  }, []);
+  const [showDetails, setShowDetails] = useState(() => readPref('sp.details', false));
+  useEffect(() => writePref('sp.details', showDetails), [showDetails]);
+  const details = useMemo(
+    () =>
+      session && settings && result?.ok
+        ? buildDetails({
+            session,
+            settings,
+            layout: result.layout,
+            crop: result.crop,
+            slices,
+            sheets: result.sheets,
+            estimate,
+            ocr: { pages: ocrPages, ready: !!ocrModel?.ready },
+          })
+        : null,
+    [session, settings, result, slices, estimate, ocrPages, ocrModel],
+  );
   useEffect(() => {
     if (!session || !result?.ok || !settings || !frames.current) return;
     const f = frames.current;
@@ -264,10 +376,12 @@ export function App() {
       const sample = [...new Set([0, Math.floor(slices.length / 2)])].filter((i) => slices[i]);
       let bytes = 0;
       for (const i of sample) {
+        const spec = QUALITY[settings.exportPreset];
+        const scale = exportScale(session.dpr, result.layout.s, spec);
         const img = await encodePage(
-          await composePage(session, f, slices[i]!, 1, annotations),
+          await composePage(session, f, slices[i]!, scale, annotations, settings.pdf.filter),
           slices[i]!,
-          settings.imageMode,
+          spec,
         );
         bytes += img.bytes.length;
       }
@@ -309,14 +423,17 @@ export function App() {
       job: (progress: (d: number, t: number) => void) => Promise<string | void>,
     ) => {
       // One job at a time: a double click or a held Ctrl+S must not save twice.
-      if (running.current) return;
+      if (running.current) return null;
       running.current = true;
       setBusy(label);
       try {
         const done = await job((d, t) => setBusy(`${label} ${d}/${t}`));
         if (done) setToast(done);
+        return { ok: true, text: done || '' };
       } catch (e) {
-        setToast(e instanceof Error ? e.message : String(e));
+        const text = e instanceof Error ? e.message : String(e);
+        setToast(text);
+        return { ok: false, text };
       } finally {
         running.current = false;
         setBusy(null);
@@ -327,10 +444,10 @@ export function App() {
 
   const doExport = useCallback(
     async (format: ExportFormat) => {
-      if (!session || !result || !result.ok || !settings || !frames.current) return;
+      if (!session || !result || !result.ok || !settings || !frames.current) return null;
       const f = frames.current;
       const { layout, crop } = result;
-      await run('Exporting', async (progress) => {
+      return run('Exporting', async (progress) => {
         switch (format) {
           case 'pdf': {
             const bytes = await exportPdf(
@@ -338,10 +455,11 @@ export function App() {
               f,
               slices,
               layout,
-              settings.imageMode,
+              settings.exportPreset,
               settings.pdf,
               progress,
               annotations,
+              pageOcr,
             );
             return saved(
               await download(bytes, filename('pdf'), 'application/pdf'),
@@ -354,10 +472,11 @@ export function App() {
               f,
               slices,
               layout,
-              settings.imageMode,
+              settings.exportPreset,
               settings.pdf,
               progress,
               annotations,
+              pageOcr,
             );
             return saved(
               await download(bytes, filename('pdf'), 'application/pdf'),
@@ -376,6 +495,7 @@ export function App() {
               base,
               progress,
               annotations,
+              settings.pdf.filter,
             );
             return saved(
               await download(bytes, filename('zip'), 'application/zip'),
@@ -383,10 +503,16 @@ export function App() {
             );
           }
           case 'long-png': {
-            const parts = await exportLongImage(session, f, crop, 'png', progress, annotations, {
-              y0: slices[0]!.y0,
-              y1: slices.at(-1)!.y1,
-            });
+            const parts = await exportLongImage(
+              session,
+              f,
+              crop,
+              'png',
+              progress,
+              annotations,
+              { y0: slices[0]!.y0, y1: slices.at(-1)!.y1 },
+              settings.pdf.filter,
+            );
             if (parts.length === 1) {
               return saved(
                 await download(parts[0]!, filename('png'), 'image/png'),
@@ -408,7 +534,7 @@ export function App() {
         }
       });
     },
-    [session, result, settings, slices, filename, run, annotations],
+    [session, result, settings, slices, filename, run, annotations, pageOcr],
   );
 
   const doPrint = useCallback(async () => {
@@ -421,23 +547,24 @@ export function App() {
           f,
           slices,
           result.layout,
-          settings.imageMode,
+          settings.exportPreset,
           settings.pdf,
           progress,
           annotations,
+          pageOcr,
         ),
       );
     });
-  }, [session, result, settings, slices, run, annotations]);
+  }, [session, result, settings, slices, run, annotations, pageOcr]);
 
   const doCopy = useCallback(async () => {
     if (!session || !frames.current || !slices[page]) return;
     const f = frames.current;
     await run('Copying', async () => {
-      await copyPageImage(session, f, slices[page]!, annotations);
+      await copyPageImage(session, f, slices[page]!, annotations, settings?.pdf.filter);
       return `Page ${page + 1} copied as an image`;
     });
-  }, [session, slices, page, run, annotations]);
+  }, [session, slices, page, run, annotations, settings]);
 
   const doDebug = useCallback(async () => {
     if (!session || !analysis || !result || !result.ok) return;
@@ -459,14 +586,48 @@ export function App() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  // UI §1 fast path: save the PDF with automatic breaks, then close this tab.
+  /** Area mode → Copy: the whole capture as one PNG on the clipboard. */
+  const doCopyAll = useCallback(async () => {
+    if (!session || !result || !result.ok || !settings || !frames.current || !slices.length)
+      return null;
+    const f = frames.current;
+    const { crop } = result;
+    return run('Copying', async () => {
+      const range = { y0: slices[0]!.y0, y1: slices.at(-1)!.y1 };
+      const parts = await exportLongImage(
+        session,
+        f,
+        crop,
+        'png',
+        undefined,
+        annotations,
+        range,
+        settings.pdf.filter,
+      );
+      if (parts.length > 1)
+        throw new Error('Too tall to copy as one image. Use Save PDF or save it as images.');
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': parts[0]! })]);
+      const px = (v: number) => Math.round(v * session.dpr);
+      return `Copied as an image · ${px(crop.x1 - crop.x0)} × ${px(range.y1 - range.y0)} px`;
+    });
+  }, [session, result, settings, slices, run, annotations]);
+
+  // UI §1 fast path (and area mode's PDF and Copy): do it, say so on the captured page, and
+  // close this tab. On failure the tab stays open with the reason.
   const autoDone = useRef(false);
   useEffect(() => {
-    if (AUTO !== 'pdf' || autoDone.current || stage.kind !== 'ready' || !result || !result.ok)
-      return;
+    if (!AUTO || autoDone.current || stage.kind !== 'ready' || !result || !result.ok) return;
     autoDone.current = true;
-    void doExport('pdf').then(() => setTimeout(() => window.close(), 500));
-  }, [stage, result, doExport]);
+    const tabId = session?.session.tabId;
+    const job = AUTO === 'copy' ? doCopyAll() : doExport('pdf');
+    void job.then((r) => {
+      if (!r?.ok) return;
+      void chrome.runtime
+        .sendMessage({ type: 'sp:notice', text: r.text, tabId })
+        .catch(() => undefined);
+      setTimeout(() => window.close(), 500);
+    });
+  }, [stage, result, doExport, doCopyAll, session]);
 
   // Keyboard (UI §3).
   useEffect(() => {
@@ -481,13 +642,27 @@ export function App() {
       } else if (mod && key === 'z') {
         e.preventDefault();
         doUndo();
-      } else if (view === 'markup' && !mod && !e.altKey && TOOL_KEYS[key]) {
+      } else if (
+        view === 'markup' &&
+        !mod &&
+        !e.altKey &&
+        TOOL_KEYS[key] &&
+        MARKUP_TOOLS.has(TOOL_KEYS[key])
+      ) {
         setTool(TOOL_KEYS[key]);
       } else if (view === 'markup' && (e.key === 'Delete' || e.key === 'Backspace')) {
         e.preventDefault();
         deleteSelected();
       } else if (view === 'markup' && e.key === 'Escape') {
         setSelected(null);
+      } else if (!mod && !e.altKey && key === 'i') {
+        setShowDetails((v) => !v);
+      } else if (!mod && (e.key === '+' || e.key === '=')) {
+        changeZoom(stepZoom(effective, 1));
+      } else if (!mod && e.key === '-') {
+        changeZoom(stepZoom(effective, -1));
+      } else if (!mod && e.key === '0') {
+        changeZoom(view === 'markup' ? 'width' : 'page');
       } else if (mod && e.shiftKey && key === 'd') {
         // Developer aid (PAGINATION §9): the break overlay, kept out of the visible UI.
         e.preventDefault();
@@ -507,7 +682,19 @@ export function App() {
     };
     addEventListener('keydown', onKey);
     return () => removeEventListener('keydown', onKey);
-  }, [doExport, doCopy, doPrint, doDebug, doUndo, doRedo, deleteSelected, view, slices.length]);
+  }, [
+    doExport,
+    doCopy,
+    doPrint,
+    doDebug,
+    doUndo,
+    doRedo,
+    deleteSelected,
+    view,
+    slices.length,
+    effective,
+    changeZoom,
+  ]);
 
   // e2e hook (stripped from production builds).
   useEffect(() => {
@@ -527,10 +714,11 @@ export function App() {
             f,
             result.debug.slices,
             result.layout,
-            settings.imageMode,
+            settings.exportPreset,
             settings.pdf,
             undefined,
             project.annotations,
+            pageOcr,
           );
           let bin = '';
           for (let i = 0; i < bytes.length; i += 0x8000)
@@ -539,7 +727,7 @@ export function App() {
         },
       },
     });
-  }, [session, result, settings, warnings, project]);
+  }, [session, result, settings, warnings, project, pageOcr]);
 
   if (stage.kind === 'error') {
     return (
@@ -575,6 +763,41 @@ export function App() {
     hour: '2-digit',
     minute: '2-digit',
   });
+
+  const panelBody =
+    showDetails && details ? (
+      <DetailsPanel details={details} onClose={() => setShowDetails(false)} />
+    ) : view === 'pages' || !result.ok ? (
+      <PagesPanel
+        settings={settings}
+        onSettings={updateSettings}
+        filename={filename('pdf')}
+        cropped={result.ok && result.crop.cropped}
+        sheetCount={analysis.sheets?.sheets.length ?? null}
+        estimate={estimate}
+        ocr={{
+          pages: ocrPages.map((i) => i + 1),
+          ready: !!ocrModel?.ready,
+          size: ocrModel?.total ?? 0,
+          downloading: ocrDownload,
+          error: ocrError,
+          onDownload: () => void getOcrModel(),
+        }}
+      />
+    ) : view === 'breaks' ? (
+      <BreaksPanel
+        edits={edits}
+        onReset={() => setEdits({ pinned: [], removed: [] })}
+        locked={result.ok && result.sheets}
+      />
+    ) : view === 'markup' ? (
+      <PageMarkPanel settings={settings} onSettings={updateSettings} />
+    ) : null;
+  const panel = panelBody && (
+    <SidePanel prefs={panelPrefs} onPrefs={changePanel} label="panel">
+      {panelBody}
+    </SidePanel>
+  );
 
   const markup: MarkupControls = {
     tool,
@@ -677,6 +900,17 @@ export function App() {
               )}
             </div>
           )}
+          <button
+            type="button"
+            aria-label="Details"
+            aria-pressed={showDetails}
+            title="Details: every number and how it was calculated (I)"
+            onClick={() => setShowDetails((v) => !v)}
+            className={`rounded-md p-1.5 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:hover:bg-neutral-800 ${showDetails ? 'bg-neutral-200 text-neutral-900 dark:bg-neutral-700 dark:text-white' : 'text-neutral-600 dark:text-neutral-300'}`}
+          >
+            <Info aria-hidden size={17} />
+          </button>
+          <ThemeButton theme={theme} onTheme={setTheme} />
           <SaveMenu
             disabled={!!busy || !result.ok}
             onExport={doExport}
@@ -687,6 +921,7 @@ export function App() {
       </header>
 
       <div className="flex min-h-0 flex-1">
+        {panel && panelPrefs.side === 'left' && panel}
         {result.ok ? (
           <>
             {view !== 'markup' && (
@@ -696,11 +931,24 @@ export function App() {
                 page={page}
                 onSelect={setPage}
                 annotations={annotations}
+                filter={settings.pdf.filter}
               />
             )}
-            <main className="flex min-w-0 flex-1 flex-col">
+            <main className="relative flex min-w-0 flex-1 flex-col">
+              {view !== 'breaks' && (
+                <div className="absolute right-4 bottom-4 z-20">
+                  <ZoomControl
+                    zoom={zoom}
+                    effective={effective}
+                    onZoom={changeZoom}
+                    pageFit={view === 'pages'}
+                  />
+                </div>
+              )}
               {view === 'pages' ? (
                 <PagesView
+                  watermark={settings.pdf.watermark}
+                  filter={settings.pdf.filter}
                   session={session}
                   frames={frames.current!}
                   analysis={analysis}
@@ -709,6 +957,9 @@ export function App() {
                   page={page}
                   onSelect={setPage}
                   annotations={annotations}
+                  zoom={zoom}
+                  onZoom={changeZoom}
+                  onEffective={setEffective}
                 />
               ) : view === 'markup' ? (
                 <>
@@ -727,6 +978,9 @@ export function App() {
                       setCrop(c);
                       setTool('select');
                     }}
+                    zoom={zoom}
+                    onZoom={changeZoom}
+                    onEffective={setEffective}
                   />
                 </>
               ) : (
@@ -739,6 +993,7 @@ export function App() {
                   edits={edits}
                   onEdits={setEdits}
                   page={page}
+                  locked={result.sheets}
                 />
               )}
             </main>
@@ -748,17 +1003,7 @@ export function App() {
             <p role="alert">{result.error}</p>
           </main>
         )}
-        {view === 'pages' || !result.ok ? (
-          <PagesPanel
-            settings={settings}
-            onSettings={updateSettings}
-            filename={filename('pdf')}
-            cropped={result.ok && result.crop.cropped}
-            estimate={estimate}
-          />
-        ) : view === 'breaks' ? (
-          <BreaksPanel edits={edits} onReset={() => setEdits({ pinned: [], removed: [] })} />
-        ) : null}
+        {panel && panelPrefs.side === 'right' && panel}
       </div>
 
       {(busy || toast) && (
@@ -773,6 +1018,46 @@ export function App() {
       )}
     </div>
   );
+}
+
+const THEMES: Array<[Theme, string, typeof Sun]> = [
+  ['system', 'System', Monitor],
+  ['light', 'Light', Sun],
+  ['dark', 'Dark', Moon],
+];
+
+/** One button that cycles system → light → dark; its label says which is on. */
+function ThemeButton({ theme, onTheme }: { theme: Theme; onTheme: (t: Theme) => void }) {
+  const i = THEMES.findIndex(([t]) => t === theme);
+  const [, label, Icon] = THEMES[i]!;
+  const next = THEMES[(i + 1) % THEMES.length]!;
+  return (
+    <button
+      type="button"
+      aria-label={`Theme: ${label}`}
+      title={`Theme: ${label}. Click for ${next[1].toLowerCase()}.`}
+      onClick={() => onTheme(next[0])}
+      className="rounded-md p-1.5 text-neutral-600 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:text-neutral-300 dark:hover:bg-neutral-800"
+    >
+      <Icon aria-hidden size={17} />
+    </button>
+  );
+}
+
+function readPref<T>(key: string, fallback: T): T {
+  try {
+    const v = localStorage.getItem(key);
+    return v === null ? fallback : (JSON.parse(v) as T);
+  } catch {
+    return fallback;
+  }
+}
+function writePref(key: string, value: unknown): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* not essential */
+  }
 }
 
 /** Toast text for a finished save, explaining a changed file name. */

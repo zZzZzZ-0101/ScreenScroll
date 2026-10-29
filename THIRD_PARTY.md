@@ -12,6 +12,9 @@ Runtime dependencies are installed from npm and bundled at build time. All are p
 | idb | ISC | IndexedDB wrapper |
 | fflate | MIT | zip of page images |
 | lucide-react | ISC | icons in the popup and Studio (tree-shaken; only the icons used are bundled) |
+| onnxruntime-web | MIT | text recognition runtime (its WebAssembly CPU build, including the .wasm) |
+
+Downloaded at the user's request, not bundled: the PP-OCRv6 small text recognition model (PaddleOCR, Apache-2.0), as published in npm `@arcships/light-ocr-model-ppocrv6-small@0.3.4` (Apache-2.0); see docs/spec/OCR.md.
 
 Dev-only (tests, never bundled): @napi-rs/canvas (MIT), pdfjs-dist (Apache-2.0), vitest, Playwright.
 

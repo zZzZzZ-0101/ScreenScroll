@@ -1,4 +1,12 @@
-import { ownedBands, RowAnalyzer, toGrey, type RowProfile } from '@screenscroll/core';
+import {
+  detectSheets,
+  ownedBands,
+  RowAnalyzer,
+  SheetAnalyzer,
+  toGrey,
+  type RowProfile,
+  type SheetLayout,
+} from '@screenscroll/core';
 import type { FrameCache, LoadedSession } from './session';
 
 export const ANALYSIS_WIDTH = 800;
@@ -9,6 +17,8 @@ export interface Analysis {
   /** Long-view thumbnail: one small canvas per frame band, stacked (ARCHITECTURE: ≤ 320 px). */
   strip: Array<{ canvas: HTMLCanvasElement; y0: number; y1: number }>;
   stripScale: number;
+  /** Document pages (a PDF or document viewer), in CSS px; null for ordinary pages. */
+  sheets: SheetLayout | null;
 }
 
 /**
@@ -23,6 +33,7 @@ export async function analyze(
 ): Promise<Analysis> {
   const aw = Math.min(ANALYSIS_WIDTH, Math.round(s.width));
   const analyzer = new RowAnalyzer(aw, 1);
+  const sheetAnalyzer = new SheetAnalyzer(aw);
   const stripScale = Math.min(1, STRIP_WIDTH / s.width);
   const strip: Analysis['strip'] = [];
   const bands = ownedBands(s.geoms);
@@ -41,7 +52,9 @@ export async function analyze(
     const actx = a.getContext('2d', { willReadFrequently: true })!;
     actx.drawImage(bitmap, sx, sy, sw, sh, 0, 0, aw, h);
     const img = actx.getImageData(0, 0, aw, h);
-    analyzer.push(toGrey({ width: aw, height: h, data: img.data, channels: 4 }));
+    const grey = toGrey({ width: aw, height: h, data: img.data, channels: 4 });
+    analyzer.push(grey);
+    sheetAnalyzer.push(grey);
 
     const c = document.createElement('canvas');
     c.width = Math.max(1, Math.round(s.width * stripScale));
@@ -52,5 +65,8 @@ export async function analyze(
     // Let the page paint between frames on long captures.
     await new Promise((r) => setTimeout(r, 0));
   }
-  return { rows: analyzer.finish(), strip, stripScale };
+  const found = detectSheets(sheetAnalyzer.finish());
+  const k = s.width / aw; // analysis columns → CSS px (rows are already 1 per CSS px)
+  const sheets = found && { ...found, x0: found.x0 * k, x1: found.x1 * k };
+  return { rows: analyzer.finish(), strip, stripScale, sheets };
 }

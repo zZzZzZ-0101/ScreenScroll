@@ -1,5 +1,9 @@
 @import 'tailwindcss';
 
+/* Dark mode follows data-theme on <html>, which shared/theme.ts sets from the setting
+   (system / light / dark), so the user can override the system. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
 @theme {
   --color-accent: #0e7c7b;
   --color-accent-strong: #0a5f5e;

@@ -1,7 +1,7 @@
-import type { Annotation, PageSlice } from '@screenscroll/core';
+import type { Annotation, FilterId, PageSlice } from '@screenscroll/core';
 import { useEffect, useRef } from 'react';
 import type { Analysis } from '@/studio/engine/analysis';
-import { paintAnnotations } from '@/studio/engine/compose';
+import { filterCanvas, paintAnnotations } from '@/studio/engine/compose';
 import { drawFromStrip } from '../strip';
 
 const W = 72;
@@ -13,6 +13,7 @@ export function Thumbnails(p: {
   page: number;
   onSelect: (i: number) => void;
   annotations: Annotation[];
+  filter: FilterId;
 }) {
   return (
     <nav
@@ -30,7 +31,12 @@ export function Thumbnails(p: {
               className={`flex w-full items-start gap-1.5 rounded-md p-1 focus-visible:outline-2 focus-visible:outline-accent ${i === p.page ? 'bg-neutral-200 dark:bg-neutral-800' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
             >
               <span className="w-4 text-right text-neutral-500">{i + 1}</span>
-              <Thumb analysis={p.analysis} slice={s} annotations={p.annotations} />
+              <Thumb
+                analysis={p.analysis}
+                slice={s}
+                annotations={p.annotations}
+                filter={p.filter}
+              />
             </button>
           </li>
         ))}
@@ -43,10 +49,12 @@ function Thumb({
   analysis,
   slice,
   annotations,
+  filter,
 }: {
   analysis: Analysis;
   slice: PageSlice;
   annotations: Annotation[];
+  filter: FilterId;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -58,8 +66,9 @@ function Thumb({
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, W, h);
     drawFromStrip(ctx, analysis, slice, W);
+    filterCanvas(ctx, filter, W / (slice.x1 - slice.x0));
     paintAnnotations(ctx, annotations, slice, W / (slice.x1 - slice.x0));
-  }, [analysis, slice, annotations]);
+  }, [analysis, slice, annotations, filter]);
   return (
     <canvas
       ref={ref}

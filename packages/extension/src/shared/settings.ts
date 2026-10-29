@@ -3,13 +3,34 @@ import {
   DEFAULT_FOOTER,
   DEFAULT_PAGE_SETTINGS,
   EMPTY_BAND,
+  FILTERS,
+  NO_WATERMARK,
   PAPERS,
+  type Watermark,
   type BandTemplate,
+  type ExportPreset,
+  type FilterId,
   type PageSettings,
 } from '@screenscroll/core';
 
-/** PDF page images: chosen per page by content, or forced. */
-export type ImageMode = 'auto' | 'png' | 'jpeg';
+/** Where a full-page capture starts: the top of the page, or where you are now. */
+export type CaptureStart = 'top' | 'here';
+/** Pacing and waiting per screen; faster is less patient with slow images. */
+export type CaptureSpeed = 'careful' | 'normal' | 'fast';
+/** Pixels per CSS px captured: the screen's own, or 2× / 3× for sharper output. */
+export type Resolution = 'standard' | 'high' | 'max';
+/** Text recognition in images: where the page has no text of its own, everywhere, or never. */
+export type OcrMode = 'auto' | 'always' | 'off';
+/** PDF image quality: from small files that still read well, to lossless. */
+
+export interface CaptureSettings {
+  start: CaptureStart;
+  speed: CaptureSpeed;
+  resolution: Resolution;
+}
+
+/** Light, dark, or whatever the system uses. */
+export type Theme = 'system' | 'light' | 'dark';
 
 export interface Settings {
   page: PageSettings;
@@ -17,12 +38,56 @@ export interface Settings {
   crop: 'auto' | 'off';
   /** "Fewer pages ↔ cleaner breaks", 0…1. */
   breakStyle: number;
-  imageMode: ImageMode;
   filenameTemplate: string;
   /** UI §1: what happens after a capture. */
   afterCapture: 'studio' | 'pdf';
   /** UI §3 Export tab: PDF options (PDF_OUTPUT §2–5). */
   pdf: PdfSettings;
+  /** Saved captures older than this many days are deleted; 0 keeps them until deleted. */
+  keepDays: number;
+  /** In a document viewer (Drive, PDF previews), one PDF page per document page. */
+  followSheets: boolean;
+  theme: Theme;
+  capture: CaptureSettings;
+  ocr: OcrMode;
+  /** PDF quality (core `QUALITY`): image resolution cap and encoding. */
+  exportPreset: ExportPreset;
+  /** Mark up → Page: the user's own presets (defaults included, all removable). */
+  presets: Presets;
+}
+
+export interface LabelPreset {
+  name: string;
+  band: BandTemplate;
+}
+
+export interface Presets {
+  watermarks: string[];
+  labels: LabelPreset[];
+}
+
+export const DEFAULT_PRESETS: Presets = {
+  watermarks: ['CONFIDENTIAL', 'DRAFT', 'COPY', '机密', '仅供参考'],
+  labels: [
+    { name: 'Page number', band: { left: '', center: '', right: '{page}/{pages}' } },
+    { name: 'Date + page', band: { left: '{date}', center: '', right: '{page}/{pages}' } },
+    {
+      name: 'Site + date + page',
+      band: { left: '{domain} · {date}', center: '', right: '{page}/{pages}' },
+    },
+    { name: 'Title + page', band: { left: '{title}', center: '', right: '{page}/{pages}' } },
+  ],
+};
+
+/** Presets are short lists; a cap keeps a corrupt or runaway list from swamping the panel. */
+export const MAX_PRESETS = 40;
+
+/** A label preset's name from its content, e.g. "{date} | {page}/{pages}". */
+export function labelName(b: BandTemplate): string {
+  return [b.left, b.center, b.right]
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .join(' | ');
 }
 
 export interface PdfSettings {
@@ -31,6 +96,10 @@ export interface PdfSettings {
   outline: boolean;
   header: BandTemplate;
   footer: BandTemplate;
+  /** Text across the pages (Mark up → Watermark); empty = none. */
+  watermark: Watermark;
+  /** Page filter (Mark up → Filter), like a scanner app's. */
+  filter: FilterId;
 }
 
 export const DEFAULT_PDF_SETTINGS: PdfSettings = {
@@ -39,6 +108,8 @@ export const DEFAULT_PDF_SETTINGS: PdfSettings = {
   outline: true,
   header: EMPTY_BAND,
   footer: DEFAULT_FOOTER,
+  watermark: NO_WATERMARK,
+  filter: 'original',
 };
 
 /** Header/footer space is reserved only when the band has something to show. */
@@ -50,10 +121,16 @@ export const DEFAULT_SETTINGS: Settings = {
   page: DEFAULT_PAGE_SETTINGS,
   crop: 'auto',
   breakStyle: 0.5,
-  imageMode: 'auto',
   filenameTemplate: DEFAULT_FILENAME_TEMPLATE,
   afterCapture: 'studio',
   pdf: DEFAULT_PDF_SETTINGS,
+  keepDays: 0,
+  followSheets: true,
+  theme: 'system',
+  capture: { start: 'top', speed: 'normal', resolution: 'standard' },
+  ocr: 'auto',
+  exportPreset: 'balanced',
+  presets: DEFAULT_PRESETS,
 };
 
 const KEY = 'settings';
@@ -72,6 +149,7 @@ export function normalizeSettings(stored: unknown): Settings {
   const page = isObject(o.page) ? o.page : {};
   const pdf = isObject(o.pdf) ? o.pdf : {};
   const margins = isObject(page.marginsMm) ? page.marginsMm : {};
+  const cap = isObject(o.capture) ? o.capture : {};
   const mm = (v: unknown, def: number) => (num(v) && v >= 0 && v <= 100 ? v : def);
   const paper = page.paper;
   const validPaper =
@@ -96,17 +174,68 @@ export function normalizeSettings(stored: unknown): Settings {
     },
     crop: o.crop === 'off' ? 'off' : 'auto',
     breakStyle: num(o.breakStyle) ? Math.max(0, Math.min(1, o.breakStyle)) : d.breakStyle,
-    imageMode: o.imageMode === 'png' || o.imageMode === 'jpeg' ? o.imageMode : 'auto',
     filenameTemplate:
       typeof o.filenameTemplate === 'string' ? o.filenameTemplate : d.filenameTemplate,
     afterCapture: o.afterCapture === 'pdf' ? 'pdf' : 'studio',
+    followSheets: o.followSheets !== false,
+    theme: o.theme === 'light' || o.theme === 'dark' ? o.theme : 'system',
+    capture: {
+      start: cap.start === 'here' ? 'here' : 'top',
+      speed: cap.speed === 'careful' || cap.speed === 'fast' ? cap.speed : 'normal',
+      resolution:
+        cap.resolution === 'high' || cap.resolution === 'max' ? cap.resolution : 'standard',
+    },
+    ocr: o.ocr === 'always' || o.ocr === 'off' ? o.ocr : 'auto',
+    exportPreset:
+      o.exportPreset === 'compact' || o.exportPreset === 'best' || o.exportPreset === 'lossless'
+        ? o.exportPreset
+        : 'balanced',
+    keepDays: num(o.keepDays) && o.keepDays >= 0 && o.keepDays <= 3650 ? Math.round(o.keepDays) : 0,
+    presets: presets(o.presets),
     pdf: {
       textLayer: typeof pdf.textLayer === 'boolean' ? pdf.textLayer : d.pdf.textLayer,
       links: typeof pdf.links === 'boolean' ? pdf.links : d.pdf.links,
       outline: typeof pdf.outline === 'boolean' ? pdf.outline : d.pdf.outline,
       header: band(pdf.header, d.pdf.header),
       footer: band(pdf.footer, d.pdf.footer),
+      watermark: watermark(pdf.watermark),
+      filter: FILTERS.some((f) => f.id === pdf.filter) ? (pdf.filter as FilterId) : 'original',
     },
+  };
+}
+
+function presets(v: unknown): Presets {
+  if (!isObject(v)) return DEFAULT_PRESETS;
+  const watermarks = Array.isArray(v.watermarks)
+    ? [
+        ...new Set(v.watermarks.filter((t): t is string => typeof t === 'string' && !!t.trim())),
+      ].slice(0, MAX_PRESETS)
+    : DEFAULT_PRESETS.watermarks;
+  const labels = Array.isArray(v.labels)
+    ? v.labels
+        .filter(isObject)
+        .map((l) => ({
+          name: typeof l.name === 'string' ? l.name : '',
+          band: band(l.band, EMPTY_BAND),
+        }))
+        .filter((l) => l.name.trim() && labelName(l.band))
+        .slice(0, MAX_PRESETS)
+    : DEFAULT_PRESETS.labels;
+  return { watermarks, labels };
+}
+
+function watermark(v: unknown): Watermark {
+  if (!isObject(v)) return NO_WATERMARK;
+  const n = (x: unknown, lo: number, hi: number, def: number) =>
+    num(x) && x >= lo && x <= hi ? x : def;
+  return {
+    text: typeof v.text === 'string' ? v.text : '',
+    opacity: n(v.opacity, 0.03, 0.8, NO_WATERMARK.opacity),
+    sizePt: n(v.sizePt, 8, 200, NO_WATERMARK.sizePt),
+    angle: n(v.angle, -90, 90, NO_WATERMARK.angle),
+    color:
+      typeof v.color === 'string' && /^#[0-9a-f]{6}$/i.test(v.color) ? v.color : NO_WATERMARK.color,
+    pages: typeof v.pages === 'string' ? v.pages : 'all',
   };
 }
 
@@ -119,6 +248,18 @@ function band(v: unknown, def: BandTemplate): BandTemplate {
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+/** Per-screen timing for each speed. Chrome allows two screenshots a second (500 ms). */
+export const SPEED_TIMING: Record<
+  CaptureSpeed,
+  { intervalMs: number; settleMs: number; frameImageWaitMs: number; pageImageWaitMs: number }
+> = {
+  careful: { intervalMs: 700, settleMs: 400, frameImageWaitMs: 3000, pageImageWaitMs: 8000 },
+  normal: { intervalMs: 550, settleMs: 150, frameImageWaitMs: 1500, pageImageWaitMs: 5000 },
+  fast: { intervalMs: 505, settleMs: 60, frameImageWaitMs: 600, pageImageWaitMs: 2000 },
+};
+
+export const RESOLUTION_SCALE: Record<Resolution, number> = { standard: 1, high: 2, max: 3 };
 
 export async function saveSettings(patch: Partial<Settings>): Promise<Settings> {
   const next = { ...(await loadSettings()), ...patch };

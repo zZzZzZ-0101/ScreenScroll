@@ -22,7 +22,7 @@ async function captureToStudio(context: BrowserContext, sw: Worker, path: string
     predicate: (p) => p.url().includes('/studio.html'),
   });
   await sw.evaluate(async (url) => {
-    const [tab] = await chrome.tabs.query({ url });
+    const [tab] = await chrome.tabs.query({ active: true, url });
     const hook = (globalThis as unknown as { __spTest: { capture(id: number): Promise<unknown> } })
       .__spTest;
     await hook.capture(tab!.id!);

@@ -1,11 +1,22 @@
-import type { Annotation, PageLayout, PageSlice } from '@screenscroll/core';
-import { useEffect, useRef } from 'react';
+import {
+  watermarkOn,
+  type Annotation,
+  type FilterId,
+  type PageLayout,
+  type PageSlice,
+  type Watermark,
+} from '@screenscroll/core';
+import { useEffect, useRef, useState } from 'react';
 import type { Analysis } from '@/studio/engine/analysis';
-import { composePage, paintAnnotations } from '@/studio/engine/compose';
+import { composePage, filterCanvas, paintAnnotations } from '@/studio/engine/compose';
 import type { FrameCache, LoadedSession } from '@/studio/engine/session';
 import { drawFromStrip } from '../strip';
 
-const PAGE_W = 420;
+import { stepZoom, type Zoom } from './ZoomControl';
+
+/** CSS px per pt at 100% (96 dpi screen, 72 pt per inch): actual size. */
+const PX_PER_PT = 96 / 72;
+const PAD = 24;
 
 /** Pages view (UI §3): true page shapes with margins, as they will be exported. */
 export function PagesView(p: {
@@ -17,17 +28,62 @@ export function PagesView(p: {
   page: number;
   onSelect: (i: number) => void;
   annotations: Annotation[];
+  zoom: Zoom;
+  onZoom: (z: Zoom) => void;
+  watermark: Watermark;
+  filter: FilterId;
+  /** Reports the scale shown (share of actual size), for the zoom control's label. */
+  onEffective: (scale: number) => void;
 }) {
   const refs = useRef<Array<HTMLDivElement | null>>([]);
+  const scroller = useRef<HTMLDivElement>(null);
+  const [avail, setAvail] = useState({ w: 800, h: 600 });
   useEffect(() => {
     refs.current[p.page]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [p.page]);
+  useEffect(() => {
+    const el = scroller.current!;
+    const ro = new ResizeObserver(() =>
+      setAvail({ w: el.clientWidth - 2 * PAD, h: el.clientHeight - 2 * PAD }),
+    );
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const actual = p.layout.paperW * PX_PER_PT;
+  const ratio = p.layout.paperH / p.layout.paperW;
+  const pageW =
+    p.zoom === 'width'
+      ? Math.max(120, avail.w)
+      : p.zoom === 'page'
+        ? Math.max(120, Math.min(avail.w, avail.h / ratio))
+        : actual * p.zoom;
+  const effective = pageW / actual;
+  const { onEffective } = p;
+  useEffect(() => onEffective(effective), [effective, onEffective]);
+
+  // Ctrl+wheel zooms like a PDF viewer (a passive listener can't stop the browser's own zoom).
+  const latest = useRef({ effective, onZoom: p.onZoom });
+  latest.current = { effective, onZoom: p.onZoom };
+  useEffect(() => {
+    const el = scroller.current!;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      latest.current.onZoom(stepZoom(latest.current.effective, e.deltaY < 0 ? 1 : -1));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
   return (
     <div
-      className="flex-1 overflow-y-auto bg-neutral-100 p-6 dark:bg-neutral-950"
+      ref={scroller}
+      className="flex-1 overflow-auto bg-neutral-100 dark:bg-neutral-950"
+      style={{ padding: PAD }}
       data-testid="pages-view"
     >
-      <div className="mx-auto flex flex-col items-center gap-6">
+      <div className="mx-auto flex w-fit flex-col items-center gap-6">
         {p.slices.map((s, i) => (
           <div
             key={`${s.y0}-${s.y1}`}
@@ -36,7 +92,7 @@ export function PagesView(p: {
             }}
             onClick={() => p.onSelect(i)}
             className={`relative bg-white shadow-sm ring-1 ${i === p.page ? 'ring-accent ring-2' : 'ring-neutral-300 dark:ring-neutral-700'}`}
-            style={{ width: PAGE_W, height: (PAGE_W * p.layout.paperH) / p.layout.paperW }}
+            style={{ width: pageW, height: pageW * ratio }}
           >
             <PageCanvas
               session={p.session}
@@ -45,8 +101,25 @@ export function PagesView(p: {
               slice={s}
               layout={p.layout}
               annotations={p.annotations}
+              filter={p.filter}
+              pageW={pageW}
             />
             <span className="absolute bottom-1 right-2 text-[11px] text-neutral-400">{i + 1}</span>
+            {watermarkOn(p.watermark, i + 1, p.slices.length) && (
+              <span
+                aria-hidden
+                data-testid="watermark-preview"
+                className="pointer-events-none absolute top-1/2 left-1/2 font-[Helvetica,Arial,sans-serif] whitespace-nowrap"
+                style={{
+                  color: p.watermark.color,
+                  opacity: p.watermark.opacity,
+                  fontSize: p.watermark.sizePt * (pageW / p.layout.paperW),
+                  transform: `translate(-50%, -50%) rotate(${-p.watermark.angle}deg)`,
+                }}
+              >
+                {p.watermark.text}
+              </span>
+            )}
           </div>
         ))}
       </div>
@@ -61,6 +134,8 @@ function PageCanvas({
   slice,
   layout,
   annotations,
+  filter,
+  pageW,
 }: {
   session: LoadedSession;
   frames: FrameCache;
@@ -68,9 +143,11 @@ function PageCanvas({
   slice: PageSlice;
   layout: PageLayout;
   annotations: Annotation[];
+  filter: FilterId;
+  pageW: number;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const k = PAGE_W / layout.paperW; // preview px per pt
+  const k = pageW / layout.paperW; // preview px per pt
   const w = (slice.x1 - slice.x0) * layout.s * k;
   const h = (slice.y1 - slice.y0) * layout.s * k;
   useEffect(() => {
@@ -83,6 +160,7 @@ function PageCanvas({
     ctx.fillRect(0, 0, c.width, c.height);
     // Quick, blurry first paint from the thumbnail strip...
     drawFromStrip(ctx, analysis, slice, c.width);
+    filterCanvas(ctx, filter, c.width / (slice.x1 - slice.x0));
     paintAnnotations(ctx, annotations, slice, c.width / (slice.x1 - slice.x0));
     // ...then the real pixels once the page is on screen, at the preview's own size.
     let cancelled = false;
@@ -91,7 +169,7 @@ function PageCanvas({
         if (!entries.some((e) => e.isIntersecting)) return;
         io.disconnect();
         const scale = Math.min(1, c.width / ((slice.x1 - slice.x0) * session.dpr));
-        const img = await composePage(session, frames, slice, scale, annotations);
+        const img = await composePage(session, frames, slice, scale, annotations, filter);
         if (!cancelled) ctx.drawImage(img, 0, 0, c.width, c.height);
       },
       { rootMargin: '400px' },
@@ -101,7 +179,7 @@ function PageCanvas({
       cancelled = true;
       io.disconnect();
     };
-  }, [session, frames, analysis, slice, w, h, annotations]);
+  }, [session, frames, analysis, slice, w, h, annotations, filter]);
   return (
     <canvas
       ref={ref}

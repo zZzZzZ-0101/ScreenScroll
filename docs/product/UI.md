@@ -11,24 +11,25 @@ Design stance: **a quiet, fast tool**. No splash screens, no tips carousel, no u
 - Motion: 120–160 ms ease-out, and only for state changes (panels, toasts). Respect `prefers-reduced-motion`.
 - Accessibility: all controls are keyboard reachable, visible focus rings, contrast ≥ 4.5:1, ARIA labels on icon buttons.
 
-## 1. Starting a capture (no popup)
+## 1. The panel (toolbar icon)
 
-Distilled further (2026-10-28, see DECISIONS): there is no popup and no start page. A popup cost every capture an extra click and showed choices most people never change.
+The icon opens a small panel with everything needed before a capture, nothing else (2026-10-28: an earlier version without a panel was too bare; see DECISIONS).
 
-| Action | Result |
-|---|---|
-| Click the toolbar icon | Captures the full page at once, then opens the Studio |
-| Right-click the toolbar icon | Visible area · Selection · Element · Full page in 5 seconds · ☐ Skip the preview and save the PDF |
-| Right-click the page | Full page · Visible area · Selection · Element · Scroll area |
-| Keys | Alt+Shift+P full page · Alt+Shift+V visible · Alt+Shift+S selection · Alt+Shift+E element (change at `chrome://extensions/shortcuts`) |
+![Panel](../screenshots/panel.png)
 
-- A page that can't be captured (browser pages, the store, file:// without access) gets a red "!" on the icon; its tooltip says why. The next capture on that tab clears it.
-- Paper, breaks and formats are chosen in the Studio, where their effect is visible.
+- **Capture full page** (Alt+Shift+P), the main button.
+- Five tiles: **Visible** (Alt+Shift+V), **Area** (Alt+Shift+S), **Line to line**, **Element** (Alt+Shift+E), **Panel** (pick a scrolling panel: mail list, document viewer). Each has a tooltip saying what it does.
+- **Timer** Off / 3 / 5 / 10 s · **After capture** Review / Save PDF · **Paper**.
+- **Last capture** (reopens it in the Studio) and **Saved captures** with their count and size.
+- Keyboard icon: opens the browser's shortcut settings.
+- On a page that can't be captured the reason is shown first and the buttons are disabled. Captures started from menus or keys on such a page put a red "!" on the icon with the reason in its tooltip.
+- Right-click on the page: full page, visible, selection, line to line, element, scroll area.
 
 ## 2. In-page capture overlay
 
-- A thin progress bar at the top of the viewport, plus a small pill: "Capturing 7/23 · Esc to cancel". It's hidden during frame grabs. Toggle the overlay's visibility right before each `captureVisibleTab`, so the overlay never appears in the output.
-- Selection mode: dim the page, draw a crosshair rectangle with size readout, and show handles after release. Auto-scroll when dragging near the top/bottom edge. Press Enter to capture, Esc to cancel.
+- A pill at the bottom centre: "Capturing · screen 7 · Press Esc to cancel [Stop here] [Cancel]". It stays on screen for the whole capture (frames leave out the rows it covers; it moves to the top for the last frame). Esc / Cancel keep nothing; Stop here keeps what was captured. Scrolling or clicking the page during capture is held off and the pill says so. The toolbar panel shows the same two buttons while a capture runs, and the icon shows REC (WAIT while the tab is in the background).
+- Area mode (like a chat app's screenshot tool): dim the page, drag a box; a readout shows `x y · W × H`. Then: drag inside to move, eight handles to resize (left and right edges included), arrow keys nudge 1 px (Shift 10 px), dragging near the top/bottom edge scrolls. A toolbar under the box (above it, or inside, when there's no room): Box (R), Arrow (A), Text (T), Mosaic (M) · Undo (Ctrl+Z) · Extend to the end of the page · Copy (Ctrl+C) · Save PDF (Ctrl+S) · Cancel (Esc) · Capture and review (Enter). Marks drawn here become Studio annotations. Copy and PDF finish in a Studio tab that closes itself, and the page says "Copied as an image · W × H px" or where the PDF was saved.
+- **Line to line**: a guide line follows the pointer across whatever scrolls under it. Click the first line, scroll freely (wheel, keys, scrollbar), click the last line; the band between is shaded and its height shown. Enter = to the end, Backspace = choose the start again, Esc = cancel. Clicks never reach the page.
 - Element mode: outline the hovered element with its tag, size and selector. ↑ selects the parent, ↓ the child. Click or Enter captures.
 
 ## 3. Studio (main window, extension tab)
@@ -49,19 +50,27 @@ Distilled (2026-10-28): three modes named by what you do, one primary button, an
 └──────┴────────────────────────────────────────────────────┴────────────────┘
 ```
 
+- **Document pages**: when the capture is a document viewer (Google Drive, Docs or Office previews, PDF viewers) the Pages panel says "N document pages found" and, by default, makes one PDF page per document page, cropped to the page (no viewer background). Breaks mode then shows the document's breaks without editing; untick "One PDF page per document page" to use smart breaks instead.
 - **Pages** (default): true page previews. Panel: Paper, Orientation, the "Fewer pages ↔ Cleaner breaks" slider, page count and size. **More options** (closed by default, remembered): margins, crop sides, image quality, searchable text / links / bookmarks, header and footer, file name.
 - **Breaks**: the whole capture as one strip with the break lines. Drag to move (snaps; Alt = free), double-click to add, hover × to remove; a magnifier shows the cut. Break colour shows its kind; the tooltip says it in words ("Break between paragraphs"). Panel: three one-line instructions, the slider, **Reset breaks**.
-- **Mark up**: the capture at full width with one toolbar row: Select · Arrow, Rectangle, Ellipse, Line · Pen, Highlighter, Text, Step number · Blur, Pixelate · Crop; six colours plus a picker; one size control (S/M/L) for both lines and text; Undo, Redo, Delete. A sentence under the toolbar says what the current tool does. Blur/pixelate also remove the text and links underneath from the PDF. Single-key shortcuts (V C A R O L P H T N B X), Ctrl+Z / Ctrl+Y.
+- **Mark up** (scanning-oriented, like a document scanner app): one toolbar row with Select · Crop · Text, Rectangle, Arrow, Step number · Mosaic, Blur; three ink colours (black, red, blue) plus a picker; one size control (S/M/L); Undo, Redo, Delete. The side panel holds **Page**: page labels (header and footer, left/centre/right, with presets such as page number or date + page and tokens) and a **watermark** (text with presets, opacity, size, angle, colour, apply to every page / first page / these pages, remove). Watermark and label presets are the user's own: × removes one, + Save adds the current text or band, Restore defaults brings back removed built-in ones. The watermark shows in the Pages preview and is drawn in the PDF. Blur/mosaic also remove the text and links underneath from the PDF. Ctrl+Z / Ctrl+Y.
 - **Save PDF ▾**: the button saves the PDF (Ctrl+S); the arrow lists every other output: one long page PDF, PNG/JPEG/WebP pages (zip), one long image, Copy this page (Ctrl+Shift+C), Print (Ctrl+P).
 - **Notes** chip (warnings) opens the list; "Page N: …" entries jump to the page.
+- **Details** (header ⓘ, key I): every number behind the pages and how it was calculated, in the side panel: capture (dpr, frames, size, speed), layout (paper, margins, printable box, content width, scale s, content per page T, body text in pt, dpi on paper), breaks (method, weights, cost formula, forced cuts), output (filter, PDF quality, image scale, format rule, estimated size, labels, watermark), then one row per page. Copy all as text.
+- **PDF quality** (More options, and Settings): Compact ≤ 150 dpi · Balanced ≤ 300 dpi · Best (every pixel) · Lossless (PNG).
+- **Text recognition** (Pages panel card, only when needed): "N pages without text of their own · Pages 3, 5" with Download model (30 MB) once; then "Their text is read when you save". Settings → Text recognition has the mode (Auto / Always / Off) and the model (Download / Remove, size, source).
 - Left rail: page thumbnails (hidden in Mark up, which needs the width).
 - Studio keyboard: ←/→ page, Ctrl+S, Ctrl+Shift+C, Ctrl+P; in Mark up the tool keys, Delete, Esc.
 - If the browser refuses the file name (some systems can't store every title), the file is saved under a plain ASCII name and the toast says so.
 
-## 4. History
+## 4. Saved captures (history)
 
-- A grid of cards: thumbnail, title, domain, date and page count. Search box with **full-text search** over captured page text (stored per session) plus title/URL.
-- Multi-select → Merge into one PDF / Export / Delete. A storage meter, with "Keep last N days / max N GB" settings.
+![Saved captures](../screenshots/saved-captures.png)
+
+- Everything kept on this computer: thumbnail, title, site, date and size per capture; space used and space free.
+- Search by title or address; **Open** reopens the Studio; delete one or several, with **Undo** for 6 seconds instead of a confirmation dialog.
+- **Keep captures**: until deleted / 1 / 7 / 30 / 90 days; older captures are deleted when the page opens and after each new capture.
+- Still to come (ROADMAP M5): full-text search of captured text, merge into one PDF.
 
 ## 5. Merge queue
 

@@ -94,6 +94,11 @@ Manual: draw on a real capture with a mouse/trackpad (feel of pen and highlighte
 
 Not built yet: re-opening a project from History (History is M5); auto-redact (M6); resize handles on existing shapes (move, restyle and redraw instead).
 
+### After the first real-site test (2026-10-28)
+User report: Google Drive PDF preview not captured; no way to choose "from this line to that line"; no panel under the icon. Done: panel restored with the useful settings; line-to-line mode; scroller in front at the centre preferred (Drive-like overlay fixture); explicit warning for viewers in embedded frames; Saved captures page (sizes, search, open, delete with undo, auto-delete after N days). Tests: `lines.spec.ts`, `library.spec.ts`, panel in `smoke.spec.ts`.
+Second report (Drive works but pages are cut "robotically"): document-page detection added; on a Drive-like fixture (`doc-viewer.html`, dark viewer, dimmed list on one side, a page with a dark table) the PDF has exactly one page per document page, cropped, each page's text complete (`doc-viewer.spec.ts`, `sheets.test.ts`).
+Open: confirm on the user's real Drive file; background capture (planned, see DECISIONS).
+
 ### Repository reorganisation and popup removal (2026-10-28)
 - No popup or start page: icon click = capture; right-click the icon for the rest; red "!" badge with the reason on pages that can't be captured. Studio duplicates removed (second break slider, second page count, debug button → Ctrl+Shift+D).
 - Layered layout (see README "Repository layout"); README rewritten as the starting point; workspace packages renamed `@screenscroll/*`.
@@ -113,6 +118,26 @@ Edge cases now tested (and the bugs they found, all fixed — see DECISIONS):
 - e2e `edge.spec.ts`: one-line page → one page; hostile title → safe name keeping 报告 🙂 עברית; non-UTF-8 file system → fallback name with explanation; empty selection → error with reason; missing/deleted capture; three kinds of corrupt settings; double click + Ctrl+S → one file; keyboard-only modes and Save menu (focus, wrap, Esc, click-away); 1024 and 800 px windows in all modes without horizontal overflow; dark mode; Mark up no-ops (undo/redo/delete with nothing, 2 px drag, 10 px crop, blank text, Esc), leaving Mark up mid-typing, keys typed right after the text click; break edits kept across modes and Reset; popup blocked state and persisted checkbox; fast typing in File name and header fields keeps every character and the last value is stored.
 
 Suite: `pnpm test` 219, `pnpm e2e` 53 (see the commit), lint and typecheck clean.
+
+### Mark up for scanning, saved-captures delete (2026-10-28)
+- Mark up toolbar trimmed to scanning tools (crop, text, rectangle, arrow, step number, mosaic, blur; three ink colours). Mark up → Page holds page labels and the watermark (every page / first / chosen pages); it shows in the Pages preview and is drawn in the PDF (rendered and checked: diagonal, faint, only on the chosen page).
+- Saved captures: delete is immediate and complete; select several or all and delete for good. e2e checks the database is empty afterwards (0 sessions, 0 frames, 0 KB).
+- Not yet: watermark on the single long-page PDF; details panel and export quality presets; WeChat-style area toolbar with left/right edges; OCR; background capture.
+- Suite: `pnpm test` 233, affected e2e specs 20/20, lint and typecheck clean.
+
+### Stop hint, filters, area toolbar (2026-10-28)
+- Capture pill always on screen (frames skip the rows under it); Esc/Cancel keep nothing, Stop here keeps what was captured; same buttons in the toolbar panel while capturing; icon REC/WAIT; page input held off with a steady notice; tab switch waits instead of picturing the wrong tab; resize ends the capture with a notice. Pickers' hints have a Cancel button.
+- Six page filters with details and exact parameters (Mark up → Page → Filter; Settings).
+- Area mode: eight handles, x/y/size readout, nudge keys, toolbar (box, arrow, text, mosaic, undo, extend, copy, PDF, cancel, capture). Marks carry into the Studio.
+- Checked by eye: pill mid-capture and with the paused notice; filter panel and black & white pages; area toolbar with marks.
+- Needs a real-browser check: Copy from the area toolbar on a real site (clipboard focus), the toolbar panel's Stop/Cancel while capturing, REC/WAIT on the icon.
+
+### Quality presets, Details, line-to-line edges, OCR (2026-10-29)
+- PDF quality presets wired into export (Compact ≤ 150 dpi … Lossless PNG); sizes ordered on the tall-image fixture (e2e).
+- Details panel with every number and its calculation; unit-tested against hand-worked numbers.
+- Line to line: side handles for left/right edges (e2e).
+- OCR: PP-OCRv6 small on onnxruntime-web in a worker; model downloaded on request, checksummed, kept in IndexedDB; canvas-only page becomes searchable in English and Chinese (e2e with the model served locally; `pnpm ocr:check` with the real model).
+- Needs the user's check: Download model from the real mirrors (jsDelivr/unpkg are blocked in the build sandbox), and OCR on a real Google Drive PDF preview.
 
 ## Manual site checks
 | Site | Date | Capture | Header once | Images loaded | No text cut | Text searchable | Links | Time | Notes |

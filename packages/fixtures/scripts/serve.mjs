@@ -6,6 +6,9 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../pages/', import.meta.url));
+// OCR e2e: OCR_BUNDLE points at an unpacked model bundle, served at /ocr-bundle/ the way the
+// npm CDN serves it (with CORS), so tests never use the internet.
+const ocrRoot = process.env.OCR_BUNDLE ? normalize(`${process.env.OCR_BUNDLE}/`) : null;
 const types = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css',
@@ -22,11 +25,17 @@ export function serve(port) {
     const delay = Number(new URL(req.url, 'http://x').searchParams.get('delay') ?? 0);
     if (delay > 0) await new Promise((r) => setTimeout(r, Math.min(delay, 5000)));
     const path = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname));
-    const file = join(root, path.endsWith('/') ? `${path}index.html` : path);
-    if (!file.startsWith(root)) return res.writeHead(403).end();
+    const ocr = ocrRoot && path.startsWith('/ocr-bundle/');
+    const base = ocr ? ocrRoot : root;
+    const rel = ocr ? path.slice('/ocr-bundle/'.length) : path;
+    const file = join(base, rel.endsWith('/') ? `${rel}index.html` : rel);
+    if (!file.startsWith(base)) return res.writeHead(403).end();
     try {
       const body = await readFile(file);
-      res.writeHead(200, { 'content-type': types[extname(file)] ?? 'application/octet-stream' });
+      res.writeHead(200, {
+        'content-type': types[extname(file)] ?? 'application/octet-stream',
+        ...(ocr ? { 'access-control-allow-origin': '*' } : {}),
+      });
       res.end(body);
     } catch {
       res.writeHead(404).end('not found');

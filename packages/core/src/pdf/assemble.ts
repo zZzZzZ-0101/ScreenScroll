@@ -1,4 +1,13 @@
-import { PDFDocument, StandardFonts, rgb, type PDFImage, type PDFPage } from 'pdf-lib';
+import {
+  degrees,
+  PDFDocument,
+  StandardFonts,
+  rgb,
+  type PDFFont,
+  type PDFImage,
+  type PDFPage,
+} from 'pdf-lib';
+import { hexToRgb, watermarkOn, type Watermark } from '../watermark.js';
 import type { Heading, LinkRect, TextRun } from '../hints.js';
 import type { PageLayout } from '../layout.js';
 import type { PageSlice } from '../paginate.js';
@@ -6,6 +15,7 @@ import {
   bandTokens,
   DEFAULT_FOOTER,
   drawBand,
+  isWinAnsi,
   EMPTY_BAND,
   type BandTemplate,
   type TextRenderer,
@@ -19,6 +29,8 @@ export interface PageImage {
   bytes: Uint8Array;
   format: 'png' | 'jpeg';
   slice: PageSlice;
+  /** Text read from this page's image (OCR), in document coordinates, for the text layer. */
+  textRuns?: TextRun[];
 }
 
 export interface PdfMeta {
@@ -42,6 +54,8 @@ export interface PdfOptions {
   outline: boolean;
   /** Renders header/footer text Helvetica can't (non-Latin titles). */
   renderText?: TextRenderer;
+  /** Text across the page; empty text draws nothing. */
+  watermark?: Watermark;
 }
 
 export const DEFAULT_PDF_OPTIONS: PdfOptions = {
@@ -127,7 +141,8 @@ export async function buildMergedPdf(
       const h = (p.slice.y1 - p.slice.y0) * layout.s;
       const top = layout.paperH - layout.box.y; // pdf-lib's origin is bottom-left
       page.drawImage(img, { x: layout.box.x, y: top - h, width: w, height: h });
-      if (runs.length) drawTextRuns(page, getTextFont(), placeRuns(runs, p.slice, layout));
+      const pageRuns = opts.textLayer && p.textRuns?.length ? [...runs, ...p.textRuns] : runs;
+      if (pageRuns.length) drawTextRuns(page, getTextFont(), placeRuns(pageRuns, p.slice, layout));
       if (opts.continuedMarker && p.slice.overlapTop > 0) {
         const text = 'continued from previous page';
         const size = 6.5;
@@ -148,6 +163,8 @@ export async function buildMergedPdf(
       ] as const) {
         await drawBand(doc, page, font, getTextFont, layout, band, tokens, y, opts.renderText);
       }
+      if (opts.watermark && watermarkOn(opts.watermark, n, total))
+        await drawWatermark(doc, page, font, opts.watermark, opts.renderText);
     }
     if (opts.links && content.links?.length) addLinks(doc, added, slices, layout, content.links);
     const headings =
@@ -194,8 +211,10 @@ export async function buildSingleLongPagePdf(
   const page = doc.addPage([layout.paperW, height]);
   let y = height - margin;
   let crop: { x0: number; x1: number } | null = null;
+  const ocrRuns: TextRun[] = [];
   for await (const p of pages) {
     crop ??= { x0: p.slice.x0, x1: p.slice.x1 };
+    if (p.textRuns) ocrRuns.push(...p.textRuns);
     const img = await embed(doc, p);
     const w = (p.slice.x1 - p.slice.x0) * layout.s;
     const full = (p.slice.y1 - p.slice.y0) * layout.s;
@@ -222,7 +241,7 @@ export async function buildSingleLongPagePdf(
       paperH: height,
       box: { x: margin, y: margin, w: layout.box.w, h: height - 2 * margin },
     };
-    const runs = opts.textLayer ? (content.textRuns ?? []) : [];
+    const runs = opts.textLayer ? [...(content.textRuns ?? []), ...ocrRuns] : [];
     if (runs.length) {
       const font = new TextLayerFont(doc);
       drawTextRuns(page, font, placeRuns(runs, one, tall));
@@ -233,6 +252,58 @@ export async function buildSingleLongPagePdf(
       addOutline(doc, [page], [one], tall, content.headings);
   }
   return doc.save();
+}
+
+/**
+ * The watermark, centred and rotated, shrunk to fit the page. Latin text is real text;
+ * other scripts are drawn by the browser's fonts as an image (like header/footer bands).
+ */
+async function drawWatermark(
+  doc: PDFDocument,
+  page: PDFPage,
+  font: PDFFont,
+  w: Watermark,
+  render?: TextRenderer,
+): Promise<void> {
+  const { width: pw, height: ph } = page.getSize();
+  const theta = (w.angle * Math.PI) / 180;
+  const room =
+    0.85 * Math.hypot(pw, ph) * (Math.abs(Math.cos(theta)) > 0.2 ? 1 : ph / Math.hypot(pw, ph));
+  const [r, g, b] = hexToRgb(w.color);
+  const centre = (tw: number, th: number) => ({
+    x: pw / 2 - (tw / 2) * Math.cos(theta) + (th / 2) * Math.sin(theta),
+    y: ph / 2 - (tw / 2) * Math.sin(theta) - (th / 2) * Math.cos(theta),
+  });
+  const text = w.text.trim();
+  if (isWinAnsi(text)) {
+    let size = w.sizePt;
+    const tw0 = font.widthOfTextAtSize(text, size);
+    if (tw0 > room) size *= room / tw0;
+    const tw = font.widthOfTextAtSize(text, size);
+    const at = centre(tw, size * 0.7);
+    page.drawText(text, {
+      ...at,
+      size,
+      font,
+      color: rgb(r, g, b),
+      opacity: w.opacity,
+      rotate: degrees(w.angle),
+    });
+  } else if (render) {
+    const img = await render(text, w.sizePt);
+    let scale = 1;
+    if (img.widthPt > room) scale = room / img.widthPt;
+    const png = await doc.embedPng(img.png);
+    const tw = img.widthPt * scale;
+    const th = img.heightPt * scale;
+    page.drawImage(png, {
+      ...centre(tw, th),
+      width: tw,
+      height: th,
+      opacity: w.opacity,
+      rotate: degrees(w.angle),
+    });
+  }
 }
 
 function setMeta(doc: PDFDocument, meta: PdfMeta): void {

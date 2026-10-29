@@ -9,6 +9,7 @@ export default tseslint.config(
     ignores: [
       '**/node_modules/**',
       '**/.output/**',
+      'extension/**',
       '**/.wxt/**',
       'test-results/**',
       'playwright-report/**',
@@ -36,6 +37,12 @@ export default tseslint.config(
         { object: 'navigator', property: 'sendBeacon', message: NETWORK },
       ],
     },
+  },
+  {
+    // The one exception to "no network" (DECISIONS 2026-10-29): the OCR worker fetches the
+    // model files the user asked for, from the engine descriptor's address only.
+    files: ['packages/extension/src/ocr/ocr-worker.ts'],
+    rules: { 'no-restricted-globals': 'off' },
   },
   {
     files: ['packages/core/**/*.ts'],

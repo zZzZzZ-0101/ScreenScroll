@@ -1,0 +1,33 @@
+# Checks every change, and that extension/ (the built extension people install from the
+# repository's ZIP) matches the source. If it doesn't: run `pnpm dist` and commit.
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      # pdftotext checks the PDFs' text layer in the unit tests.
+      - run: sudo apt-get update && sudo apt-get install -y poppler-utils
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm dist
+      - name: extension/ is up to date
+        run: |
+          if [ -n "$(git status --porcelain -- extension)" ]; then
+            git status --short -- extension
+            echo "::error::extension/ is out of date. Run 'pnpm dist' and commit it."
+            exit 1
+          fi

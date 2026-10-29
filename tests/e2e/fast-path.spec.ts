@@ -17,7 +17,7 @@ test('After capture → Save PDF directly: a PDF is downloaded and the Studio ta
     predicate: (p) => p.url().includes('auto=pdf'),
   });
   await serviceWorker.evaluate(async (u) => {
-    const [tab] = await chrome.tabs.query({ url: u });
+    const [tab] = await chrome.tabs.query({ active: true, url: u });
     await (
       globalThis as unknown as { __spTest: { capture(id: number): Promise<unknown> } }
     ).__spTest.capture(tab!.id!);

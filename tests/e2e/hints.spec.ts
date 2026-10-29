@@ -12,7 +12,7 @@ async function capture(context: BrowserContext, sw: Worker, path: string) {
   await page.goto(`${FIXTURES}/${path}`);
   await page.bringToFront();
   const result = (await sw.evaluate(async (url) => {
-    const [tab] = await chrome.tabs.query({ url });
+    const [tab] = await chrome.tabs.query({ active: true, url });
     const hook = (globalThis as unknown as { __spTest: { capture(id: number): Promise<unknown> } })
       .__spTest;
     return hook.capture(tab!.id!);
@@ -139,7 +139,9 @@ test('huge page: completes within the caps and hints stay inside the time budget
   expect(height).toBeGreaterThan(140_000);
   expect(result.done.status).toBe('complete');
   expect(result.done.warnings).toEqual([]);
-  expect(result.frames.length).toBe(Math.ceil(height / 800));
+  // A few more frames than screens: each leaves out the rows under the pill.
+  expect(result.frames.length).toBeGreaterThanOrEqual(Math.ceil(height / 800));
+  expect(result.frames.length).toBeLessThanOrEqual(Math.ceil(height / 720) + 1);
   expect(hints.textRuns.some((t) => t.text.includes('END OF HUGE PAGE'))).toBe(true);
   const ms = result.frames.map((f) => f.hintsMs).sort((a, b) => a - b);
   console.log(

@@ -203,3 +203,42 @@ describe('merged PDF', () => {
     expect((await pdf.getOutline())?.map((o) => o.title)).toEqual(['A']);
   });
 });
+
+describe('watermark', () => {
+  it('draws on the chosen pages only, as faint rotated text', async () => {
+    const { buildPdf } = await import('@screenscroll/core/pdf');
+    const layout = computeLayout(DEFAULT_PAGE_SETTINGS, doc.width);
+    const slices = paginate({ height: doc.height, width: doc.width, T: layout.T }).slice(0, 3);
+    const meta = { title: 'W', url: '', capturedAt: new Date(2026, 9, 28) };
+    const bytes = await buildPdf(await pageImages(doc, slices), slices.length, layout, meta, {
+      watermark: {
+        text: 'CONFIDENTIAL',
+        opacity: 0.2,
+        sizePt: 70,
+        angle: 45,
+        color: '#d93025',
+        pages: '2-3',
+      },
+    });
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const pdf = await pdfjs.getDocument({
+      data: bytes.slice(),
+      standardFontDataUrl: STANDARD_FONTS,
+    }).promise;
+    const texts: string[] = [];
+    for (let i = 1; i <= 3; i++)
+      texts.push(
+        (await (await pdf.getPage(i)).getTextContent()).items
+          .map((it) => ('str' in it ? it.str : ''))
+          .join(''),
+      );
+    expect(texts[0]).not.toContain('CONFIDENTIAL');
+    expect(texts[1]).toContain('CONFIDENTIAL');
+    expect(texts[2]).toContain('CONFIDENTIAL');
+    const p2 = await pdf.getPage(2);
+    const vp = p2.getViewport({ scale: 1 });
+    const canvas = createCanvas(Math.ceil(vp.width), Math.ceil(vp.height));
+    await p2.render({ canvas: canvas as never, viewport: vp }).promise;
+    writeFileSync(new URL('watermark-p2.png', OUT), canvas.toBuffer('image/png'));
+  });
+});

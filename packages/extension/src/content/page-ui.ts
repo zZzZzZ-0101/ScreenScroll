@@ -1,16 +1,18 @@
-import { normalizeRegion, type Region } from '@screenscroll/core';
+import type { Region } from '@screenscroll/core';
 import { contentY, isScroller, nearestScroller, targetFor, type Target } from './targets';
 
 /**
- * In-page pickers (UI §2): selection rectangle, element picker and scroll-area picker. They
+ * In-page pickers (UI §2): line to line, element and scroll area (area mode is in
+ * area-picker.ts). They
  * live in a closed shadow root on <html>, outside the page's styles, and are removed before
  * any frame is captured.
  */
 
 const ACCENT = '#0e7c7b';
-const EDGE = 36; // px from the viewport edge where dragging auto-scrolls
+/** Narrowest a line-to-line capture can be made with its side handles. */
+const MIN_WIDTH = 40;
 
-function overlay(interactive: boolean) {
+export function overlay(interactive: boolean) {
   const host = document.createElement('div');
   host.style.cssText = `all: initial; position: fixed; inset: 0; z-index: 2147483647; pointer-events: ${interactive ? 'auto' : 'none'};`;
   const root = host.attachShadow({ mode: 'closed' });
@@ -18,7 +20,16 @@ function overlay(interactive: boolean) {
   style.textContent = `
     * { box-sizing: border-box; font: 12px/1.4 system-ui, "Segoe UI", sans-serif; }
     .hint { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); background: #202124;
-      color: #fff; padding: 6px 10px; border-radius: 6px; white-space: nowrap; }
+      color: #fff; padding: 5px 5px 5px 12px; border-radius: 10px; white-space: nowrap; display: flex;
+      align-items: center; gap: 10px; box-shadow: 0 2px 10px rgba(0,0,0,.3); pointer-events: auto;
+      max-width: calc(100vw - 16px); }
+    .hint span { overflow: hidden; text-overflow: ellipsis; }
+    kbd { border: 1px solid #9aa0a6; border-bottom-width: 2px; border-radius: 4px; padding: 0 4px;
+      font-weight: 600; }
+    .hint button { all: unset; cursor: pointer; border: 1px solid #5f6368; border-radius: 6px;
+      padding: 2px 10px; color: #e8eaed; }
+    .hint button:hover { background: #3c4043; }
+    .hint button:focus-visible { outline: 2px solid #8ab4f8; }
     .box { position: fixed; outline: 2px solid ${ACCENT}; box-shadow: 0 0 0 100vmax rgba(0,0,0,.35); }
     .dim { position: fixed; inset: 0; background: rgba(0,0,0,.35); cursor: crosshair; }
     .size { position: absolute; left: 0; top: -22px; background: ${ACCENT}; color: #fff; padding: 1px 6px;
@@ -26,6 +37,11 @@ function overlay(interactive: boolean) {
     .handle { position: absolute; width: 10px; height: 10px; background: #fff; border: 2px solid ${ACCENT};
       border-radius: 2px; pointer-events: auto; }
     .outline { position: fixed; outline: 2px solid ${ACCENT}; background: rgba(14,124,123,.12); pointer-events: none; }
+    .line { position: fixed; height: 0; border-top: 2px solid ${ACCENT}; pointer-events: none; }
+    .line.start { border-top-style: dashed; }
+    .tag { position: absolute; left: 8px; top: -24px; background: ${ACCENT}; color: #fff; padding: 2px 8px;
+      border-radius: 4px; white-space: nowrap; }
+    .band { position: fixed; background: rgba(14,124,123,.14); pointer-events: none; }
     .label { position: absolute; left: -2px; top: -22px; background: ${ACCENT}; color: #fff; padding: 1px 6px;
       border-radius: 4px; white-space: nowrap; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; }
   `;
@@ -37,17 +53,51 @@ function overlay(interactive: boolean) {
     parent.appendChild(e);
     return e;
   };
-  return { host, root, el, remove: () => host.remove() };
+  /**
+   * The hint bar at the top: what to do, and always how to get out (Esc or the Cancel
+   * button), so a picker opened by mistake is never a trap. `set` takes plain text in which
+   * "Esc", "Enter" and "Backspace" are shown as keys.
+   */
+  const hint = (onCancel: () => void) => {
+    const bar = el('div', 'hint');
+    const text = el('span', '', bar);
+    // Not the start of a drag in the selection picker.
+    bar.addEventListener('pointerdown', (e) => e.stopPropagation());
+    const cancel = el('button', '', bar);
+    cancel.textContent = 'Cancel';
+    cancel.title = 'Stop without capturing (Esc)';
+    cancel.addEventListener('click', (e) => {
+      e.stopPropagation();
+      onCancel();
+    });
+    return {
+      set(t: string) {
+        text.replaceChildren(
+          ...t.split(/\b(Esc|Enter|Backspace)\b/).map((part, i) => {
+            if (i % 2 === 0) return document.createTextNode(part);
+            const k = document.createElement('kbd');
+            k.textContent = part;
+            return k;
+          }),
+        );
+      },
+    };
+  };
+  /** Events on our own UI (the hint bar), which the pickers must not treat as page clicks. */
+  const ours = (e: Event) => e.target === host;
+  return { host, root, el, hint, ours, remove: () => host.remove() };
 }
 
-/** Resolves on Enter/Esc; returns a remover for the listener. */
-function onKeys(handlers: Record<string, (e: KeyboardEvent) => void>) {
+/**
+ * Key handlers for a picker; returns a remover. A handler that returns false leaves the key
+ * to the page (e.g. letters typed into a text mark).
+ */
+export function onKeys(handlers: Record<string, (e: KeyboardEvent) => void | false>) {
   const listener = (e: KeyboardEvent) => {
     const h = handlers[e.key];
-    if (h) {
+    if (h && h(e) !== false) {
       e.preventDefault();
       e.stopPropagation();
-      h(e);
     }
   };
   addEventListener('keydown', listener, true);
@@ -60,128 +110,180 @@ export interface Selection {
 }
 
 /**
- * Selection mode (UI §2): drag a rectangle, auto-scroll when dragging near the top or bottom
- * edge, adjust with corner handles, Enter captures, Esc cancels. The rectangle is in the
- * content coordinates of whatever scrolls under the pointer where the drag starts.
+ * "From line to line" (UI §2): click the first line, scroll freely (wheel, keys, scrollbar),
+ * click the last line. Everything between is captured at the full width of whatever scrolls
+ * under the first click (or narrower: the side handles set the left and right edges),
+ * however long. Enter ends at the bottom; Backspace picks the start
+ * again; Esc cancels.
  */
-export function selectRegion(): Promise<Selection | null> {
+export function pickLines(): Promise<Selection | null> {
   return new Promise((resolve) => {
-    const ui = overlay(true);
-    const hint = ui.el('div', 'hint');
-    hint.textContent = 'Drag to select · Enter to capture · Esc to cancel';
-    const dim = ui.el('div', 'dim');
-    const box = ui.el('div', 'box');
-    box.style.display = 'none';
-    const size = ui.el('div', 'size', box);
-    const handles = (['nw', 'ne', 'sw', 'se'] as const).map((c) => {
-      const h = ui.el('div', 'handle', box);
-      h.dataset.corner = c;
-      h.style.cursor = c === 'nw' || c === 'se' ? 'nwse-resize' : 'nesw-resize';
-      h.style.display = 'none';
-      return h;
+    const ui = overlay(false);
+    const hint = ui.hint(() => finish(null));
+    const band = ui.el('div', 'band');
+    const startLine = ui.el('div', 'line start');
+    const startTag = ui.el('div', 'tag', startLine);
+    startTag.textContent = 'Start';
+    const line = ui.el('div', 'line');
+    const tag = ui.el('div', 'tag', line);
+    const style = document.createElement('style');
+    style.textContent = `
+      .side { position: fixed; width: 13px; margin-left: -6px; cursor: ew-resize; pointer-events: auto; }
+      .side::after { content: ''; position: absolute; left: 5px; top: 0; bottom: 0;
+        border-left: 2px dashed ${ACCENT}; }
+      .side .grip { position: absolute; left: 1px; top: 50%; width: 11px; height: 34px; margin-top: -17px;
+        background: #fff; border: 2px solid ${ACCENT}; border-radius: 6px; box-sizing: border-box; }
+    `;
+    ui.root.append(style);
+    // Left and right edges, once the first line is chosen: drag to narrow the capture.
+    const sides = (['x0', 'x1'] as const).map((edge) => {
+      const el = ui.el('div', 'side');
+      el.dataset.edge = edge;
+      el.title = 'Drag to set the left or right edge';
+      ui.el('div', 'grip', el);
+      el.style.display = 'none';
+      el.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        el.setPointerCapture(e.pointerId);
+        dragging = edge;
+      });
+      el.addEventListener('pointermove', (e) => {
+        if (dragging !== edge || !target || !edges) return;
+        const lo = target.crop.x;
+        const hi = target.crop.x + target.crop.width;
+        const x = Math.max(lo, Math.min(hi, e.clientX));
+        edges =
+          edge === 'x0'
+            ? { x0: Math.min(x, edges.x1 - MIN_WIDTH), x1: edges.x1 }
+            : { x0: edges.x0, x1: Math.max(x, edges.x0 + MIN_WIDTH) };
+        render();
+      });
+      const stop = () => void (dragging = null);
+      el.addEventListener('pointerup', stop);
+      el.addEventListener('pointercancel', stop);
+      return el;
     });
-
+    let dragging: 'x0' | 'x1' | null = null;
     let target: Target | null = null;
-    let a: { x: number; y: number } | null = null; // fixed corner (content coords)
-    let b: { x: number; y: number } | null = null; // moving corner
-    let pointer: { x: number; y: number } | null = null; // last client position while dragging
-    let raf = 0;
+    let startY: number | null = null;
+    let edges: { x0: number; x1: number } | null = null;
+    let pointer = { x: innerWidth / 2, y: innerHeight / 2 };
+
+    const targetAt = (x: number, y: number) =>
+      targetFor(nearestScroller(document.elementFromPoint(x, y)));
+    const clampY = (t: Target, y: number) =>
+      Math.max(t.crop.y, Math.min(t.crop.y + t.crop.height, y));
+    const span = (t: Target) => edges ?? { x0: t.crop.x, x1: t.crop.x + t.crop.width };
+    const place = (el: HTMLElement, t: Target, y: number) =>
+      Object.assign(el.style, {
+        display: 'block',
+        left: `${span(t).x0}px`,
+        width: `${span(t).x1 - span(t).x0}px`,
+        top: `${y}px`,
+      });
 
     const render = () => {
-      if (!target || !a || !b) return;
-      const r = normalizeRegion(a, b, target.crop.x + target.crop.width, target.scrollHeight);
-      const top = r.y0 - target.offset + target.crop.y;
-      Object.assign(box.style, {
+      const t = target ?? targetAt(pointer.x, pointer.y);
+      const y = clampY(t, pointer.y);
+      place(line, t, y);
+      if (startY === null) {
+        hint.set('Click the first line to capture · Press Esc to cancel');
+        tag.textContent = 'Start here';
+        startLine.style.display = 'none';
+        band.style.display = 'none';
+        for (const el of sides) el.style.display = 'none';
+        return;
+      }
+      hint.set(
+        'Scroll to the last line and click it · drag the side handles to narrow · Enter = to the end · Backspace = new start · Esc to cancel',
+      );
+      const { x0, x1 } = span(t);
+      for (const el of sides)
+        Object.assign(el.style, {
+          display: 'block',
+          left: `${el.dataset.edge === 'x0' ? x0 : x1}px`,
+          top: `${t.crop.y}px`,
+          height: `${t.crop.height}px`,
+        });
+      const sy = startY - t.offset + t.crop.y; // start line in viewport coordinates
+      const shown = sy >= t.crop.y && sy <= t.crop.y + t.crop.height;
+      startLine.style.display = shown ? 'block' : 'none';
+      if (shown) place(startLine, t, sy);
+      const top = clampY(t, Math.min(sy, y));
+      const bottom = clampY(t, Math.max(sy, y));
+      Object.assign(band.style, {
         display: 'block',
-        left: `${r.x0}px`,
+        left: `${x0}px`,
+        width: `${x1 - x0}px`,
         top: `${top}px`,
-        width: `${r.x1 - r.x0}px`,
-        height: `${r.y1 - r.y0}px`,
+        height: `${bottom - top}px`,
       });
-      dim.style.display = 'none';
-      size.textContent = `${Math.round(r.x1 - r.x0)} × ${Math.round(r.y1 - r.y0)}`;
-      const pos = { nw: [0, 0], ne: [1, 0], sw: [0, 1], se: [1, 1] } as const;
-      for (const h of handles) {
-        const [px, py] = pos[h.dataset.corner as keyof typeof pos];
-        h.style.left = `calc(${px * 100}% - 6px)`;
-        h.style.top = `calc(${py * 100}% - 6px)`;
-      }
+      const height = Math.round(Math.abs(contentY(t, y) - startY));
+      tag.textContent = `End here · ${Math.round(x1 - x0)} × ${height} px`;
     };
-
-    // Auto-scroll while the pointer is held near the top or bottom edge.
-    const tick = () => {
-      raf = 0;
-      if (!target || !pointer || !b) return;
-      const t = target;
-      const view = t.crop;
-      let dy = 0;
-      if (pointer.y < view.y + EDGE) dy = -Math.ceil((view.y + EDGE - pointer.y) / 2);
-      else if (pointer.y > view.y + view.height - EDGE)
-        dy = Math.ceil((pointer.y - (view.y + view.height - EDGE)) / 2);
-      if (dy) {
-        t.scrollTo(Math.max(0, Math.min(t.maxScroll, t.offset + dy)));
-        b = {
-          x: pointer.x,
-          y: contentY(t, Math.max(view.y, Math.min(view.y + view.height, pointer.y))),
-        };
-        render();
-        raf = requestAnimationFrame(tick);
-      }
-    };
-
-    const onDown = (e: PointerEvent) => {
-      const corner = (e.composedPath()[0] as HTMLElement).dataset?.corner;
-      if (corner && a && b && target) {
-        // Resize: the opposite corner stays.
-        const r = normalizeRegion(a, b, Infinity, Infinity);
-        a = { x: corner.includes('w') ? r.x1 : r.x0, y: corner.includes('n') ? r.y1 : r.y0 };
-      } else {
-        // Find what scrolls under the pointer, looking through our own overlay.
-        ui.host.style.pointerEvents = 'none';
-        const under = document.elementFromPoint(e.clientX, e.clientY);
-        ui.host.style.pointerEvents = 'auto';
-        target = targetFor(nearestScroller(under));
-        a = { x: e.clientX, y: contentY(target, e.clientY) };
-      }
-      b = { x: e.clientX, y: contentY(target!, e.clientY) };
-      pointer = { x: e.clientX, y: e.clientY };
-      for (const h of handles) h.style.display = 'none';
-      ui.host.setPointerCapture?.(e.pointerId);
-      render();
-    };
-    const onMove = (e: PointerEvent) => {
-      if (!pointer || !target) return;
-      pointer = { x: e.clientX, y: e.clientY };
-      b = { x: e.clientX, y: contentY(target, e.clientY) };
-      render();
-      if (!raf) raf = requestAnimationFrame(tick);
-    };
-    const onUp = () => {
-      pointer = null;
-      for (const h of handles) h.style.display = 'block';
-    };
-    const onScroll = () => render();
-    ui.host.addEventListener('pointerdown', onDown);
-    ui.host.addEventListener('pointermove', onMove);
-    ui.host.addEventListener('pointerup', onUp);
-    addEventListener('scroll', onScroll, true);
 
     const finish = (result: Selection | null) => {
-      cancelAnimationFrame(raf);
       removeKeys();
-      removeEventListener('scroll', onScroll, true);
+      removeEventListener('mousemove', onMove, true);
+      removeEventListener('click', onClick, true);
+      removeEventListener('mousedown', block, true);
+      removeEventListener('mouseup', block, true);
+      removeEventListener('scroll', render, true);
       ui.remove();
       resolve(result);
     };
+    const select = (t: Target, a: number, b: number) =>
+      finish({
+        target: t,
+        region: {
+          x0: span(t).x0,
+          x1: span(t).x1,
+          y0: Math.max(0, Math.min(a, b)),
+          y1: Math.min(t.scrollHeight, Math.max(a, b)),
+        },
+      });
+    const onMove = (e: MouseEvent) => {
+      if (ui.ours(e)) return;
+      pointer = { x: e.clientX, y: e.clientY };
+      render();
+    };
+    const block = (e: Event) => {
+      if (ui.ours(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    const onClick = (e: MouseEvent) => {
+      if (ui.ours(e)) return;
+      block(e);
+      pointer = { x: e.clientX, y: e.clientY };
+      if (startY === null || !target) {
+        target = targetAt(e.clientX, e.clientY);
+        startY = contentY(target, clampY(target, e.clientY));
+        edges = { x0: target.crop.x, x1: target.crop.x + target.crop.width };
+        render();
+      } else {
+        select(target, startY, contentY(target, clampY(target, e.clientY)));
+      }
+    };
+    addEventListener('mousemove', onMove, true);
+    addEventListener('click', onClick, true);
+    addEventListener('mousedown', block, true);
+    addEventListener('mouseup', block, true);
+    addEventListener('scroll', render, true);
     const removeKeys = onKeys({
       Escape: () => finish(null),
       Enter: () => {
-        if (!target || !a || !b) return;
-        const r = normalizeRegion(a, b, target.crop.x + target.crop.width, target.scrollHeight);
-        if (r.x1 - r.x0 < 4 || r.y1 - r.y0 < 4) return;
-        finish({ target, region: r });
+        if (target && startY !== null) select(target, startY, target.scrollHeight);
+      },
+      Backspace: () => {
+        target = null;
+        startY = null;
+        edges = null;
+        render();
       },
     });
+    render();
   });
 }
 
@@ -205,8 +307,7 @@ function pickWith(
 ): Promise<Element | null> {
   return new Promise((resolve) => {
     const ui = overlay(false);
-    const hint = ui.el('div', 'hint');
-    hint.textContent = hintText;
+    ui.hint(() => finish(null)).set(hintText);
     const outline = ui.el('div', 'outline');
     const label = ui.el('div', 'label', outline);
     outline.style.display = 'none';
@@ -230,6 +331,7 @@ function pickWith(
       label.textContent = describe(el);
     };
     const onMove = (e: MouseEvent) => {
+      if (ui.ours(e)) return;
       const el = e.target instanceof Element ? accept(e.target) : null;
       if (el !== current) {
         trail.length = 0;
@@ -237,10 +339,12 @@ function pickWith(
       }
     };
     const block = (e: Event) => {
+      if (ui.ours(e)) return;
       e.preventDefault();
       e.stopPropagation();
     };
     const onClick = (e: MouseEvent) => {
+      if (ui.ours(e)) return;
       block(e);
       if (current) finish(current);
     };
@@ -259,7 +363,9 @@ function pickWith(
     };
     const removeKeys = onKeys({
       Escape: () => finish(null),
-      Enter: () => current && finish(current),
+      Enter: () => {
+        if (current) finish(current);
+      },
       ArrowUp: () => {
         const parent = current?.parentElement;
         if (current && parent && parent !== document.documentElement) {
@@ -283,7 +389,7 @@ function pickWith(
 /** Element mode (UI §2, CAPTURE §14). */
 export function pickElement(): Promise<Element | null> {
   return pickWith(
-    'Click an element · ↑ parent · ↓ child · Enter to capture · Esc to cancel',
+    'Click an element · ↑ parent · ↓ child · Enter to capture · Press Esc to cancel',
     (el) => {
       if (el === document.documentElement) return null;
       // Shapes inside an SVG aren't useful on their own: offer the whole drawing.
@@ -294,7 +400,7 @@ export function pickElement(): Promise<Element | null> {
 
 /** "Pick scroll area" (TODO M4, lesson L9): only elements that really scroll are offered. */
 export function pickScrollArea(): Promise<Element | null> {
-  return pickWith('Click the area that scrolls · Esc to cancel', (el) =>
+  return pickWith('Click the area that scrolls · Press Esc to cancel', (el) =>
     isScroller(el) ? el : nearestScroller(el),
   );
 }

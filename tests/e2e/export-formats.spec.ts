@@ -16,7 +16,7 @@ test('export formats: PNG pages zip, one long PDF page, long PNG', async ({
     predicate: (p) => p.url().includes('/studio.html'),
   });
   await serviceWorker.evaluate(async (u) => {
-    const [tab] = await chrome.tabs.query({ url: u });
+    const [tab] = await chrome.tabs.query({ active: true, url: u });
     await (
       globalThis as unknown as { __spTest: { capture(id: number): Promise<unknown> } }
     ).__spTest.capture(tab!.id!);

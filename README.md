@@ -6,27 +6,37 @@ A free, ad-free, fully offline browser extension for desktop Chrome and Edge. It
 
 ![The Studio: pages, breaks, mark up, save](docs/screenshots/overview.png)
 
-## Use it
+## Install
 
-1. **Click the ScreenScroll icon.** The whole page is captured; nothing to choose first.
-2. **The Studio opens** with the pages as they will be saved. Adjust only if you want to:
-   - **Pages**: paper and orientation (everything else is under _More options_).
-   - **Breaks**: drag, add or remove page breaks.
-   - **Mark up**: arrows, boxes, text, numbers, highlighter, blur, crop.
-3. **Save PDF.** The arrow next to it has the other outputs (images, one long page, copy, print).
+1. On this page: **Code → Download ZIP**, then unzip it.
+2. In Chrome open `chrome://extensions` (Edge: `edge://extensions`) and turn on **Developer mode**.
+3. Click **Load unpacked** and choose the **`extension`** folder inside the unzipped folder (the one with `manifest.json` in it).
 
-Right-click the icon for: visible area, selection, element, a 5-second timer, and _skip the preview_. Keys: Alt+Shift+P / V / S / E (full page / visible / selection / element).
+To update: download again, replace the folder, and press ↻ on the extension's card.
 
-## Install (from source)
+安装：点 **Code → Download ZIP** 下载并解压；在 Chrome 打开 `chrome://extensions`，打开右上角“开发者模式”；点“加载已解压的扩展程序”，选择解压后里面的 **`extension`** 文件夹。
+
+<details><summary>Build from source</summary>
 
 Requirements: Node 20+, pnpm 10.
 
 ```
 pnpm install
-pnpm build
+pnpm dist     # builds and refreshes extension/
 ```
 
-Then in Chrome or Edge open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked** and choose `packages/extension/.output/chrome-mv3`.
+</details>
+
+## Use it
+
+1. **Click the ScreenScroll icon.** The panel opens: **Capture full page**, or pick another way: Visible, **Area** (box with handles and a toolbar: box, arrow, text, mosaic, copy, PDF), **Line to line** (click a first line, scroll, click a last line), Element, or a scrolling Panel. Timer, paper and "after capture" are there too. While it captures, a bar at the bottom always shows how to stop: **Esc** or Cancel keeps nothing, **Stop here** keeps what was captured.
+2. **The Studio opens** with the pages as they will be saved. Adjust only if you want to:
+   - **Pages**: paper and orientation (everything else is under _More options_).
+   - **Breaks**: drag, add or remove page breaks.
+   - **Mark up**: crop, text, boxes, arrows, numbers, mosaic and blur; filters (Original, Enhanced, Sharper text, Greyscale, Black & white, Ink saver), page labels (date, page number…) and a watermark on every page or chosen pages.
+3. **Save PDF.** The arrow next to it has the other outputs (images, one long page, copy, print).
+
+**Saved captures** (in the panel) lists what is kept on this computer, with sizes: reopen, delete one, several or all for good, or auto-delete after some days. Keys: Alt+Shift+P / V / S / E (full page / visible / selection / element).
 
 ## Where to start reading
 
@@ -62,6 +72,8 @@ Then in Chrome or Edge open `chrome://extensions`, turn on **Developer mode**, c
 │   │   └── test/
 │   └── fixtures/             test web pages, their server, synthetic captures
 ├── tests/e2e/                Playwright tests with the extension loaded
+├── extension/                the built extension, ready to load (made by `pnpm dist`)
+├── .github/workflows/        CI: lint, typecheck, tests, and extension/ up to date
 ├── scripts/                  icon rendering, PDF search check
 └── docs/
     ├── product/              PRODUCT, UI, ROADMAP, PRIOR_ART
@@ -76,6 +88,7 @@ Then in Chrome or Edge open `chrome://extensions`, turn on **Developer mode**, c
 ```
 pnpm dev          # WXT dev mode with hot reload
 pnpm build        # production build → packages/extension/.output/chrome-mv3
+pnpm dist         # build and refresh extension/ (commit it with source changes)
 pnpm zip          # installable zip
 pnpm test         # unit tests + offline guard
 pnpm e2e          # Playwright with the extension loaded (builds first)
@@ -86,7 +99,7 @@ pnpm typecheck    # TypeScript, all packages
 
 ## Principles
 
-1. **Offline and private.** No network requests at runtime, no analytics, no accounts, no remote code.
+1. **Offline and private.** No network requests at runtime, no analytics, no accounts, no remote code. One exception, on request: the text recognition model (30 MB) is downloaded once and checked, then kept on this computer.
 2. **No ads, no nags, no paywall.**
 3. **Never cut through text**, unless an element is taller than a page; then say so and repeat a small overlap.
 4. **Readable by default**: legible at 100% on A4, with a text layer and links.
