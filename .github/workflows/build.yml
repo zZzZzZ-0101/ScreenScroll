@@ -1,0 +1,41 @@
+# Checks every change and builds the installable zip. Each push to main also publishes it as
+# the "latest" release, so anyone can install from one fixed link (README → Install).
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screenscroll-chrome
+          path: packages/extension/.output/screenscroll-chrome.zip
+      - name: Publish as the latest release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --cleanup-tag --yes || true
+          gh release create latest packages/extension/.output/screenscroll-chrome.zip \
+            --target "$GITHUB_SHA" \
+            --title "ScreenScroll (latest build)" \
+            --notes "Built from ${GITHUB_SHA::7}. Unzip, then chrome://extensions → Developer mode → Load unpacked → choose the folder."

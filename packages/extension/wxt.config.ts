@@ -7,7 +7,8 @@ import tailwindcss from '@tailwindcss/vite';
 export default defineConfig({
   srcDir: 'src',
   modules: ['@wxt-dev/module-react'],
-  zip: { artifactTemplate: 'screenscroll-{{version}}-{{browser}}.zip' },
+  // A fixed name, so the download address of the latest build never changes.
+  zip: { artifactTemplate: 'screenscroll-{{browser}}.zip' },
   vite: (env) => ({
     plugins: [tailwindcss()],
     define: { __SP_E2E__: JSON.stringify(env.mode === 'e2e') },

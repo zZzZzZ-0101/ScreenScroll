@@ -6,6 +6,27 @@ A free, ad-free, fully offline browser extension for desktop Chrome and Edge. It
 
 ![The Studio: pages, breaks, mark up, save](docs/screenshots/overview.png)
 
+## Install
+
+1. Download **[screenscroll-chrome.zip](https://github.com/zZzZzZ-0101/ScreenScroll/releases/latest/download/screenscroll-chrome.zip)** and unzip it.
+2. In Chrome or Edge open `chrome://extensions` and turn on **Developer mode**.
+3. Click **Load unpacked** and choose the unzipped folder.
+
+To update, download the zip again, replace the folder, and press ↻ on the extension's card.
+
+<details><summary>Build from source</summary>
+
+Requirements: Node 20+, pnpm 10.
+
+```
+pnpm install
+pnpm zip      # → packages/extension/.output/screenscroll-chrome.zip
+```
+
+`pnpm build` gives the same files unzipped in `packages/extension/.output/chrome-mv3`.
+
+</details>
+
 ## Use it
 
 1. **Click the ScreenScroll icon.** The panel opens: **Capture full page**, or pick another way: Visible, **Area** (box with handles and a toolbar: box, arrow, text, mosaic, copy, PDF), **Line to line** (click a first line, scroll, click a last line), Element, or a scrolling Panel. Timer, paper and "after capture" are there too. While it captures, a bar at the bottom always shows how to stop: **Esc** or Cancel keeps nothing, **Stop here** keeps what was captured.
@@ -16,17 +37,6 @@ A free, ad-free, fully offline browser extension for desktop Chrome and Edge. It
 3. **Save PDF.** The arrow next to it has the other outputs (images, one long page, copy, print).
 
 **Saved captures** (in the panel) lists what is kept on this computer, with sizes: reopen, delete one, several or all for good, or auto-delete after some days. Keys: Alt+Shift+P / V / S / E (full page / visible / selection / element).
-
-## Install (from source)
-
-Requirements: Node 20+, pnpm 10.
-
-```
-pnpm install
-pnpm build
-```
-
-Then in Chrome or Edge open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked** and choose `packages/extension/.output/chrome-mv3`.
 
 ## Where to start reading
 
@@ -62,6 +72,7 @@ Then in Chrome or Edge open `chrome://extensions`, turn on **Developer mode**, c
 │   │   └── test/
 │   └── fixtures/             test web pages, their server, synthetic captures
 ├── tests/e2e/                Playwright tests with the extension loaded
+├── .github/workflows/        CI: checks, builds the zip, publishes it as the latest release
 ├── scripts/                  icon rendering, PDF search check
 └── docs/
     ├── product/              PRODUCT, UI, ROADMAP, PRIOR_ART
