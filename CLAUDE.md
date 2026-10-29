@@ -35,6 +35,7 @@ You are building **ScreenScroll**: an offline, ad-free desktop browser extension
 pnpm install
 pnpm dev          # WXT dev mode, loads extension in Chrome with HMR
 pnpm build        # production build → packages/extension/.output/chrome-mv3
+pnpm dist         # build → extension/ (the folder users load; commit it with every extension change)
 pnpm zip          # installable zip
 pnpm test         # vitest (core + extension unit tests)
 pnpm e2e          # playwright with the extension loaded + local fixture server

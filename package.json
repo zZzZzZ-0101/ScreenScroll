@@ -19,7 +19,8 @@
     "typecheck": "pnpm -r typecheck",
     "format": "prettier --write .",
     "ocr:bundle": "node scripts/ocr-bundle.mjs",
-    "ocr:check": "OCR_BUNDLE=$(node scripts/ocr-bundle.mjs) vitest run packages/extension/test/ocr-model.test.ts"
+    "ocr:check": "OCR_BUNDLE=$(node scripts/ocr-bundle.mjs) vitest run packages/extension/test/ocr-model.test.ts",
+    "dist": "pnpm build && node scripts/dist.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -1,14 +1,11 @@
-# Checks every change and builds the installable zip. Each push to main also publishes it as
-# the "latest" release, so anyone can install from one fixed link (README → Install).
+# Checks every change, and that extension/ (the built extension people install from the
+# repository's ZIP) matches the source. If it doesn't: run `pnpm dist` and commit.
 name: Build
 
 on:
   push:
     branches: [main]
   pull_request:
-
-permissions:
-  contents: write
 
 jobs:
   build:
@@ -20,22 +17,17 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      # pdftotext checks the PDFs' text layer in the unit tests.
+      - run: sudo apt-get update && sudo apt-get install -y poppler-utils
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
-      - run: pnpm zip
-      - uses: actions/upload-artifact@v4
-        with:
-          name: screenscroll-chrome
-          path: packages/extension/.output/screenscroll-chrome.zip
-      - name: Publish as the latest release
-        if: github.event_name == 'push'
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - run: pnpm dist
+      - name: extension/ is up to date
         run: |
-          gh release delete latest --cleanup-tag --yes || true
-          gh release create latest packages/extension/.output/screenscroll-chrome.zip \
-            --target "$GITHUB_SHA" \
-            --title "ScreenScroll (latest build)" \
-            --notes "Built from ${GITHUB_SHA::7}. Unzip, then chrome://extensions → Developer mode → Load unpacked → choose the folder."
+          if [ -n "$(git status --porcelain -- extension)" ]; then
+            git status --short -- extension
+            echo "::error::extension/ is out of date. Run 'pnpm dist' and commit it."
+            exit 1
+          fi

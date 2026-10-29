@@ -8,11 +8,13 @@ A free, ad-free, fully offline browser extension for desktop Chrome and Edge. It
 
 ## Install
 
-1. Download **[screenscroll-chrome.zip](https://github.com/zZzZzZ-0101/ScreenScroll/releases/latest/download/screenscroll-chrome.zip)** and unzip it.
-2. In Chrome or Edge open `chrome://extensions` and turn on **Developer mode**.
-3. Click **Load unpacked** and choose the unzipped folder.
+1. On this page: **Code → Download ZIP**, then unzip it.
+2. In Chrome open `chrome://extensions` (Edge: `edge://extensions`) and turn on **Developer mode**.
+3. Click **Load unpacked** and choose the **`extension`** folder inside the unzipped folder (the one with `manifest.json` in it).
 
-To update, download the zip again, replace the folder, and press ↻ on the extension's card.
+To update: download again, replace the folder, and press ↻ on the extension's card.
+
+安装：点 **Code → Download ZIP** 下载并解压；在 Chrome 打开 `chrome://extensions`，打开右上角“开发者模式”；点“加载已解压的扩展程序”，选择解压后里面的 **`extension`** 文件夹。
 
 <details><summary>Build from source</summary>
 
@@ -20,10 +22,8 @@ Requirements: Node 20+, pnpm 10.
 
 ```
 pnpm install
-pnpm zip      # → packages/extension/.output/screenscroll-chrome.zip
+pnpm dist     # builds and refreshes extension/
 ```
-
-`pnpm build` gives the same files unzipped in `packages/extension/.output/chrome-mv3`.
 
 </details>
 
@@ -72,7 +72,8 @@ pnpm zip      # → packages/extension/.output/screenscroll-chrome.zip
 │   │   └── test/
 │   └── fixtures/             test web pages, their server, synthetic captures
 ├── tests/e2e/                Playwright tests with the extension loaded
-├── .github/workflows/        CI: checks, builds the zip, publishes it as the latest release
+├── extension/                the built extension, ready to load (made by `pnpm dist`)
+├── .github/workflows/        CI: lint, typecheck, tests, and extension/ up to date
 ├── scripts/                  icon rendering, PDF search check
 └── docs/
     ├── product/              PRODUCT, UI, ROADMAP, PRIOR_ART
@@ -87,6 +88,7 @@ pnpm zip      # → packages/extension/.output/screenscroll-chrome.zip
 ```
 pnpm dev          # WXT dev mode with hot reload
 pnpm build        # production build → packages/extension/.output/chrome-mv3
+pnpm dist         # build and refresh extension/ (commit it with source changes)
 pnpm zip          # installable zip
 pnpm test         # unit tests + offline guard
 pnpm e2e          # Playwright with the extension loaded (builds first)
