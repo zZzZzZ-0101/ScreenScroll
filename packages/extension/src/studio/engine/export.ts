@@ -33,7 +33,7 @@ export interface PageOcr {
   read: (img: ImageData, detScale: number) => Promise<OcrLine[]>;
 }
 
-async function* pageImages(
+export async function* pageImages(
   s: LoadedSession,
   frames: FrameCache,
   slices: PageSlice[],
@@ -67,7 +67,7 @@ export function metaOf(s: LoadedSession): PdfMeta {
   return { title: s.session.title, url: s.session.url, capturedAt: new Date(s.session.capturedAt) };
 }
 
-function pdfOptions(pdf: PdfSettings): Partial<PdfOptions> {
+export function pdfOptions(pdf: PdfSettings): Partial<PdfOptions> {
   return { ...pdf, renderText: renderBandText };
 }
 
@@ -75,7 +75,7 @@ function pdfOptions(pdf: PdfSettings): Partial<PdfOptions> {
  * What the DOM told us: text for the invisible layer, links, headings for bookmarks. Anything
  * under a blur or pixelate area is left out, or the redacted text would still be searchable.
  */
-function contentOf(s: LoadedSession, annotations: readonly Annotation[]): PdfContent {
+export function contentOf(s: LoadedSession, annotations: readonly Annotation[]): PdfContent {
   const hidden = redactions(annotations);
   const visible = (r: Rect) =>
     !hidden.some(

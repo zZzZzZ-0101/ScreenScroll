@@ -88,7 +88,12 @@ export interface StoredCapture {
   bytes: number;
   /** First frame, for a thumbnail. */
   preview: Blob | null;
+  /** The page's own text as captured, for search (capped). */
+  text: string;
 }
+
+/** Enough text to find a capture by what it said, without holding whole books in memory. */
+export const SEARCH_TEXT_MAX = 200_000;
 
 /** Every capture, newest first, with the space its frames take. */
 export async function listCaptures(): Promise<StoredCapture[]> {
@@ -98,12 +103,18 @@ export async function listCaptures(): Promise<StoredCapture[]> {
   for (const session of sessions) {
     let bytes = 0;
     let preview: Blob | null = null;
+    let text = '';
     // Blobs in IndexedDB are references: summing sizes doesn't read the pixels.
-    for (const f of await d.getAllFromIndex('frames', 'bySession', session.id)) {
+    const frames = await d.getAllFromIndex('frames', 'bySession', session.id);
+    for (const f of frames.sort((a, b) => a.index - b.index)) {
       bytes += f.blob.size;
       if (f.index === 0) preview = f.blob;
+      for (const r of f.hints?.textRuns ?? []) {
+        if (text.length >= SEARCH_TEXT_MAX) break;
+        text += `${r.text} `;
+      }
     }
-    out.push({ session, bytes, preview });
+    out.push({ session, bytes, preview, text: text.replace(/\s+/g, ' ').trim() });
   }
   return out.sort((a, b) => b.session.capturedAt.localeCompare(a.session.capturedAt));
 }

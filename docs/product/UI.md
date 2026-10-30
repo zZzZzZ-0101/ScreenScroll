@@ -68,13 +68,18 @@ Distilled (2026-10-28): three modes named by what you do, one primary button, an
 ![Saved captures](../screenshots/saved-captures.png)
 
 - Everything kept on this computer: thumbnail, title, site, date and size per capture; space used and space free.
-- Search by title or address; **Open** reopens the Studio; delete one or several, with **Undo** for 6 seconds instead of a confirmation dialog.
+- Search titles, addresses and the pages' own text; a match in the text shows the words around it.
+- **Open** reopens the Studio. Delete one, several (Select all → Delete selected → Delete N for good) or all, for good: the record and every frame image.
 - **Keep captures**: until deleted / 1 / 7 / 30 / 90 days; older captures are deleted when the page opens and after each new capture.
-- Still to come (ROADMAP M5): full-text search of captured text, merge into one PDF.
+- **Merge into one PDF** (2 or more selected): see §5.
 
 ## 5. Merge queue
 
-A side sheet in the Studio and History: an ordered list of captures, drag to reorder, per-item page range, then one export.
+A sheet on Saved captures (and after a batch): the chosen captures, oldest first, with ↑ / ↓ to reorder, × to leave one out, and a page range each (empty for all, or "1-3, 5"). **Save as one PDF** paginates each capture as the Studio would (its crop, marks, document pages), on the paper and settings of Settings, page numbers running across the document, one bookmark per capture.
+
+## 5a. Capture several pages (batch)
+
+Panel → Capture several pages. Asks once for the browser's all-sites permission (only then). Two ways: **Tabs in this window** (browser pages listed, greyed, with the reason) or **Addresses** (one per line; non-web addresses are named and left out). Each page comes to the front, is captured as a full page and saved without opening a Studio; addresses open in a tab that closes afterwards. A progress list shows each page (captured, skipped with reason, failed with reason); then **Merge into one PDF** or **Open saved captures**.
 
 ## 6. Options page
 

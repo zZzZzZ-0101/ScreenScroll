@@ -1,7 +1,8 @@
-import { ExternalLink, Search, Trash2 } from 'lucide-react';
+import { ExternalLink, Files, Search, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { deleteCapture, deleteOlderThan, listCaptures, type StoredCapture } from '@/shared/db';
 import { loadSettings, saveSettings } from '@/shared/settings';
+import { MergeSheet } from './MergeSheet';
 
 const KEEP: Array<[number, string]> = [
   [0, 'Until I delete them'],
@@ -26,6 +27,8 @@ export function App() {
   /** Deleting several at once asks once more, in place: "Delete 5 captures?". */
   const [confirm, setConfirm] = useState<string[] | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  /** Captures being merged, in the list's order (oldest first, the usual reading order). */
+  const [merging, setMerging] = useState<StoredCapture[] | null>(null);
 
   const refresh = useCallback(async () => {
     setItems(await listCaptures());
@@ -69,7 +72,7 @@ export function App() {
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return (items ?? []).filter(
-      (c) => !q || `${c.session.title} ${c.session.url}`.toLowerCase().includes(q),
+      (c) => !q || `${c.session.title} ${c.session.url} ${c.text}`.toLowerCase().includes(q),
     );
   }, [items, query]);
   const allSelected = visible.length > 0 && visible.every((c) => selected.has(c.session.id));
@@ -121,7 +124,7 @@ export function App() {
           <input
             type="search"
             aria-label="Search captures"
-            placeholder="Search by title or address"
+            placeholder="Search titles, addresses and page text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="flex-1 bg-transparent outline-none"
@@ -146,6 +149,23 @@ export function App() {
             </button>
           </span>
         ) : (
+          <>
+          <button
+            type="button"
+            disabled={selected.size < 2 || busy}
+            title="Save the selected captures as one PDF"
+            onClick={() =>
+              setMerging(
+                (items ?? [])
+                  .filter((c) => selected.has(c.session.id) && c.session.frameCount > 0)
+                  .reverse(),
+              )
+            }
+            className="flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
+          >
+            <Files aria-hidden size={15} /> Merge into one PDF
+            {selected.size > 1 ? ` (${selected.size})` : ''}
+          </button>
           <button
             type="button"
             disabled={!selected.size || busy}
@@ -155,6 +175,7 @@ export function App() {
             <Trash2 aria-hidden size={15} /> Delete selected
             {selected.size ? ` (${selected.size})` : ''}
           </button>
+          </>
         )}
       </div>
 
@@ -163,6 +184,8 @@ export function App() {
           {note}
         </p>
       )}
+
+      {merging && <MergeSheet captures={merging} onClose={() => setMerging(null)} />}
 
       {visible.length > 0 && (
         <div className="mt-3 flex items-center justify-between px-2">
@@ -213,6 +236,7 @@ export function App() {
             }
             onDelete={() => void remove([c.session.id])}
             busy={busy}
+            query={query}
           />
         ))}
       </ul>
@@ -226,8 +250,10 @@ function Row(p: {
   onCheck: (on: boolean) => void;
   onDelete: () => void;
   busy: boolean;
+  query: string;
 }) {
-  const { session, bytes, preview } = p.item;
+  const { session, bytes, preview, text } = p.item;
+  const hit = snippet(text, p.query, `${session.title} ${session.url}`);
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
     if (!preview) return;
@@ -272,6 +298,13 @@ function Row(p: {
             .filter(Boolean)
             .join(' · ')}
         </p>
+        {hit && (
+          <p className="truncate text-neutral-600 dark:text-neutral-300" data-testid="snippet">
+            …{hit.before}
+            <mark className="rounded-sm bg-amber-200 px-0.5 text-neutral-900">{hit.match}</mark>
+            {hit.after}…
+          </p>
+        )}
       </div>
       <button
         type="button"
@@ -297,6 +330,22 @@ function Row(p: {
       </button>
     </li>
   );
+}
+
+/**
+ * Where the search matched in the page text, with some words around it; null when the title
+ * or address already shows why the capture matched, or nothing matched.
+ */
+function snippet(text: string, query: string, shown: string) {
+  const q = query.trim().toLowerCase();
+  if (!q || shown.toLowerCase().includes(q)) return null;
+  const i = text.toLowerCase().indexOf(q);
+  if (i < 0) return null;
+  return {
+    before: text.slice(Math.max(0, i - 50), i),
+    match: text.slice(i, i + q.length),
+    after: text.slice(i + q.length, i + q.length + 80),
+  };
 }
 
 function formatBytes(n: number): string {

@@ -127,3 +127,94 @@ test('saved captures: deleting one after another never brings one back; batch an
   expect(await count(serviceWorker, 'frames')).toBe(0);
   await expect(lib.getByTestId('space')).toHaveText(/^0 captures · 0 KB/);
 });
+
+test('merge: chosen captures, reordered, with a page range, saved as one PDF', async ({
+  context,
+  serviceWorker,
+  extensionId,
+}) => {
+  test.setTimeout(150_000);
+  for (const path of ['article.html', 'tiny.html']) {
+    const page = await context.newPage();
+    await page.goto(`${FIXTURES}/${path}`);
+    await page.bringToFront();
+    await serviceWorker.evaluate(async (url) => {
+      const [tab] = await chrome.tabs.query({ active: true, url });
+      await (globalThis as unknown as { __spTest: Hook }).__spTest.capture(tab!.id!);
+    }, `${FIXTURES}/${path}`);
+    await page.close();
+  }
+  const lib = await context.newPage();
+  await lib.goto(`chrome-extension://${extensionId}/captures.html`);
+  await expect(lib.getByTestId('capture-row')).toHaveCount(2);
+  await expect(lib.getByRole('button', { name: /^Merge into one PDF/ })).toBeDisabled();
+  await lib.getByRole('checkbox', { name: /Select all/ }).check();
+  await lib.getByRole('button', { name: 'Merge into one PDF (2)' }).click();
+
+  const sheet = lib.getByRole('region', { name: 'Merge into one PDF' });
+  // Oldest first: the article, then the tiny page. Put the tiny page first.
+  await expect(sheet.getByRole('listitem')).toHaveText([/Article fixture/, /Tiny/]);
+  await sheet.getByRole('button', { name: /^Move Tiny.* up$/ }).click();
+  await expect(sheet.getByRole('listitem')).toHaveText([/Tiny/, /Article fixture/]);
+  await sheet.getByRole('textbox', { name: 'Pages of Article fixture' }).fill('2-3');
+
+  const dl = lib.waitForEvent('download', { timeout: 90_000 });
+  await sheet.getByRole('button', { name: 'Save as one PDF' }).click();
+  const file = await (await dl).path();
+  await expect(sheet.getByRole('status')).toHaveText(/^Saved 3 pages as /);
+
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const { readFileSync } = await import('node:fs');
+  const pdf = await pdfjs.getDocument({
+    data: new Uint8Array(readFileSync(file)),
+    standardFontDataUrl: new URL('../../node_modules/pdfjs-dist/standard_fonts/', import.meta.url)
+      .pathname,
+  }).promise;
+  expect(pdf.numPages).toBe(3);
+  const text = async (n: number) =>
+    (await (await pdf.getPage(n)).getTextContent()).items
+      .map((it) => ('str' in it ? it.str : ''))
+      .join(' ');
+  expect(await text(1)).toContain('One line, much shorter than a page.');
+  // Pages 2 and 3 of the article, not its first page.
+  expect(await text(2)).not.toContain('A long article with headings');
+  // One bookmark per capture, in the merged order; page numbers run across the document.
+  const outline = await pdf.getOutline();
+  expect(outline.map((o) => o.title)).toEqual([expect.stringMatching(/Tiny/), 'Article fixture']);
+  expect(await text(3)).toMatch(/3\/3/);
+});
+
+test('search finds a capture by the text on its page, and shows where', async ({
+  context,
+  serviceWorker,
+  extensionId,
+}) => {
+  for (const path of ['article.html', 'tiny.html']) {
+    const page = await context.newPage();
+    await page.goto(`${FIXTURES}/${path}`);
+    await page.bringToFront();
+    await serviceWorker.evaluate(async (url) => {
+      const [tab] = await chrome.tabs.query({ active: true, url });
+      await (globalThis as unknown as { __spTest: Hook }).__spTest.capture(tab!.id!);
+    }, `${FIXTURES}/${path}`);
+    await page.close();
+  }
+  const lib = await context.newPage();
+  await lib.goto(`chrome-extension://${extensionId}/captures.html`);
+  const rows = lib.getByTestId('capture-row');
+  await expect(rows).toHaveCount(2);
+  const search = lib.getByRole('searchbox', { name: 'Search captures' });
+  // Words from the article's body, not its title or address.
+  await search.fill('section 3: capture section');
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText('Article fixture');
+  await expect(rows.first().getByTestId('snippet').locator('mark')).toHaveText(
+    /^Section 3: Capture section$/i,
+  );
+  // A title match needs no snippet; no match says so.
+  await search.fill('tiny');
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first().getByTestId('snippet')).toHaveCount(0);
+  await search.fill('nothing like this anywhere');
+  await expect(lib.getByText('No capture matches.')).toBeVisible();
+});

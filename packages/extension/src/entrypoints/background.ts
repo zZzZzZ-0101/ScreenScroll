@@ -16,6 +16,7 @@ import {
   type PageNotice,
   type ToBackground,
 } from '@/shared/messages';
+import { BATCH_KEY, type BatchItem, type BatchStart, type BatchState } from '@/shared/batch';
 import { dataUrlToBlob, pngSize } from '@/shared/png';
 import { loadSettings, RESOLUTION_SCALE, SPEED_TIMING } from '@/shared/settings';
 
@@ -27,6 +28,8 @@ export default defineBackground(() => {
   // time, so the session record in IndexedDB is the source of truth.
   const windowOf = new Map<string, number>();
   const waiters = new Map<string, (done: CaptureDone) => void>();
+  // Captures of a batch: saved without opening a Studio tab each.
+  const quiet = new Set<string>();
   // e2e only: finished sessions (a test may wait after the capture already ended) and an
   // injected grab failure, to exercise the error path.
   const finished = new Map<string, CaptureDone>();
@@ -262,7 +265,8 @@ export default defineBackground(() => {
         });
     }
     // UI §7: whatever was captured opens, even after an error; the Studio says why.
-    if (frameCount > 0) await openStudio(msg.sessionId, msg.output, session?.tabId);
+    if (frameCount > 0 && !quiet.delete(msg.sessionId))
+      await openStudio(msg.sessionId, msg.output, session?.tabId);
     if (__SP_E2E__) finished.set(msg.sessionId, msg);
     waiters.get(msg.sessionId)?.(msg);
     waiters.delete(msg.sessionId);
@@ -285,6 +289,115 @@ export default defineBackground(() => {
     await chrome.tabs.create({ url, active: mode !== 'pdf', openerTabId: opener });
   }
 
+  /** Resolves when a tab has finished loading, or after `ms` (then `false`). */
+  function loaded(tabId: number, ms = 30_000): Promise<boolean> {
+    return new Promise((resolve) => {
+      const done = (ok: boolean) => {
+        clearTimeout(timer);
+        chrome.tabs.onUpdated.removeListener(onUpdated);
+        resolve(ok);
+      };
+      const onUpdated = (id: number, info: { status?: string }) => {
+        if (id === tabId && info.status === 'complete') done(true);
+      };
+      const timer = setTimeout(() => done(false), ms);
+      chrome.tabs.onUpdated.addListener(onUpdated);
+      void chrome.tabs
+        .get(tabId)
+        .then((t) => t.status === 'complete' && done(true))
+        .catch(() => done(false));
+    });
+  }
+
+  /** Waits for a capture to end; a capture that never reports back fails after `ms`. */
+  function ended(sessionId: string, ms = 10 * 60_000): Promise<CaptureDone | null> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        waiters.delete(sessionId);
+        resolve(null);
+      }, ms);
+      waiters.set(sessionId, (d) => {
+        clearTimeout(timer);
+        resolve(d);
+      });
+    });
+  }
+
+  /**
+   * Batch (ROADMAP M5): each target in turn is brought to the front (captureVisibleTab
+   * pictures the visible tab), captured as a full page and saved without a Studio tab.
+   * Addresses open in a new tab that is closed afterwards. Pages that can't be captured are
+   * skipped with the reason; progress is kept in session storage for the batch page.
+   */
+  async function runBatch(m: BatchStart): Promise<void> {
+    const fileAccess = await chrome.extension.isAllowedFileSchemeAccess();
+    const items: BatchItem[] = await Promise.all(
+      m.targets.map(async (t) => {
+        if (t.kind === 'url') return { label: t.url, url: t.url, status: 'waiting' as const };
+        const tab = await chrome.tabs.get(t.tabId).catch(() => null);
+        return {
+          label: tab?.title || tab?.url || 'Closed tab',
+          url: tab?.url ?? '',
+          status: 'waiting' as const,
+        };
+      }),
+    );
+    const state: BatchState = { running: true, items };
+    const save = () => chrome.storage.session.set({ [BATCH_KEY]: state });
+    await save();
+    for (const [i, t] of m.targets.entries()) {
+      const item = items[i]!;
+      let opened: number | null = null;
+      try {
+        let tab: chrome.tabs.Tab | null;
+        if (t.kind === 'url') {
+          tab = await chrome.tabs.create({ url: t.url, windowId: m.windowId, active: true });
+          opened = tab.id ?? null;
+        } else {
+          tab = await chrome.tabs.get(t.tabId).catch(() => null);
+          if (!tab?.id) throw new Skip('The tab was closed.');
+          const blocked = blockedReason(tab.url, fileAccess);
+          if (blocked) throw new Skip(blocked.message);
+          tab = (await chrome.tabs.update(tab.id, { active: true })) ?? null;
+        }
+        if (!tab?.id) throw new Error('No tab to capture.');
+        item.status = 'capturing';
+        await save();
+        const ready = await loaded(tab.id);
+        // Settle after the page reports loaded (late layout, web fonts).
+        await new Promise((r) => setTimeout(r, 500));
+        tab = await chrome.tabs.get(tab.id);
+        item.label = tab.title || item.label;
+        item.url = tab.url ?? item.url;
+        const blocked = blockedReason(tab.url, fileAccess);
+        if (blocked) throw new Skip(blocked.message);
+        const id = await startCapture(tab, 'full');
+        quiet.add(id);
+        const done = await ended(id);
+        if (!done) throw new Error('The capture did not finish within 10 minutes.');
+        item.sessionId = id;
+        if (done.status === 'complete') {
+          item.status = 'done';
+          const notes = [...done.warnings];
+          if (!ready) notes.unshift('The page was still loading after 30 s.');
+          if (notes.length) item.reason = notes.join(' ');
+        } else {
+          item.status = 'failed';
+          item.reason = done.warnings.at(-1) ?? 'The capture was cancelled.';
+        }
+      } catch (e) {
+        item.status = e instanceof Skip ? 'skipped' : 'failed';
+        item.reason = e instanceof Error ? e.message : String(e);
+      } finally {
+        if (opened !== null) await chrome.tabs.remove(opened).catch(() => undefined);
+      }
+      await save();
+    }
+    state.running = false;
+    await save();
+    await chrome.tabs.update(m.homeTabId, { active: true }).catch(() => undefined);
+  }
+
   /** The capture running in the active tab, if any (for the toolbar panel). */
   async function running(): Promise<{ sessionId: string; tabId: number } | null> {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -297,7 +410,13 @@ export default defineBackground(() => {
 
   chrome.runtime.onMessage.addListener(
     (
-      msg: ToBackground | PopupCapture | CaptureControl | PageNotice | { type: 'sp:running' },
+      msg:
+      | ToBackground
+      | PopupCapture
+      | CaptureControl
+      | PageNotice
+      | BatchStart
+      | { type: 'sp:running' },
       _sender,
       reply,
     ) => {
@@ -305,7 +424,12 @@ export default defineBackground(() => {
         void grab(msg, _sender.tab?.id).then(reply);
         return true;
       }
-      if (msg.type === 'sp:notice') {
+      if (msg.type === 'sp:batch-start') {
+      void runBatch(msg);
+      reply({ ok: true });
+      return false;
+    }
+    if (msg.type === 'sp:notice') {
         if (msg.tabId !== undefined)
           void chrome.tabs
             .sendMessage(msg.tabId, { type: 'sp:notice', text: msg.text })
@@ -480,6 +604,9 @@ export default defineBackground(() => {
     });
   }
 });
+
+/** A batch target that can't be captured: skipped, with the reason, not failed. */
+class Skip extends Error {}
 
 interface PopupCapture {
   type: 'sp:popup-capture';
