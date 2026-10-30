@@ -75,11 +75,11 @@ Legend: `[ ]` todo · `(L#)` = lesson from `docs/product/PRIOR_ART.md` §7 · `�
 
 ## M5 — History, merge, batch (~3 h)
 
-- [ ] History page: grid, full-text search (title/URL/captured text), retention settings, storage meter. → UI §4
-- [ ] Merge queue: add any captures, reorder, page ranges → one PDF with consistent paper settings (L12). → UI §5
-- [ ] All open tabs → full-page capture each (sequential, progress list, skip blocked tabs with reasons). Optional host permission requested at runtime.
-- [ ] URL list → open each in a background tab, wait for load, capture full page, close. Then one PDF or one per URL.
-- [ ] Options page complete. → UI §6
+- [x] History page: list with thumbnails, full-text search (title/URL/captured text, with the matching words shown), retention settings, storage meter, delete one/several/all. → UI §4
+- [x] Merge queue: add any captures, reorder, page ranges → one PDF with consistent paper settings (L12). → UI §5
+- [x] All open tabs → full-page capture each (sequential, progress list, skip blocked tabs with reasons). Optional host permission requested at runtime.
+- [x] URL list → open each in a tab, wait for load, capture full page, close. Then one PDF or one per URL. _(Opened in front, not in the background: captureVisibleTab pictures the visible tab.)_
+- [x] Options page complete. → UI §6
 
 ## M6 — Beyond FireShot (pick in order; ~4 h+)
 

@@ -1,27 +1,17 @@
 import {
-  annotationForbidden,
   buildFilename,
   commit,
-  cropAround,
-  computeLayout,
   DEFAULT_STYLE,
   emptyHistory,
   exportScale,
   QUALITY,
-  fitSheets,
-  sheetSlices,
   redo,
   TOOL_KEYS,
   undo,
-  contentCrop,
   medianFontPx,
-  paginateDebug,
   readabilityAdvice,
-  sliderWeights,
   type Annotation,
   type History,
-  type PageLayout,
-  type PaginationDebug,
   type Region,
   type Style,
   type Tool,
@@ -38,8 +28,9 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EMPTY_PROJECT, saveProject, type Project } from '@/shared/db';
-import { bandHeight, loadSettings, saveSettings, type Settings } from '@/shared/settings';
+import { loadSettings, saveSettings, type Settings } from '@/shared/settings';
 import { analyze, type Analysis } from '@/studio/engine/analysis';
+import { planPages, type Edits, type PageResult } from '@/studio/engine/plan';
 import {
   copyPageImage,
   download,
@@ -77,17 +68,6 @@ type Stage =
   | { kind: 'ready' }
   | { kind: 'error'; message: string };
 
-type PageResult =
-  | { ok: false; error: string }
-  | {
-      ok: true;
-      /** Pages follow a document viewer's own pages. */
-      sheets: boolean;
-      crop: { x0: number; x1: number; cropped: boolean };
-      layout: PageLayout;
-      debug: PaginationDebug;
-    };
-
 type View = 'pages' | 'breaks' | 'markup';
 
 /** Three modes, named by what you do in them (UI §3, distilled). */
@@ -97,10 +77,7 @@ const MODES: Array<[View, string, typeof FileText, string]> = [
   ['markup', 'Mark up', PenLine, 'Draw, write, hide private details, crop'],
 ];
 
-export interface Edits {
-  pinned: number[];
-  removed: number[];
-}
+export type { Edits } from '@/studio/engine/plan';
 
 const params = new URLSearchParams(location.search);
 const SESSION_ID = params.get('session') ?? '';
@@ -168,66 +145,19 @@ export function App() {
     };
   }, []);
 
-  const result = useMemo((): PageResult | null => {
-    if (!session || !analysis || !settings) return null;
-    // A crop drawn in the Annotate view wins over automatic side cropping.
-    const manual = project.crop;
-    const crop = manual
-      ? { x0: manual.x0, x1: manual.x1, cropped: true }
-      : settings.crop === 'auto'
-        ? cropAround(
-            contentCrop(session.width, { rows: analysis.rows, hints: session.hints }),
-            annotations,
-            session.width,
+  const result = useMemo(
+    (): PageResult | null =>
+      session && analysis && settings
+        ? planPages(
+            session,
+            analysis,
+            settings,
+            { crop: project.crop, annotations, sheetGrid: project.sheetGrid },
+            edits,
           )
-        : { x0: 0, x1: session.width, cropped: false };
-    // Header/footer space only when the band shows something (PDF_OUTPUT §4).
-    const page = {
-      ...settings.page,
-      headerPt: bandHeight(settings.pdf.header),
-      footerPt: bandHeight(settings.pdf.footer),
-    };
-    // A document viewer: its own pages decide, one PDF page per sheet (a drawn crop wins).
-    const sheets = analysis.sheets;
-    if (sheets && settings.followSheets && !manual) {
-      try {
-        const layout = fitSheets(computeLayout(page, sheets.x1 - sheets.x0), sheets);
-        const slices = sheetSlices(sheets);
-        return {
-          ok: true,
-          sheets: true,
-          crop: { x0: sheets.x0, x1: sheets.x1, cropped: true },
-          layout,
-          debug: { slices, candidates: [], forbidden: [], opaque: [] },
-        };
-      } catch (e) {
-        return { ok: false, error: e instanceof Error ? e.message : String(e) };
-      }
-    }
-    let layout: PageLayout;
-    try {
-      layout = computeLayout(page, crop.x1 - crop.x0);
-    } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : String(e) };
-    }
-    const debug: PaginationDebug = paginateDebug({
-      height: session.height,
-      width: session.width,
-      T: layout.T,
-      hints: {
-        ...session.hints,
-        forbidden: [...session.hints.forbidden, ...annotationForbidden(annotations)],
-      },
-      rows: analysis.rows,
-      crop,
-      range: manual ? { y0: manual.y0, y1: manual.y1 } : undefined,
-      trimBlankEnd: true,
-      options: { ...sliderWeights(settings.breakStyle), ...edits },
-    });
-    if (!debug.slices.length)
-      return { ok: false, error: 'Nothing to show: the captured area is empty.' };
-    return { ok: true, sheets: false, crop, layout, debug };
-  }, [session, analysis, settings, edits, project.crop, annotations]);
+        : null,
+    [session, analysis, settings, edits, project.crop, annotations, project.sheetGrid],
+  );
 
   // Projects are saved as they change, so they can be re-edited later (TODO M4).
   const loaded = useRef<Project | null>(null);
@@ -774,6 +704,13 @@ export function App() {
         filename={filename('pdf')}
         cropped={result.ok && result.crop.cropped}
         sheetCount={analysis.sheets?.sheets.length ?? null}
+        sheets={{
+          detected: analysis.sheets,
+          grid: project.sheetGrid ?? null,
+          pages: result.ok && result.sheets ? result.debug.slices.length : 0,
+          width: session.width,
+          onGrid: (sheetGrid) => changeProject({ sheetGrid }),
+        }}
         estimate={estimate}
         ocr={{
           pages: ocrPages.map((i) => i + 1),
@@ -981,6 +918,10 @@ export function App() {
                     zoom={zoom}
                     onZoom={changeZoom}
                     onEffective={setEffective}
+                    filter={settings.pdf.filter}
+                    watermark={settings.pdf.watermark}
+                    slices={slices}
+                    scale={result.ok ? result.layout.s : 1}
                   />
                 </>
               ) : (

@@ -3,9 +3,12 @@ import {
   FILTERS,
   PAPERS,
   QUALITY,
+  gridOf,
   type ExportPreset,
   type FilterId,
   type PaperId,
+  type SheetGrid,
+  type SheetLayout,
 } from '@screenscroll/core';
 import {
   ChevronRight,
@@ -41,6 +44,7 @@ interface PagesProps {
   cropped: boolean;
   /** Pages of a document viewer found in the capture, or null. */
   sheetCount: number | null;
+  sheets: SheetsCardProps;
   /** Estimated PDF size in bytes, or null while it is computed. */
   estimate: number | null;
   ocr: OcrCardProps;
@@ -114,6 +118,84 @@ function OcrCard({ o }: { o: OcrCardProps }) {
   );
 }
 
+export interface SheetsCardProps {
+  detected: SheetLayout | null;
+  grid: SheetGrid | null;
+  /** Pages the grid (or detection) makes now. */
+  pages: number;
+  /** Capture width, CSS px. */
+  width: number;
+  onGrid: (g: SheetGrid | null) => void;
+}
+
+/** Field, short label, full name (accessible name and tooltip). */
+const GRID_FIELDS: [keyof SheetGrid, string, string][] = [
+  ['top', 'Top', 'First page top (y)'],
+  ['height', 'Height', 'Page height'],
+  ['gap', 'Gap', 'Gap between pages'],
+  ['x0', 'Left', 'Left edge (x)'],
+  ['x1', 'Right', 'Right edge (x)'],
+];
+
+/**
+ * Document pages by hand: when detection finds the wrong page size, or none, the user sets
+ * the page grid (CSS px of the capture). Prefilled from detection, so a small fix is one field.
+ */
+function SheetsCard(p: SheetsCardProps) {
+  if (!p.grid)
+    return (
+      <button
+        type="button"
+        className="mb-2 text-[12px] text-neutral-500 underline-offset-2 hover:text-neutral-900 hover:underline dark:hover:text-white"
+        onClick={() =>
+          p.onGrid(
+            p.detected
+              ? gridOf(p.detected)
+              : { x0: 0, x1: p.width, top: 0, height: Math.round(p.width * Math.SQRT2), gap: 0 },
+          )
+        }
+      >
+        {p.detected ? 'Wrong page size? Set pages by hand' : 'A document? Set its pages by hand'}
+      </button>
+    );
+  const g = p.grid;
+  return (
+    <div
+      className="mb-2 rounded-md border border-accent/40 bg-accent/5 p-2"
+      data-testid="sheet-grid"
+    >
+      <p className="font-medium">
+        Pages set by hand · {p.pages ? `${p.pages} pages` : 'no pages: check the numbers'}
+      </p>
+      <div className="grid grid-cols-2 gap-x-2 pt-1">
+        {GRID_FIELDS.map(([k, label, name]) => (
+          <label key={k} className="flex items-center justify-between gap-1 py-0.5" title={name}>
+            <span className="text-neutral-600 dark:text-neutral-300">{label}</span>
+            <input
+              type="number"
+              aria-label={name}
+              min={0}
+              step={1}
+              value={Math.round(g[k])}
+              onChange={(e) => {
+                const v = e.target.valueAsNumber;
+                if (Number.isFinite(v)) p.onGrid({ ...g, [k]: v });
+              }}
+              className={`${control} w-16 py-0.5 text-right font-mono text-[11px]`}
+            />
+          </label>
+        ))}
+      </div>
+      <p className="pt-1 text-[11px] text-neutral-500">CSS px of the capture.</p>
+      <div className="flex gap-1 pt-1">
+        <button type="button" className={button} onClick={() => p.onGrid(null)}>
+          {p.detected ? 'Use detected' : 'Turn off'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Pages mode (UI §3, distilled): the three choices that change what the pages look like,
  * with everything else folded under "More options".
@@ -127,7 +209,7 @@ export function PagesPanel(p: PagesProps) {
   return (
     <aside className={aside} aria-label="Page setup">
       <OcrCard o={p.ocr} />
-      {p.sheetCount !== null && (
+      {p.sheetCount !== null && !p.sheets.grid && (
         <div
           className="mb-2 rounded-md border border-accent/40 bg-accent/5 p-2"
           data-testid="sheets"
@@ -144,6 +226,7 @@ export function PagesPanel(p: PagesProps) {
           </label>
         </div>
       )}
+      <SheetsCard {...p.sheets} />
       <label className={field}>
         Paper
         <select

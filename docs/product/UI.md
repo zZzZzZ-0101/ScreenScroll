@@ -50,10 +50,10 @@ Distilled (2026-10-28): three modes named by what you do, one primary button, an
 └──────┴────────────────────────────────────────────────────┴────────────────┘
 ```
 
-- **Document pages**: when the capture is a document viewer (Google Drive, Docs or Office previews, PDF viewers) the Pages panel says "N document pages found" and, by default, makes one PDF page per document page, cropped to the page (no viewer background). Breaks mode then shows the document's breaks without editing; untick "One PDF page per document page" to use smart breaks instead.
+- **Document pages**: when the capture is a document viewer (Google Drive, Docs or Office previews, PDF viewers) the Pages panel says "N document pages found" and, by default, makes one PDF page per document page, cropped to the page (no viewer background). Breaks mode then shows the document's breaks without editing; untick "One PDF page per document page" to use smart breaks instead. **By hand**: "Wrong page size? Set pages by hand" (or "A document? Set its pages by hand" when none were found) opens five numbers in CSS px of the capture: First page top, Page height, Gap, Left, Right, prefilled from detection; pages repeat down to the end (a last piece under a fifth of a page is dropped). "Use detected" / "Turn off" goes back. Saved with the capture, undoable.
 - **Pages** (default): true page previews. Panel: Paper, Orientation, the "Fewer pages ↔ Cleaner breaks" slider, page count and size. **More options** (closed by default, remembered): margins, crop sides, image quality, searchable text / links / bookmarks, header and footer, file name.
 - **Breaks**: the whole capture as one strip with the break lines. Drag to move (snaps; Alt = free), double-click to add, hover × to remove; a magnifier shows the cut. Break colour shows its kind; the tooltip says it in words ("Break between paragraphs"). Panel: three one-line instructions, the slider, **Reset breaks**.
-- **Mark up** (scanning-oriented, like a document scanner app): one toolbar row with Select · Crop · Text, Rectangle, Arrow, Step number · Mosaic, Blur; three ink colours (black, red, blue) plus a picker; one size control (S/M/L); Undo, Redo, Delete. The side panel holds **Page**: page labels (header and footer, left/centre/right, with presets such as page number or date + page and tokens) and a **watermark** (text with presets, opacity, size, angle, colour, apply to every page / first page / these pages, remove). Watermark and label presets are the user's own: × removes one, + Save adds the current text or band, Restore defaults brings back removed built-in ones. The watermark shows in the Pages preview and is drawn in the PDF. Blur/mosaic also remove the text and links underneath from the PDF. Ctrl+Z / Ctrl+Y.
+- **Mark up** (scanning-oriented, like a document scanner app): one toolbar row with Select · Crop · Text, Rectangle, Arrow, Step number · Mosaic, Blur; three ink colours (black, red, blue) plus a picker; one size control (S/M/L); Undo, Redo, Delete. The side panel holds **Page**: page labels (header and footer, left/centre/right, with presets such as page number or date + page and tokens) and a **watermark** (text with presets, opacity, size, angle, colour, apply to every page / first page / these pages, remove). Watermark and label presets are the user's own: × removes one, + Save adds the current text or band, Restore defaults brings back removed built-in ones. The watermark shows in the Pages preview and on the Mark up view (at its true size, on the pages it applies to) as it is typed, and is drawn in the PDF. The chosen filter is applied to the Mark up view's page images at once, so it shows before export. Blur/mosaic also remove the text and links underneath from the PDF. Ctrl+Z / Ctrl+Y.
 - **Save PDF ▾**: the button saves the PDF (Ctrl+S); the arrow lists every other output: one long page PDF, PNG/JPEG/WebP pages (zip), one long image, Copy this page (Ctrl+Shift+C), Print (Ctrl+P).
 - **Notes** chip (warnings) opens the list; "Page N: …" entries jump to the page.
 - **Details** (header ⓘ, key I): every number behind the pages and how it was calculated, in the side panel: capture (dpr, frames, size, speed), layout (paper, margins, printable box, content width, scale s, content per page T, body text in pt, dpi on paper), breaks (method, weights, cost formula, forced cuts), output (filter, PDF quality, image scale, format rule, estimated size, labels, watermark), then one row per page. Copy all as text.
@@ -68,13 +68,18 @@ Distilled (2026-10-28): three modes named by what you do, one primary button, an
 ![Saved captures](../screenshots/saved-captures.png)
 
 - Everything kept on this computer: thumbnail, title, site, date and size per capture; space used and space free.
-- Search by title or address; **Open** reopens the Studio; delete one or several, with **Undo** for 6 seconds instead of a confirmation dialog.
+- Search titles, addresses and the pages' own text; a match in the text shows the words around it.
+- **Open** reopens the Studio. Delete one, several (Select all → Delete selected → Delete N for good) or all, for good: the record and every frame image.
 - **Keep captures**: until deleted / 1 / 7 / 30 / 90 days; older captures are deleted when the page opens and after each new capture.
-- Still to come (ROADMAP M5): full-text search of captured text, merge into one PDF.
+- **Merge into one PDF** (2 or more selected): see §5.
 
 ## 5. Merge queue
 
-A side sheet in the Studio and History: an ordered list of captures, drag to reorder, per-item page range, then one export.
+A sheet on Saved captures (and after a batch): the chosen captures, oldest first, with ↑ / ↓ to reorder, × to leave one out, and a page range each (empty for all, or "1-3, 5"). **Save as one PDF** paginates each capture as the Studio would (its crop, marks, document pages), on the paper and settings of Settings, page numbers running across the document, one bookmark per capture.
+
+## 5a. Capture several pages (batch)
+
+Panel → Capture several pages. Asks once for the browser's all-sites permission (only then). Two ways: **Tabs in this window** (browser pages listed, greyed, with the reason) or **Addresses** (one per line; non-web addresses are named and left out). Each page comes to the front, is captured as a full page and saved without opening a Studio; addresses open in a tab that closes afterwards. A progress list shows each page (captured, skipped with reason, failed with reason); then **Merge into one PDF** or **Open saved captures**.
 
 ## 6. Options page
 

@@ -23,6 +23,8 @@ const URL_ALLOW = [
   /^https:\/\/tailwindcss\.com$/,
   // pdf-lib's default "Producer" metadata string; we overwrite it and never request it.
   /^https:\/\/github\.com\/Hopding\/pdf-lib$/,
+  // Batch: the scheme put in front of an address the user typed without one (opened as a tab).
+  /^https:\/\/\$\{\w+\}$/,
   // The model's address, as data in the engine descriptor (the Studio shows the model's status).
   ...MODEL_URLS.map((u) => new RegExp(`^${escape(u)}$`)),
 ];
@@ -79,6 +81,8 @@ describe('offline guard', () => {
   it('manifest requests no broad host permissions', () => {
     const manifest = JSON.parse(readFileSync(join(outDir, 'manifest.json'), 'utf8'));
     expect(manifest.host_permissions ?? []).toEqual([]);
+    // All sites only on request, for batch capture.
+    expect(manifest.optional_host_permissions).toEqual(['<all_urls>']);
     expect(manifest.permissions).not.toContain('<all_urls>');
     // Only 'wasm-unsafe-eval' added to the default, for the bundled OCR runtime.
     expect(manifest.content_security_policy).toEqual({

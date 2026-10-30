@@ -2,6 +2,7 @@ import { blockedReason, PAPERS, type PaperId } from '@screenscroll/core';
 import {
   Crosshair,
   Archive,
+  Layers,
   History,
   Keyboard,
   Settings as Gear,
@@ -314,6 +315,16 @@ export function App() {
           <span className="truncate">Last capture: {last.title || last.url}</span>
         </button>
       )}
+
+      <button
+        type="button"
+        onClick={() => open(chrome.runtime.getURL('/batch.html'))}
+        className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left text-neutral-600 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:text-neutral-300 dark:hover:bg-neutral-800"
+        title="All tabs of this window, or a list of addresses, then one PDF"
+      >
+        <Layers aria-hidden size={15} className="shrink-0" />
+        <span className="truncate">Capture several pages</span>
+      </button>
 
       <button
         type="button"

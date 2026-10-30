@@ -139,6 +139,16 @@ Suite: `pnpm test` 219, `pnpm e2e` 53 (see the commit), lint and typecheck clean
 - OCR: PP-OCRv6 small on onnxruntime-web in a worker; model downloaded on request, checksummed, kept in IndexedDB; canvas-only page becomes searchable in English and Chinese (e2e with the model served locally; `pnpm ocr:check` with the real model).
 - Needs the user's check: Download model from the real mirrors (jsDelivr/unpkg are blocked in the build sandbox), and OCR on a real Google Drive PDF preview.
 
+### M5: history, merge, batch (2026-10-30)
+- Merge into one PDF (order, page ranges, bookmarks per capture, page numbers across), full-text search with snippets, Capture several pages (tabs of the window, or addresses), all with e2e tests.
+- Needs the user's check: batch on real sites (logins, slow pages), and the all-sites permission prompt.
+
+### Document pages, Mark up previews (2026-10-30)
+- Page detection measured against the viewer's background (scans, slides, light viewers, dark bands, a list showing through the gaps), 13 unit tests; doc-viewer e2e within 2 px of the real page edges.
+- Pages by hand (Pages panel): five numbers, prefilled from detection; e2e test.
+- Mark up shows the chosen filter and the watermark at once; e2e tests.
+- Needs the user's check: the PDF preview that came out at 2/3 of a page. If it still does, "Wrong page size? Set pages by hand" fixes it, and a screenshot of that capture would make a test case.
+
 ## Manual site checks
 | Site | Date | Capture | Header once | Images loaded | No text cut | Text searchable | Links | Time | Notes |
 |---|---|---|---|---|---|---|---|---|---|

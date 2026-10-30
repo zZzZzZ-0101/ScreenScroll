@@ -108,3 +108,46 @@ test('a document viewer: one PDF page per document page, cropped to the page', a
   await studio.getByRole('checkbox', { name: 'One PDF page per document page' }).uncheck();
   await expect.poll(async () => (await slices(studio)).some((s) => s.x0 < 10)).toBe(true);
 });
+
+test('document pages by hand: prefilled from detection, page height edited, back to detected', async ({
+  context,
+  serviceWorker,
+}) => {
+  const page = await context.newPage();
+  const url = `${FIXTURES}/doc-viewer.html`;
+  await page.goto(url);
+  await page.bringToFront();
+  const studioPromise = context.waitForEvent('page', {
+    predicate: (p) => p.url().includes('/studio.html'),
+  });
+  await serviceWorker.evaluate(async (u) => {
+    const [tab] = await chrome.tabs.query({ active: true, url: u });
+    await (
+      globalThis as unknown as { __spTest: { capture(id: number): Promise<unknown> } }
+    ).__spTest.capture(tab!.id!);
+  }, url);
+  const studio = await studioPromise;
+  await studio.setViewportSize({ width: 1400, height: 900 });
+  await expect(studio.getByTestId('sheets')).toHaveText(/6 document pages found/, {
+    timeout: 60_000,
+  });
+  await studio.getByRole('button', { name: 'Wrong page size? Set pages by hand' }).click();
+  const card = studio.getByTestId('sheet-grid');
+  await expect(card).toContainText('6 pages');
+  // Prefilled with the detected grid: 1075 px pages, 18 px gaps.
+  await expect(card.getByRole('spinbutton', { name: 'Page height' })).toHaveValue('1075');
+  await expect(card.getByRole('spinbutton', { name: 'Gap between pages' })).toHaveValue('18');
+
+  // Half-height pages: twice as many, each 500 px, starting at the same top.
+  await card.getByRole('spinbutton', { name: 'Page height' }).fill('500');
+  await expect(card).toContainText(/1[23] pages/);
+  const got = await slices(studio);
+  expect(got[0]!.y1 - got[0]!.y0).toBe(500);
+  expect(got[1]!.y0 - got[0]!.y1).toBe(18);
+  expect(got.every((s) => s.overlapTop === 0)).toBe(true);
+  await card.screenshot({ path: 'e2e-artifacts/sheet-grid.png' });
+
+  await card.getByRole('button', { name: 'Use detected' }).click();
+  await expect(studio.getByTestId('sheet-grid')).toHaveCount(0);
+  expect(await slices(studio)).toHaveLength(6);
+});

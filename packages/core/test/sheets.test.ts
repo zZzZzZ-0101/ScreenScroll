@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectSheets, SheetAnalyzer } from '../src/sheets.js';
+import { detectSheets, gridOf, gridSheets, SheetAnalyzer } from '../src/sheets.js';
 import type { GreyImage } from '../src/image.js';
 
 interface Opts {
@@ -11,8 +11,16 @@ interface Opts {
   top?: number;
   /** A dimmed file list showing beside the sheets on the right. */
   list?: boolean;
+  /** A list of text lines from this x on; left of the sheets' right edge it shows through the gaps. */
+  listFrom?: number;
   /** A photo block inside sheet `photo`, of this grey. */
   photo?: [number, number];
+  /** Grey of the paper (255 = white; scans are off-white). */
+  paper?: number;
+  /** ± noise on the paper, like a scan. */
+  noise?: number;
+  /** A band across the whole page width (margins included) in sheet [i], rows [a, b), of grey g. */
+  band?: [number, number, number, number];
 }
 
 /** A synthetic viewer: sheets of text on a background, like a PDF preview. */
@@ -27,17 +35,28 @@ function viewer(o: Opts = {}): GreyImage {
   const data = new Uint8Array(width * height).fill(bg);
   if (o.list)
     for (let y = 0; y < height; y++)
-      for (let x = 700; x < width; x++) data[y * width + x] = Math.floor(y / 40) % 2 ? 70 : 110;
+      for (let x = o.listFrom ?? 700; x < width; x++)
+        if (o.listFrom === undefined) data[y * width + x] = Math.floor(y / 40) % 2 ? 70 : 110;
+        // Dimmed list rows: background with a line of grey text every 40 px.
+        else if (y % 40 < 10 && x % 5 < 3) data[y * width + x] = 110;
   let y0 = top;
+  let seed = 7;
+  const rand = () => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return seed / 0x7fffffff;
+  };
   heights.forEach((h, i) => {
     for (let y = y0; y < y0 + h; y++) {
-      for (let x = sx0; x < sx1; x++) data[y * width + x] = 255;
+      for (let x = sx0; x < sx1; x++)
+        data[y * width + x] = (o.paper ?? 255) - Math.round(rand() * (o.noise ?? 0));
       // Text lines: dark dashes in rows 60..h-60, 20 px pitch.
       const ry = y - y0;
       if (ry > 60 && ry < h - 60 && ry % 20 < 9)
         for (let x = sx0 + 40; x < sx1 - 40; x++) if (x % 7 < 4) data[y * width + x] = 30;
       if (o.photo && o.photo[0] === i && ry > 300 && ry < 600)
         for (let x = sx0 + 20; x < sx1 - 20; x++) data[y * width + x] = o.photo[1];
+      if (o.band && o.band[0] === i && ry >= o.band[1] && ry < o.band[2])
+        for (let x = sx0; x < sx1; x++) data[y * width + x] = o.band[3];
     }
     y0 += h + gap;
   });
@@ -78,6 +97,76 @@ describe('document sheets', () => {
     const r = detectSheets(profile(viewer({ photo: [2, 120] })));
     expect(r?.sheets).toHaveLength(5);
     expect(r!.sheets[2]!.y1 - r!.sheets[2]!.y0).toBe(1000);
+  });
+
+  it('off-white, noisy pages (scans) are pages too, at their full width', () => {
+    const r = detectSheets(profile(viewer({ paper: 238, noise: 8 })));
+    expect(r?.sheets.map((s) => s.y1 - s.y0)).toEqual([1000, 1000, 1000, 1000, 1000]);
+    expect(r!.x0).toBeCloseTo(150, -1);
+    expect(r!.x1).toBeCloseTo(650, -1);
+  });
+
+  it('a band as dark as the background across a whole page does not split it', () => {
+    // A full-bleed dark figure (or a slide's dark title bar) that looks exactly like a gap.
+    for (const [a, b] of [
+      [300, 500],
+      [0, 120],
+      [880, 1000],
+    ] as const) {
+      const r = detectSheets(profile(viewer({ band: [2, a, b, 50] })));
+      expect(r?.sheets.map((s) => s.y1 - s.y0), `band ${a}-${b}`).toEqual([
+        1000, 1000, 1000, 1000, 1000,
+      ]);
+    }
+  });
+
+  it('a very light viewer (248) around white pages', () => {
+    const r = detectSheets(profile(viewer({ bg: 248, gap: 10 })));
+    expect(r?.sheets.map((s) => s.y1 - s.y0)).toEqual([1000, 1000, 1000, 1000, 1000]);
+  });
+
+  it('dark slides on a light viewer', () => {
+    const r = detectSheets(
+      profile(viewer({ bg: 241, paper: 40, heights: [560, 560, 560, 560], gap: 24 })),
+    );
+    expect(r?.sheets.map((s) => s.y1 - s.y0)).toEqual([560, 560, 560, 560]);
+    expect(r!.x0).toBeCloseTo(150, -1);
+  });
+
+  it('a dimmed file list showing through the gaps does not move the edges', () => {
+    // The list starts at x 500, inside the sheet columns (150–650): 30% of each gap row.
+    const r = detectSheets(profile(viewer({ list: true, listFrom: 500, gap: 18 })));
+    expect(r).not.toBeNull();
+    expect(r!.sheets).toHaveLength(5);
+    r!.sheets.forEach((s, i) => {
+      expect(Math.abs(s.y0 - (18 + i * 1018))).toBeLessThanOrEqual(1);
+      expect(Math.abs(s.y1 - (18 + i * 1018 + 1000))).toBeLessThanOrEqual(1);
+    });
+  });
+
+  it('a white page of evenly sized text blocks is not a viewer', () => {
+    // Paper = background: sections of an article, however regular, are not sheets.
+    expect(detectSheets(profile(viewer({ bg: 255 })))).toBeNull();
+    expect(detectSheets(profile(viewer({ bg: 255, gap: 40, list: true, listFrom: 500 })))).toBeNull();
+  });
+
+  it('pages set by hand: a grid down to the end, without a trailing sliver', () => {
+    const g = { x0: 150, x1: 650, top: 16, height: 1000, gap: 16 };
+    const r = gridSheets(g, 3100)!;
+    expect(r.sheets).toEqual([
+      { y0: 16, y1: 1016 },
+      { y0: 1032, y1: 2032 },
+      { y0: 2048, y1: 3048 },
+    ]);
+    // 3064–3100 is 36 px of a 1000 px page: left out. 3300 makes a 236 px last page: kept.
+    expect(gridSheets(g, 3300)!.sheets.at(-1)).toEqual({ y0: 3064, y1: 3300 });
+    expect(gridSheets({ ...g, height: 10 }, 3100)).toBeNull();
+    expect(gridSheets({ ...g, x1: 160 }, 3100)).toBeNull();
+    expect(gridSheets({ ...g, top: 4000 }, 3100)).toBeNull();
+    // Detected → grid → the same pages.
+    const found = detectSheets(profile(viewer()))!;
+    const again = gridSheets(gridOf(found), viewer().height)!;
+    expect(again.sheets).toEqual(found.sheets);
   });
 
   it('accepts a first and last page cut by the capture', () => {

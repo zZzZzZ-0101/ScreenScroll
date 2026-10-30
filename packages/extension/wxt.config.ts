@@ -40,6 +40,8 @@ export default defineConfig({
     // Sharp capture (Settings → Sharpness) renders the page at 2–3× through the debugger. It
     // is asked for only when the user picks High or Maximum; the e2e build has it granted.
     optional_permissions: env.mode === 'e2e' ? [] : ['debugger'],
+    // Capture several pages (batch) needs every site, asked for only when the user starts one.
+    optional_host_permissions: env.mode === 'e2e' ? [] : ['<all_urls>'],
     // The icon opens the small panel in entrypoints/popup (UI §1).
     action: { default_title: 'ScreenScroll' },
     commands: {
