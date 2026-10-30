@@ -148,9 +148,15 @@ export function App() {
   const result = useMemo(
     (): PageResult | null =>
       session && analysis && settings
-        ? planPages(session, analysis, settings, { crop: project.crop, annotations }, edits)
+        ? planPages(
+            session,
+            analysis,
+            settings,
+            { crop: project.crop, annotations, sheetGrid: project.sheetGrid },
+            edits,
+          )
         : null,
-    [session, analysis, settings, edits, project.crop, annotations],
+    [session, analysis, settings, edits, project.crop, annotations, project.sheetGrid],
   );
 
   // Projects are saved as they change, so they can be re-edited later (TODO M4).
@@ -698,6 +704,13 @@ export function App() {
         filename={filename('pdf')}
         cropped={result.ok && result.crop.cropped}
         sheetCount={analysis.sheets?.sheets.length ?? null}
+        sheets={{
+          detected: analysis.sheets,
+          grid: project.sheetGrid ?? null,
+          pages: result.ok && result.sheets ? result.debug.slices.length : 0,
+          width: session.width,
+          onGrid: (sheetGrid) => changeProject({ sheetGrid }),
+        }}
         estimate={estimate}
         ocr={{
           pages: ocrPages.map((i) => i + 1),
@@ -905,6 +918,10 @@ export function App() {
                     zoom={zoom}
                     onZoom={changeZoom}
                     onEffective={setEffective}
+                    filter={settings.pdf.filter}
+                    watermark={settings.pdf.watermark}
+                    slices={slices}
+                    scale={result.ok ? result.layout.s : 1}
                   />
                 </>
               ) : (

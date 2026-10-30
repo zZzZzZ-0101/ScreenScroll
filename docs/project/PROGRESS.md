@@ -143,6 +143,12 @@ Suite: `pnpm test` 219, `pnpm e2e` 53 (see the commit), lint and typecheck clean
 - Merge into one PDF (order, page ranges, bookmarks per capture, page numbers across), full-text search with snippets, Capture several pages (tabs of the window, or addresses), all with e2e tests.
 - Needs the user's check: batch on real sites (logins, slow pages), and the all-sites permission prompt.
 
+### Document pages, Mark up previews (2026-10-30)
+- Page detection measured against the viewer's background (scans, slides, light viewers, dark bands, a list showing through the gaps), 13 unit tests; doc-viewer e2e within 2 px of the real page edges.
+- Pages by hand (Pages panel): five numbers, prefilled from detection; e2e test.
+- Mark up shows the chosen filter and the watermark at once; e2e tests.
+- Needs the user's check: the PDF preview that came out at 2/3 of a page. If it still does, "Wrong page size? Set pages by hand" fixes it, and a screenshot of that capture would make a test case.
+
 ## Manual site checks
 | Site | Date | Capture | Header once | Images loaded | No text cut | Text searchable | Links | Time | Notes |
 |---|---|---|---|---|---|---|---|---|---|

@@ -4,6 +4,7 @@ import {
   contentCrop,
   cropAround,
   fitSheets,
+  gridSheets,
   paginateDebug,
   sheetSlices,
   sliderWeights,
@@ -11,6 +12,7 @@ import {
   type PageLayout,
   type PaginationDebug,
   type Region,
+  type SheetGrid,
 } from '@screenscroll/core';
 import { bandHeight, type Settings } from '@/shared/settings';
 import type { Analysis } from './analysis';
@@ -44,7 +46,11 @@ export function planPages(
   session: LoadedSession,
   analysis: Analysis,
   settings: Settings,
-  project: { crop: Region | null; annotations: readonly Annotation[] },
+  project: {
+    crop: Region | null;
+    annotations: readonly Annotation[];
+    sheetGrid?: SheetGrid | null;
+  },
   edits: Edits = NO_EDITS,
 ): PageResult {
   const { annotations } = project;
@@ -66,8 +72,10 @@ export function planPages(
     footerPt: bandHeight(settings.pdf.footer),
   };
   // A document viewer: its own pages decide, one PDF page per sheet (a drawn crop wins).
-  const sheets = analysis.sheets;
-  if (sheets && settings.followSheets && !manual) {
+  // Pages set by hand win over detected ones and apply even when nothing was detected.
+  const grid = project.sheetGrid ? gridSheets(project.sheetGrid, session.height) : null;
+  const sheets = grid ?? analysis.sheets;
+  if (sheets && (grid || settings.followSheets) && !manual) {
     try {
       const layout = fitSheets(computeLayout(page, sheets.x1 - sheets.x0), sheets);
       const slices = sheetSlices(sheets);

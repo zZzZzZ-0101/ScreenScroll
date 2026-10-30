@@ -1,4 +1,8 @@
 import {
+  watermarkOn,
+  type FilterId,
+  type PageSlice,
+  type Watermark,
   annotationAt,
   bounds,
   highlighterWidth,
@@ -40,6 +44,13 @@ interface Props {
   zoom: Zoom;
   onZoom: (z: Zoom) => void;
   onEffective: (scale: number) => void;
+  /** Mark up → Page: shown live as they are chosen, as the PDF will have them. */
+  filter: FilterId;
+  watermark: Watermark;
+  /** The PDF pages, for where each watermark goes. */
+  slices: PageSlice[];
+  /** pt per CSS px of the PDF layout. */
+  scale: number;
 }
 
 type Draft =
@@ -326,8 +337,31 @@ export function AnnotateView(p: Props) {
             y1={t.y1}
             z={z}
             annotations={flattened}
+            filter={p.filter}
           />
         ))}
+        {p.watermark.text.trim() &&
+          p.slices.map((sl, i) =>
+            watermarkOn(p.watermark, i + 1, p.slices.length) ? (
+              <span
+                key={`${sl.y0}-${sl.y1}`}
+                aria-hidden
+                data-testid="watermark-preview"
+                className="pointer-events-none absolute font-[Helvetica,Arial,sans-serif] whitespace-nowrap"
+                style={{
+                  left: ((sl.x0 + sl.x1) / 2) * z,
+                  top: ((sl.y0 + sl.y1) / 2) * z,
+                  color: p.watermark.color,
+                  opacity: p.watermark.opacity,
+                  // pt on paper → CSS px of the capture → screen px.
+                  fontSize: (p.watermark.sizePt / p.scale) * z,
+                  transform: `translate(-50%, -50%) rotate(${-p.watermark.angle}deg)`,
+                }}
+              >
+                {p.watermark.text}
+              </span>
+            ) : null,
+          )}
         <svg
           className="pointer-events-none absolute left-0 top-0"
           width={W * z}
@@ -417,6 +451,7 @@ function Tile(p: {
   y1: number;
   z: number;
   annotations: Annotation[];
+  filter: FilterId;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const [visible, setVisible] = useState(false);
@@ -442,7 +477,14 @@ function Tile(p: {
     const ratio = devicePixelRatio || 1;
     const scale = Math.min(1, (p.z * ratio) / p.session.dpr);
     const region = { x0: 0, x1: W, y0: p.y0, y1: p.y1 };
-    void composePage(p.session, p.frames, region, scale, JSON.parse(key) as Annotation[]).then(
+    void composePage(
+      p.session,
+      p.frames,
+      region,
+      scale,
+      JSON.parse(key) as Annotation[],
+      p.filter,
+    ).then(
       (img) => {
         const c = ref.current;
         if (cancelled || !c) return;
@@ -454,7 +496,7 @@ function Tile(p: {
     return () => {
       cancelled = true;
     };
-  }, [visible, key, p.session, p.frames, p.y0, p.y1, p.z, W]);
+  }, [visible, key, p.session, p.frames, p.y0, p.y1, p.z, W, p.filter]);
 
   return (
     <canvas

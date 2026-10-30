@@ -1,5 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { Annotation, DomHints, Rect, Region } from '@screenscroll/core';
+import type { Annotation, DomHints, Rect, Region, SheetGrid } from '@screenscroll/core';
 
 export interface SessionRecord {
   id: string;
@@ -22,6 +22,8 @@ export interface Project {
   annotations: Annotation[];
   /** Crop tool region in document coordinates, or null for the whole capture. */
   crop: Region | null;
+  /** Document pages set by hand (Pages → document pages), or none to use the detected ones. */
+  sheetGrid?: SheetGrid | null;
 }
 
 export const EMPTY_PROJECT: Project = { annotations: [], crop: null };

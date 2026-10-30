@@ -23,13 +23,18 @@ export interface SheetProfile {
   grey: Uint8Array;
   /** Per column: rows where the pixel is paper. */
   colPaper: Uint32Array;
+  /** Per column × 256 grey values: how many rows. */
+  colHist: Uint32Array;
 }
+
+const LEVELS = 256;
 
 export class SheetAnalyzer {
   private paper: number[] = [];
   private grey: number[] = [];
   private rows = 0;
   private readonly colPaper: Uint32Array;
+  private readonly colHist: Uint32Array;
   private readonly bucketW: number;
 
   constructor(
@@ -37,6 +42,7 @@ export class SheetAnalyzer {
     readonly buckets = 64,
   ) {
     this.colPaper = new Uint32Array(width);
+    this.colHist = new Uint32Array(width * LEVELS);
     this.bucketW = width / buckets;
   }
 
@@ -52,6 +58,7 @@ export class SheetAnalyzer {
         for (let x = x0; x < x1; x++) {
           const v = row[x]!;
           sum += v;
+          this.colHist[x * LEVELS + v]!++;
           if (v >= PAPER_GREY) {
             paper++;
             this.colPaper[x]!++;
@@ -72,6 +79,7 @@ export class SheetAnalyzer {
       paper: Uint8Array.from(this.paper),
       grey: Uint8Array.from(this.grey),
       colPaper: this.colPaper.slice(),
+      colHist: this.colHist.slice(),
     };
   }
 }
@@ -91,20 +99,59 @@ export interface SheetLayout {
 /** Gaps shorter than this are inside a sheet (a rule, a dark table border). */
 const MIN_GAP = 4;
 const MIN_SHEET = 120;
+/** Share of the sheet columns that must look like the background for a gap row. */
+const GAP_SHARE = 0.6;
+
+/**
+ * The viewer's background: the most common grey level in the columns at both edges, where a
+ * viewer shows only its background (or a list beside the pages).
+ */
+function background(p: SheetProfile): number {
+  const edge = Math.max(2, Math.round(0.02 * p.width));
+  const counts = new Uint32Array(LEVELS);
+  for (const x of [
+    ...Array(edge).keys(),
+    ...Array.from({ length: edge }, (_, i) => p.width - 1 - i),
+  ])
+    for (let l = 0; l < LEVELS; l++) counts[l]! += p.colHist[x * LEVELS + l]!;
+  let best = 0;
+  for (let l = 1; l < LEVELS; l++) if (counts[l]! > counts[best]!) best = l;
+  return best;
+}
 
 /**
  * Finds the sheets, or null when the capture isn't a document viewer. Conservative on
  * purpose: an ordinary web page must never be cut into "sheets".
+ *
+ * Measured against the viewer's own background, not against white: pages of any colour
+ * (scans, dark slides) count, and so does a very light viewer around white pages.
+ * 1. Background grey B: the commonest level at the left and right edges.
+ * 2. Sheet columns: the widest run of columns that differ from B in at least half as many
+ *    rows as the most different column. Their commonest grey (the paper) must not be B.
+ * 3. Gap rows: ≥ 60% of the buckets across the sheet columns within a tolerance of B
+ *    (min(12, |255 − B| / 2 + 1), so 248 vs 255 still tells apart).
+ * 4. Sheets: runs between gaps of ≥ 4 rows. A band as dark as B across a whole page looks
+ *    like a gap, so neighbours that together make one typical page are joined again.
  */
 export function detectSheets(p: SheetProfile): SheetLayout | null {
   const { width, height, buckets } = p;
   if (height < 2 * MIN_SHEET || width < 50) return null;
+  const bg = background(p);
+  const tol = Math.min(12, Math.abs(255 - bg) / 2 + 1, bg / 2 + 1);
+  const lo = Math.max(0, Math.ceil(bg - tol));
+  const hi = Math.min(LEVELS - 1, Math.floor(bg + tol));
 
-  // Columns: the sheets are the widest run of columns that are mostly paper.
+  // Columns: how many rows differ from the background.
+  const diff = new Uint32Array(width);
   let peak = 0;
-  for (const c of p.colPaper) peak = Math.max(peak, c);
+  for (let x = 0; x < width; x++) {
+    let same = 0;
+    for (let l = lo; l <= hi; l++) same += p.colHist[x * LEVELS + l]!;
+    diff[x] = height - same;
+    peak = Math.max(peak, diff[x]!);
+  }
   if (peak < MIN_SHEET) return null;
-  const on = (x: number) => p.colPaper[x]! >= 0.5 * peak;
+  const on = (x: number) => diff[x]! >= 0.5 * peak;
   let best: [number, number] | null = null;
   for (let x = 0; x < width;) {
     if (!on(x)) {
@@ -122,41 +169,32 @@ export function detectSheets(p: SheetProfile): SheetLayout | null {
   // a real column, not a sliver.
   const margin = 0.02 * width;
   if (x1 - x0 < 0.25 * width || (x0 < margin && width - x1 < margin)) return null;
+  // Paper: the commonest grey inside the sheet columns. On an ordinary page that is the page's
+  // own background (text on white around white), so it is not a viewer.
+  const inside = new Uint32Array(LEVELS);
+  for (let x = x0; x < x1; x++)
+    for (let l = 0; l < LEVELS; l++) inside[l]! += p.colHist[x * LEVELS + l]!;
+  let paper = 0;
+  for (let l = 1; l < LEVELS; l++) if (inside[l]! > inside[paper]!) paper = l;
+  if (Math.abs(paper - bg) <= tol) return null;
 
   const bw = width / buckets;
   const inner: number[] = [];
-  const left: number[] = [];
-  const right: number[] = [];
-  for (let b = 0; b < buckets; b++) {
-    const bx0 = b * bw;
-    const bx1 = (b + 1) * bw;
-    if (bx0 >= x0 + 2 && bx1 <= x1 - 2) inner.push(b);
-    else if (bx1 <= x0 - 2) left.push(b);
-    else if (bx0 >= x1 + 2) right.push(b);
-  }
-  if (inner.length < 2 || !(left.length || right.length)) return null;
-  const mean = (list: number[], at: number) =>
-    list.reduce((n, b) => n + p.grey[at + b]!, 0) / list.length;
+  for (let b = 0; b < buckets; b++) if (b * bw >= x0 + 2 && (b + 1) * bw <= x1 - 2) inner.push(b);
+  if (inner.length < 2) return null;
 
-  // Rows: a gap row has no paper inside the column and looks like the background beside it
-  // on at least one side (the other side may show something else, like a dimmed file list).
+  // Rows: a gap row is mostly background across the sheet columns. Not all of it: whatever
+  // the viewer dims behind its pages (a file list) can show through part of a gap.
   const gap = new Uint8Array(height);
   for (let y = 0; y < height; y++) {
     const at = y * buckets;
-    let paper = 0;
-    let gin = 0;
-    for (const b of inner) {
-      paper += p.paper[at + b]!;
-      gin += p.grey[at + b]!;
-    }
-    paper /= inner.length * 255;
-    gin /= inner.length;
-    const like = (side: number[]) => side.length > 0 && Math.abs(gin - mean(side, at)) <= 14;
-    gap[y] = paper < 0.05 && (like(left) || like(right)) ? 1 : 0;
+    let same = 0;
+    for (const b of inner) if (Math.abs(p.grey[at + b]! - bg) <= tol) same++;
+    gap[y] = same >= GAP_SHARE * inner.length ? 1 : 0;
   }
 
   // Runs of non-gap rows are sheets; short gaps are part of a sheet.
-  const sheets: Sheet[] = [];
+  let sheets: Sheet[] = [];
   let y = 0;
   while (y < height) {
     while (y < height && gap[y]) y++;
@@ -173,8 +211,11 @@ export function detectSheets(p: SheetProfile): SheetLayout | null {
       if (g - y >= MIN_GAP || g >= height) break;
       y = g;
     }
-    if (end - start >= MIN_SHEET) sheets.push({ y0: start, y1: end });
+    sheets.push({ y0: start, y1: end });
   }
+  sheets = joinSplitSheets(sheets);
+  sheets = sheets.filter((s) => s.y1 - s.y0 >= MIN_SHEET);
+  sheets = regainEdgeBands(sheets, height);
   if (sheets.length < 2) return null;
 
   // Whole sheets (not the first or last, which the capture may cut) are similar in height.
@@ -183,6 +224,97 @@ export function detectSheets(p: SheetProfile): SheetLayout | null {
   if (whole.some((h) => Math.abs(h - ref) > 0.25 * ref)) return null;
   if (sheets.some((s) => s.y1 - s.y0 > 1.3 * ref)) return null;
   return { x0, x1, sheets };
+}
+
+/**
+ * Documents have pages of one size (or a few). Pieces shorter than a typical page whose
+ * span, gap included, makes one typical page (±3%) are one page that a dark band split.
+ */
+function joinSplitSheets(sheets: Sheet[]): Sheet[] {
+  const heights = sheets.map((s) => s.y1 - s.y0).filter((h) => h >= MIN_SHEET);
+  if (heights.length < 2) return sheets;
+  const typical =
+    Math.max(
+      ...heights.filter((h) => heights.filter((k) => Math.abs(k - h) <= 0.03 * h).length >= 2),
+      0,
+    ) || median(heights);
+  const out: Sheet[] = [];
+  for (let i = 0; i < sheets.length; i++) {
+    let cur = sheets[i]!;
+    // Join forward while the joined span still fits one page.
+    while (i + 1 < sheets.length && cur.y1 - cur.y0 < 0.97 * typical) {
+      const next = sheets[i + 1]!;
+      const span = next.y1 - cur.y0;
+      if (span > 1.03 * typical) break;
+      cur = { y0: cur.y0, y1: next.y1 };
+      i++;
+    }
+    out.push(cur);
+  }
+  return out;
+}
+
+/**
+ * A band as dark as the background at the very top or bottom of a page merges into the gap
+ * next to it: the page comes out short and that gap long by about the same amount. Give the
+ * page those rows back when the numbers agree (±3 px) with the typical page and gap.
+ */
+function regainEdgeBands(sheets: Sheet[], height: number): Sheet[] {
+  if (sheets.length < 3) return sheets;
+  const hs = sheets.map((s) => s.y1 - s.y0);
+  const typical = median(hs);
+  const gaps = sheets.slice(1).map((s, i) => s.y0 - sheets[i]!.y1);
+  const g = median(gaps);
+  return sheets.map((s, i) => {
+    const missing = typical - (s.y1 - s.y0);
+    if (missing <= 3) return s;
+    const before = i > 0 ? s.y0 - sheets[i - 1]!.y1 : s.y0;
+    const after = i < sheets.length - 1 ? sheets[i + 1]!.y0 - s.y1 : height - s.y1;
+    if (Math.abs(before - missing - g) <= 3) return { y0: s.y0 - missing, y1: s.y1 };
+    if (Math.abs(after - missing - g) <= 3) return { y0: s.y0, y1: s.y1 + missing };
+    return s;
+  });
+}
+
+/** Pages set by hand: a column and a repeating page height with a gap, in capture px. */
+export interface SheetGrid {
+  x0: Px;
+  x1: Px;
+  /** Top of the first page. */
+  top: Px;
+  height: Px;
+  gap: Px;
+}
+
+/**
+ * The pages a grid makes, down to the end of the capture. The last page may be cut by the
+ * capture; one shorter than a fifth of a page is left out (a sliver, not a page).
+ */
+export function gridSheets(g: SheetGrid, height: number): SheetLayout | null {
+  const x0 = Math.max(0, Math.round(g.x0));
+  const x1 = Math.round(g.x1);
+  const h = Math.round(g.height);
+  const gap = Math.max(0, Math.round(g.gap));
+  if (x1 - x0 < 20 || h < 20 || g.top < 0 || g.top >= height) return null;
+  const sheets: Sheet[] = [];
+  for (let y = Math.round(g.top); y < height && sheets.length < 2000; y += h + gap) {
+    const y1 = Math.min(y + h, height);
+    if (y1 - y >= 0.2 * h || sheets.length === 0) sheets.push({ y0: y, y1 });
+  }
+  return { x0, x1, sheets };
+}
+
+/** A grid that reproduces a detected layout: its first page, median height and gap. */
+export function gridOf(l: SheetLayout): SheetGrid {
+  const hs = l.sheets.map((s) => s.y1 - s.y0);
+  const gaps = l.sheets.slice(1).map((s, i) => s.y0 - l.sheets[i]!.y1);
+  return {
+    x0: l.x0,
+    x1: l.x1,
+    top: l.sheets[0]?.y0 ?? 0,
+    height: hs.length > 2 ? median(hs.slice(1, -1)) : Math.max(...hs),
+    gap: gaps.length ? median(gaps) : 0,
+  };
 }
 
 function median(v: number[]): number {

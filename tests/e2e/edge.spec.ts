@@ -357,6 +357,28 @@ test('Mark up → Page: watermark on chosen pages, in the preview and the PDF', 
   await page.getByRole('textbox', { name: 'Watermark text' }).fill('DRAFT ONLY');
   await page.getByRole('radio', { name: 'These pages:' }).check();
   await page.getByRole('textbox', { name: 'Watermark pages' }).fill('2');
+  // Shown right away in Mark up too, over page 2 only.
+  const markup = studio.getByTestId('annotate-view').getByTestId('watermark-preview');
+  await expect(markup).toHaveCount(1);
+  await expect(markup).toHaveText('DRAFT ONLY');
+  const page2 = await studio.evaluate(
+    () =>
+      (
+        window as unknown as { __spStudio: { slices(): Array<{ y0: number; y1: number }> } }
+      ).__spStudio.slices()[1]!,
+  );
+  const body = (await studio.getByTestId('annotate-body').boundingBox())!;
+  const mark = (await markup.boundingBox())!;
+  const zoomK =
+    body.width /
+    (await studio.evaluate(
+      () =>
+        (window as unknown as { __spStudio: { size(): { width: number } } }).__spStudio.size()
+          .width,
+    ));
+  const centre = (mark.y + mark.height / 2 - body.y) / zoomK;
+  expect(centre).toBeGreaterThan(page2.y0);
+  expect(centre).toBeLessThan(page2.y1);
   await studio.getByRole('tab', { name: 'Pages' }).click();
   // Exactly one preview page carries it: page 2.
   await expect(studio.getByTestId('watermark-preview')).toHaveCount(1);
@@ -428,7 +450,23 @@ test('Mark up → Filter: black & white reaches the PDF; its text stays searchab
   };
   const original = await page1();
   await studio.getByRole('tab', { name: 'Mark up' }).click();
+  // Mark up shows the page as it is now…
+  const greys = () =>
+    studio.getByTestId('annotate-body').evaluate(async (el) => {
+      const c = el.querySelector('canvas')!;
+      await new Promise((r) => setTimeout(r, 600));
+      const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+      let mid = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        const v = (d[i]! + d[i + 1]! + d[i + 2]!) / 3;
+        if (v > 40 && v < 215) mid++;
+      }
+      return mid / (d.length / 4);
+    });
+  const before = await greys();
   await studio.getByRole('radio', { name: /^Black & white/ }).check();
+  // …and the filter right away: only black and white left.
+  await expect.poll(greys).toBeLessThan(before * 0.2);
   await studio.getByRole('button', { name: 'About Black & white' }).click();
   await expect(studio.getByText(/Sauvola 2000/)).toBeVisible();
   const bw = await page1();
