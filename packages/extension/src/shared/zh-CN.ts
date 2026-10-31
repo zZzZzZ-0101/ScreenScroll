@@ -320,4 +320,8 @@ export const ZH_CN: Record<string, string> = {
   "PDF size: about {size}": "PDF 大小：约 {size}",
   "Fit page": "适合整页",
   "Fit width": "适合宽度",
+  "The breaks follow the document’s own pages, outlined on the strip. Drag a page’s top or bottom edge to set the page height and gap, its sides to set the width; the magnifier shows the exact row.":
+    "分页按文档自己的页面来，长条上用框标出。拖动页面的上下边可调页高和页间距，拖动左右边可调宽度；放大镜会显示精确到行的位置。",
+  "To place breaks yourself instead, turn off “One PDF page per document page” in Pages.":
+    "如果想自己放置分页，请在“页面”中关闭“每个文档页面对应一页 PDF”。",
 };

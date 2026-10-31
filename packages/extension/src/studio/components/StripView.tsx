@@ -1,4 +1,11 @@
-import { KIND_COLOURS, type BreakCheck, type BreakKind, type PaginationDebug } from '@screenscroll/core';
+import {
+  gridSheets,
+  KIND_COLOURS,
+  type BreakCheck,
+  type BreakKind,
+  type PaginationDebug,
+  type SheetGrid,
+} from '@screenscroll/core';
 import { Pin } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Analysis } from '@/studio/engine/analysis';
@@ -40,6 +47,8 @@ interface Props {
   locked?: boolean;
   /** Breaks worth a look get a marker. */
   checks?: BreakCheck[];
+  /** Document pages: drawn over the strip with edges to drag (the page grid follows). */
+  sheetGrid?: { grid: SheetGrid; onGrid: (g: SheetGrid) => void };
 }
 
 export function StripView(p: Props) {
@@ -124,7 +133,17 @@ export function StripView(p: Props) {
               fullWidth={p.session.width * k}
             />
           ))}
-          {breaks.map((b, i) => {
+          {p.sheetGrid && (
+            <SheetOverlay
+              {...p.sheetGrid}
+              k={k}
+              cropX0={p.crop.x0}
+              height={p.session.height}
+              docY={docY}
+              onFocus={setFocusY}
+            />
+          )}
+          {!p.sheetGrid && breaks.map((b, i) => {
             const y = drag?.index === i ? drag.y : b.y;
             const colour = KIND_COLOURS[b.kind];
             return (
@@ -271,3 +290,97 @@ function Magnifier(p: {
     </div>
   );
 }
+
+type Edge = 'top' | 'bottom' | 'left' | 'right';
+
+/**
+ * M8 "drag the pages": the document pages over the strip. Dragging a page's top edge moves
+ * the first page (page 1) or sets the gap (any later page); its bottom edge sets the page
+ * height; the side edges set the column. The grid redraws as you drag and is saved once,
+ * on release, so Undo takes back a whole drag.
+ */
+function SheetOverlay(p: {
+  grid: SheetGrid;
+  onGrid: (g: SheetGrid) => void;
+  k: number;
+  cropX0: number;
+  height: number;
+  docY: (clientY: number) => number;
+  onFocus: (y: number | null) => void;
+}) {
+  const [draft, setDraft] = useState<SheetGrid | null>(null);
+  const [drag, setDrag] = useState<{ edge: Edge; page: number } | null>(null);
+  const g = draft ?? p.grid;
+  const layout = gridSheets(g, p.height);
+  if (!layout) return null;
+  const xOf = (clientX: number, host: HTMLElement) => {
+    const r = host.closest('[data-testid="strip-body"]')!.getBoundingClientRect();
+    return Math.max(0, (clientX - r.left) / p.k + p.cropX0);
+  };
+  const apply = (edge: Edge, page: number, e: React.PointerEvent<HTMLElement>): SheetGrid => {
+    const y = Math.round(p.docY(e.clientY));
+    if (edge === 'left') return { ...g, x0: Math.min(Math.round(xOf(e.clientX, e.currentTarget)), g.x1 - 20) };
+    if (edge === 'right') return { ...g, x1: Math.max(Math.round(xOf(e.clientX, e.currentTarget)), g.x0 + 20) };
+    if (edge === 'top')
+      return page === 0
+        ? { ...g, top: Math.max(0, y) }
+        : { ...g, gap: Math.max(0, Math.round((y - g.top - page * g.height) / page)) };
+    return { ...g, height: Math.max(20, Math.round((y - g.top - page * g.gap) / (page + 1))) };
+  };
+  const handle = (edge: Edge, page: number, style: React.CSSProperties, cursor: string) => (
+    <div
+      key={`${edge}-${page}`}
+      role="slider"
+      aria-label={`Page ${page + 1} ${edge} edge`}
+      aria-valuenow={Math.round(edge === 'left' ? g.x0 : edge === 'right' ? g.x1 : edge === 'top' ? layout.sheets[page]!.y0 : layout.sheets[page]!.y1)}
+      data-testid={`sheet-edge-${edge}-${page}`}
+      className={`absolute z-10 ${cursor} hover:bg-accent/30`}
+      style={style}
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        e.currentTarget.setPointerCapture(e.pointerId);
+        setDrag({ edge, page });
+        setDraft(g);
+      }}
+      onPointerMove={(e) => {
+        if (drag?.edge !== edge || drag.page !== page) return;
+        const next = apply(edge, page, e);
+        setDraft(next);
+        if (edge === 'top' || edge === 'bottom') p.onFocus(Math.round(p.docY(e.clientY)));
+      }}
+      onPointerUp={() => {
+        if (draft) p.onGrid(draft);
+        setDraft(null);
+        setDrag(null);
+        p.onFocus(null);
+      }}
+    />
+  );
+  return (
+    <>
+      {layout.sheets.map((s, i) => {
+        const left = (g.x0 - p.cropX0) * p.k;
+        const width = (g.x1 - g.x0) * p.k;
+        const top = s.y0 * p.k;
+        const h = (s.y1 - s.y0) * p.k;
+        return (
+          <div key={i} data-testid="sheet-outline">
+            <div
+              className="pointer-events-none absolute border-2 border-accent/80"
+              style={{ left, top, width, height: h }}
+            >
+              <span className="absolute -top-0.5 left-1 rounded-b bg-accent px-1 text-[10px] text-white">
+                {i + 1}
+              </span>
+            </div>
+            {handle('top', i, { left, top: top - 4, width, height: 8 }, 'cursor-ns-resize')}
+            {handle('bottom', i, { left, top: top + h - 4, width, height: 8 }, 'cursor-ns-resize')}
+            {i === 0 && handle('left', i, { left: left - 4, top, width: 8, height: h }, 'cursor-ew-resize')}
+            {i === 0 && handle('right', i, { left: left + width - 4, top, width: 8, height: h }, 'cursor-ew-resize')}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+

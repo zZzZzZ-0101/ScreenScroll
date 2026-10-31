@@ -2,6 +2,8 @@ import {
   buildFilename,
   commit,
   DEFAULT_STYLE,
+  confidentReading,
+  gridOf,
   breaksToCheck,
   redactions,
   emptyHistory,
@@ -227,6 +229,12 @@ export function App() {
 
   const slices = result && result.ok ? result.debug.slices : [];
   const checks = useMemo(() => breaksToCheck(slices), [slices]);
+  // The page grid shown for dragging: the one set by hand, else the detected or best reading.
+  const editGrid = useMemo(() => {
+    if (project.sheetGrid) return project.sheetGrid;
+    const l = analysis?.sheets ?? (analysis ? confidentReading(analysis.readings)?.layout : null);
+    return l ? gridOf(l) : null;
+  }, [project.sheetGrid, analysis]);
   const fontPx = useMemo(
     () => (session ? medianFontPx(session.hints.textRuns.map((t) => t.fontSizePx)) : null),
     [session],
@@ -995,12 +1003,17 @@ export function App() {
                   frames={frames.current!}
                   analysis={analysis}
                   debug={result.debug}
-                  crop={result.crop}
+                  crop={result.sheets ? { x0: 0, x1: session.width } : result.crop}
                   edits={edits}
                   onEdits={setEdits}
                   page={page}
                   locked={result.sheets}
                   checks={checks}
+                  sheetGrid={
+                    result.sheets && editGrid
+                      ? { grid: editGrid, onGrid: (sheetGrid) => changeProject({ sheetGrid }) }
+                      : undefined
+                  }
                 />
               )}
             </main>

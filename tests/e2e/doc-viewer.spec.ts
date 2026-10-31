@@ -160,3 +160,62 @@ test('document pages: ranked readings, then edit by hand with ±1 px steps, back
   await expect(gaps).toBeChecked();
   expect(await slices(studio)).toHaveLength(6);
 });
+
+test('document pages: drag a page edge on the strip and the page grid follows', async ({
+  context,
+  serviceWorker,
+}) => {
+  const page = await context.newPage();
+  const url = `${FIXTURES}/doc-viewer.html`;
+  await page.goto(url);
+  await page.bringToFront();
+  const studioPromise = context.waitForEvent('page', {
+    predicate: (p) => p.url().includes('/studio.html'),
+  });
+  await serviceWorker.evaluate(async (u) => {
+    const [tab] = await chrome.tabs.query({ active: true, url: u });
+    await (
+      globalThis as unknown as { __spTest: { capture(id: number): Promise<unknown> } }
+    ).__spTest.capture(tab!.id!);
+  }, url);
+  const studio = await studioPromise;
+  await studio.setViewportSize({ width: 1400, height: 900 });
+  await expect(studio.getByTestId('sheets')).toContainText('6 pages', { timeout: 60_000 });
+  await studio.getByRole('tab', { name: 'Breaks' }).click();
+  await expect(studio.getByTestId('sheet-outline')).toHaveCount(6);
+  await studio.waitForTimeout(500);
+  await studio.screenshot({ path: 'e2e-artifacts/sheet-drag.png' });
+
+  const before = await slices(studio);
+  const h0 = before[0]!.y1 - before[0]!.y0;
+  // Display px per CSS px, from the first outline.
+  const outline = (await studio
+    .getByTestId('sheet-outline')
+    .first()
+    .locator('div')
+    .first()
+    .boundingBox())!;
+  const k = outline.height / h0;
+  const edge = studio.getByTestId('sheet-edge-bottom-0');
+  await edge.scrollIntoViewIfNeeded();
+  const box = (await edge.boundingBox())!;
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await studio.mouse.move(x, y);
+  await studio.mouse.down();
+  await studio.mouse.move(x, y - 30 * k, { steps: 5 });
+  await studio.mouse.up();
+  // Every page is now about 30 px shorter, and the card says the pages are set by hand.
+  const after = await slices(studio);
+  expect(Math.abs(after[0]!.y1 - after[0]!.y0 - (h0 - 30))).toBeLessThanOrEqual(2);
+  expect(Math.abs(after[2]!.y1 - after[2]!.y0 - (h0 - 30))).toBeLessThanOrEqual(2);
+  await studio.getByRole('tab', { name: 'Pages' }).click();
+  await expect(
+    studio.getByTestId('sheets').getByRole('radio', { name: 'Set by hand' }),
+  ).toBeChecked();
+  // One drag is one undo step.
+  await studio.keyboard.press('Control+z');
+  await expect
+    .poll(async () => (await slices(studio))[0]!.y1 - (await slices(studio))[0]!.y0)
+    .toBe(h0);
+});

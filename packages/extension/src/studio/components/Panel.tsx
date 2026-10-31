@@ -605,8 +605,12 @@ export function BreaksPanel(p: BreaksProps) {
     return (
       <aside className={aside} aria-label={t('Page breaks')}>
         <p className="text-neutral-600 dark:text-neutral-300">
-          The breaks follow the document&apos;s own pages. To place them yourself, turn off
-          &ldquo;One PDF page per document page&rdquo; in Pages.
+          {t(
+            'The breaks follow the document’s own pages, outlined on the strip. Drag a page’s top or bottom edge to set the page height and gap, its sides to set the width; the magnifier shows the exact row.',
+          )}
+        </p>
+        <p className="pt-2 text-[12px] text-neutral-500">
+          {t('To place breaks yourself instead, turn off “One PDF page per document page” in Pages.')}
         </p>
       </aside>
     );
