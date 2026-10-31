@@ -133,7 +133,22 @@ function background(p: SheetProfile): number {
  * 4. Sheets: runs between gaps of ≥ 4 rows. A band as dark as B across a whole page looks
  *    like a gap, so neighbours that together make one typical page are joined again.
  */
-export function detectSheets(p: SheetProfile): SheetLayout | null {
+/** What page detection reads from a capture: the column, the background and gap rows. */
+export interface SheetEvidence {
+  x0: number;
+  x1: number;
+  bg: number;
+  paper: number;
+  /** Per row: 1 where the row is background (or a page shadow) across the column. */
+  gap: Uint8Array;
+  height: number;
+}
+
+/**
+ * The evidence for document pages, or null when the capture has no page-like column on a
+ * background (an ordinary web page). Shared by detection and by the ranked alternatives.
+ */
+export function sheetEvidence(p: SheetProfile): SheetEvidence | null {
   const { width, height, buckets } = p;
   if (height < 2 * MIN_SHEET || width < 50) return null;
   const bg = background(p);
@@ -231,7 +246,13 @@ export function detectSheets(p: SheetProfile): SheetLayout | null {
     for (const b of inner) if (Math.abs(p.grey[at + b]! - bg) <= tol) same++;
     gap[y] = same >= GAP_SHARE * inner.length || shadowRow(y) ? 1 : 0;
   }
+  return { x0, x1, bg, paper, gap, height };
+}
 
+export function detectSheets(p: SheetProfile): SheetLayout | null {
+  const ev = sheetEvidence(p);
+  if (!ev) return null;
+  const { x0, x1, gap, height } = ev;
   // Runs of non-gap rows are sheets; short gaps are part of a sheet.
   let sheets: Sheet[] = [];
   let y = 0;
@@ -252,11 +273,6 @@ export function detectSheets(p: SheetProfile): SheetLayout | null {
     }
     sheets.push({ y0: start, y1: end });
   }
-  sheets = sheets.map(({ y0, y1 }) => {
-    for (let k = 0; k < 12 && y1 - y0 > 2 && shadowRow(y0); k++) y0++;
-    for (let k = 0; k < 12 && y1 - y0 > 2 && shadowRow(y1 - 1); k++) y1--;
-    return { y0, y1 };
-  });
   sheets = joinSplitSheets(sheets);
   sheets = sheets.filter((s) => s.y1 - s.y0 >= MIN_SHEET);
   sheets = regainEdgeBands(sheets, height);
@@ -397,4 +413,141 @@ export function fitSheets(layout: PageLayout, l: SheetLayout): PageLayout {
     T: layout.box.h / s,
     box: { ...layout.box, x: layout.box.x + (layout.box.w - w) / 2, w },
   };
+}
+
+/** A way to read the capture as pages, with how well the pixels support it. */
+export interface SheetCandidate {
+  id: string;
+  /** Plain name: "Found from the gaps", "A4 pages"… */
+  label: string;
+  /** The grid behind it, or null for the layout found from the gaps. */
+  grid: SheetGrid | null;
+  layout: SheetLayout;
+  /** 0…1: how well the layout matches the background rows the capture shows. */
+  fit: number;
+  /** Share of belief among the alternatives offered (they add up to 1). */
+  probability: number;
+}
+
+/** Page shapes (height ÷ width) common in viewers: paper, then slides. */
+const SHAPES: Array<[string, string, number]> = [
+  ['a4', 'A4 pages', Math.SQRT2],
+  ['letter', 'Letter pages', 11 / 8.5],
+  ['legal', 'Legal pages', 14 / 8.5],
+  ['a4-land', 'A4 landscape pages', 1 / Math.SQRT2],
+  ['slides-16-9', '16:9 slides', 9 / 16],
+  ['slides-4-3', '4:3 slides', 3 / 4],
+];
+
+/**
+ * How well a layout explains the evidence, 0…1: rows between its pages should be
+ * background, rows inside them should not, and no long background run should sit inside a
+ * page unexplained.
+ */
+export function layoutFit(ev: SheetEvidence, l: SheetLayout): number {
+  if (!l.sheets.length) return 0;
+  let between = 0;
+  let betweenGap = 0;
+  let inside = 0;
+  let insideGap = 0;
+  let unexplained = 0;
+  l.sheets.forEach((s, i) => {
+    let run = 0;
+    for (let y = Math.max(0, s.y0 + 2); y < Math.min(ev.height, s.y1 - 2); y++) {
+      inside++;
+      if (ev.gap[y]) {
+        insideGap++;
+        if (++run === 6) unexplained++;
+      } else run = 0;
+    }
+    const next = l.sheets[i + 1];
+    if (next) {
+      // Pages that touch are judged on the rows right at the join.
+      const a = next.y0 > s.y1 ? s.y1 : s.y1 - 1;
+      const b = next.y0 > s.y1 ? next.y0 : s.y1 + 1;
+      for (let y = Math.max(0, a); y < Math.min(ev.height, b); y++) {
+        between++;
+        betweenGap += ev.gap[y]!;
+      }
+    }
+  });
+  const gapFit = between ? betweenGap / between : 0.5;
+  const pageFit = inside ? 1 - insideGap / inside : 0;
+  return gapFit * pageFit * Math.exp(-unexplained / l.sheets.length);
+}
+
+/**
+ * Ranked ways to read a document viewer capture as pages (M7 "several interpretations"):
+ * the layout found from the gaps, and grids of common page shapes at the column's width,
+ * each placed on a page top the capture shows. Each gets a fit; probabilities are a softmax
+ * of the fits (sharp: a clearly better reading takes most of the belief). Readings that put
+ * the same breaks within 3 px are one.
+ */
+export function sheetCandidates(
+  ev: SheetEvidence | null,
+  detected: SheetLayout | null,
+  max = 3,
+  /** CSS px per analysis column: rows are CSS px, columns may be scaled down. */
+  colScale = 1,
+): SheetCandidate[] {
+  if (!ev) return [];
+  const width = (ev.x1 - ev.x0) * colScale;
+  const out: Array<Omit<SheetCandidate, 'probability'>> = [];
+  if (detected)
+    out.push({
+      id: 'gaps',
+      label: 'Found from the gaps',
+      grid: null,
+      layout: detected,
+      fit: layoutFit(ev, detected),
+    });
+  // Gap length: the commonest run of background rows between content (1–80 rows).
+  const runs = new Map<number, number>();
+  const tops: number[] = [];
+  for (let y = 0, run = 0; y < ev.height; y++) {
+    if (ev.gap[y]) run++;
+    else {
+      if (run >= 1 && run <= 80) runs.set(run, (runs.get(run) ?? 0) + 1);
+      if (run >= 1 || y === 0) tops.push(y);
+      run = 0;
+    }
+  }
+  let gap = 0;
+  let seen = 0;
+  for (const [len, n] of runs) if (n > seen || (n === seen && len < gap)) [gap, seen] = [len, n];
+  for (const [id, label, shape] of SHAPES) {
+    const height = Math.round(width * shape);
+    if (height < MIN_SHEET || height > ev.height * 1.5) continue;
+    let best: Omit<SheetCandidate, 'probability'> | null = null;
+    for (const top of tops.slice(0, 40)) {
+      // Back up whole pages so the grid also covers what is above this top.
+      const first = top - Math.floor(top / (height + gap)) * (height + gap);
+      const grid = { x0: ev.x0, x1: ev.x1, top: first, height, gap };
+      const layout = gridSheets(grid, ev.height);
+      if (!layout) continue;
+      const fit = layoutFit(ev, layout);
+      if (!best || fit > best.fit) best = { id, label, grid, layout, fit };
+    }
+    if (best) out.push(best);
+  }
+  const same = (a: SheetLayout, b: SheetLayout) =>
+    a.sheets.length === b.sheets.length &&
+    a.sheets.every(
+      (s, i) => Math.abs(s.y1 - b.sheets[i]!.y1) <= 3 && Math.abs(s.y0 - b.sheets[i]!.y0) <= 3,
+    );
+  const kept: typeof out = [];
+  for (const c of [...out].sort((a, b) => b.fit - a.fit))
+    if (!kept.some((k) => same(k.layout, c.layout))) kept.push(c);
+  const top = kept.slice(0, max);
+  const weights = top.map((c) => Math.exp(12 * c.fit));
+  const sum = weights.reduce((a, b) => a + b, 0) || 1;
+  return top.map((c, i) => ({ ...c, probability: weights[i]! / sum }));
+}
+
+/** A reading this good is used without asking when the gaps found nothing. */
+export const CONFIDENT_FIT = 0.9;
+
+export function confidentReading(readings: readonly SheetCandidate[]): SheetCandidate | null {
+  const r = readings[0];
+  return r && r.fit >= CONFIDENT_FIT ? r : null;
 }

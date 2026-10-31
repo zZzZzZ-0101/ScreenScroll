@@ -1,10 +1,13 @@
 import {
   detectSheets,
+  sheetCandidates,
+  sheetEvidence,
   ownedBands,
   RowAnalyzer,
   SheetAnalyzer,
   toGrey,
   type RowProfile,
+  type SheetCandidate,
   type SheetLayout,
 } from '@screenscroll/core';
 import type { FrameCache, LoadedSession } from './session';
@@ -19,6 +22,8 @@ export interface Analysis {
   stripScale: number;
   /** Document pages (a PDF or document viewer), in CSS px; null for ordinary pages. */
   sheets: SheetLayout | null;
+  /** Ranked ways to read the capture as pages (CSS px), best first; empty for ordinary pages. */
+  readings: SheetCandidate[];
 }
 
 /**
@@ -65,8 +70,15 @@ export async function analyze(
     // Let the page paint between frames on long captures.
     await new Promise((r) => setTimeout(r, 0));
   }
-  const found = detectSheets(sheetAnalyzer.finish());
+  const profile = sheetAnalyzer.finish();
+  const found = detectSheets(profile);
   const k = s.width / aw; // analysis columns → CSS px (rows are already 1 per CSS px)
-  const sheets = found && { ...found, x0: found.x0 * k, x1: found.x1 * k };
-  return { rows: analyzer.finish(), strip, stripScale, sheets };
+  const toCss = <T extends { x0: number; x1: number }>(v: T): T => ({ ...v, x0: v.x0 * k, x1: v.x1 * k });
+  const sheets = found && toCss(found);
+  const readings = sheetCandidates(sheetEvidence(profile), found, 3, k).map((c) => ({
+    ...c,
+    layout: toCss(c.layout),
+    grid: c.grid && toCss(c.grid),
+  }));
+  return { rows: analyzer.finish(), strip, stripScale, sheets, readings };
 }

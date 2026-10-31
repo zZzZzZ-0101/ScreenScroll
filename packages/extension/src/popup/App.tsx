@@ -17,6 +17,7 @@ import { useEffect, useState } from 'react';
 import { lastSession, listCaptures, type SessionRecord } from '@/shared/db';
 import type { CaptureMode } from '@/shared/messages';
 import { loadSettings, saveSettings, type Settings } from '@/shared/settings';
+import { ThemeSwitch } from '@/shared/ThemeSwitch';
 
 /**
  * UI §1: the small panel under the toolbar icon. One main action, every other way to
@@ -147,6 +148,10 @@ export function App() {
           </button>
         </div>
       </header>
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-neutral-500">Theme</span>
+        <ThemeSwitch />
+      </div>
 
       {running && (
         <section

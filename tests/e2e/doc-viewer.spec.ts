@@ -36,9 +36,7 @@ test('a document viewer: one PDF page per document page, cropped to the page', a
   }, url);
   const studio = await studioPromise;
   await studio.setViewportSize({ width: 1400, height: 900 });
-  await expect(studio.getByTestId('sheets')).toHaveText(/6 document pages found/, {
-    timeout: 60_000,
-  });
+  await expect(studio.getByTestId('sheets')).toContainText('6 pages', { timeout: 60_000 });
 
   // Where the sheets are on the page, in the viewer's coordinates.
   const sheets = await page.evaluate(() => {
@@ -109,7 +107,7 @@ test('a document viewer: one PDF page per document page, cropped to the page', a
   await expect.poll(async () => (await slices(studio)).some((s) => s.x0 < 10)).toBe(true);
 });
 
-test('document pages by hand: prefilled from detection, page height edited, back to detected', async ({
+test('document pages: ranked readings, then edit by hand with ±1 px steps, back to the best reading', async ({
   context,
   serviceWorker,
 }) => {
@@ -128,26 +126,37 @@ test('document pages by hand: prefilled from detection, page height edited, back
   }, url);
   const studio = await studioPromise;
   await studio.setViewportSize({ width: 1400, height: 900 });
-  await expect(studio.getByTestId('sheets')).toHaveText(/6 document pages found/, {
-    timeout: 60_000,
-  });
-  await studio.getByRole('button', { name: 'Wrong page size? Set pages by hand' }).click();
+  await expect(studio.getByTestId('sheets')).toContainText('6 pages', { timeout: 60_000 });
+  // The ways to read the pages, best first with its probability; the gaps reading is chosen.
+  const doc = studio.getByTestId('sheets');
+  const gaps = doc.getByRole('radio', { name: /Found from the gaps/ });
+  await expect(gaps).toBeChecked();
+  const pct = Number(/(\d+)%/.exec((await doc.textContent()) ?? '')![1]);
+  expect(pct).toBeGreaterThanOrEqual(50);
+
+  await doc.getByRole('button', { name: 'Edit pages' }).click();
   const card = studio.getByTestId('sheet-grid');
-  await expect(card).toContainText('6 pages');
+  await expect(doc).toContainText('6 pages');
   // Prefilled with the detected grid: 1075 px pages, 18 px gaps.
   await expect(card.getByRole('spinbutton', { name: 'Page height' })).toHaveValue('1075');
   await expect(card.getByRole('spinbutton', { name: 'Gap between pages' })).toHaveValue('18');
+  // ±1 px steps, for the last pixel (a dark line at an edge).
+  await card.getByRole('button', { name: 'Right edge (x) −1' }).click();
+  const right = Number(await card.getByRole('spinbutton', { name: 'Right edge (x)' }).inputValue());
+  expect((await slices(studio))[0]!.x1).toBeCloseTo(right, 0);
 
   // Half-height pages: twice as many, each 500 px, starting at the same top.
   await card.getByRole('spinbutton', { name: 'Page height' }).fill('500');
-  await expect(card).toContainText(/1[23] pages/);
+  await expect(doc).toContainText(/1[23] pages/);
+  await expect(doc.getByRole('radio', { name: 'Set by hand' })).toBeChecked();
   const got = await slices(studio);
   expect(got[0]!.y1 - got[0]!.y0).toBe(500);
   expect(got[1]!.y0 - got[0]!.y1).toBe(18);
   expect(got.every((s) => s.overlapTop === 0)).toBe(true);
-  await card.screenshot({ path: 'e2e-artifacts/sheet-grid.png' });
+  await doc.screenshot({ path: 'e2e-artifacts/sheet-grid.png' });
 
-  await card.getByRole('button', { name: 'Use detected' }).click();
+  await card.getByRole('button', { name: 'Back to the best reading' }).click();
   await expect(studio.getByTestId('sheet-grid')).toHaveCount(0);
+  await expect(gaps).toBeChecked();
   expect(await slices(studio)).toHaveLength(6);
 });

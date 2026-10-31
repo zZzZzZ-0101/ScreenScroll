@@ -720,9 +720,12 @@ export function App() {
         }
         sheets={{
           detected: analysis.sheets,
+          readings: analysis.readings,
           grid: project.sheetGrid ?? null,
           pages: result.ok && result.sheets ? result.debug.slices.length : 0,
           width: session.width,
+          followSheets: settings.followSheets,
+          onFollow: (followSheets) => updateSettings({ followSheets }),
           onGrid: (sheetGrid) => changeProject({ sheetGrid }),
         }}
         estimate={estimate}

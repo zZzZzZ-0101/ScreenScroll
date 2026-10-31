@@ -3,6 +3,7 @@ import {
   computeLayout,
   contentCrop,
   cropAround,
+  confidentReading,
   fitSheets,
   gridSheets,
   paginateDebug,
@@ -74,7 +75,7 @@ export function planPages(
   // A document viewer: its own pages decide, one PDF page per sheet (a drawn crop wins).
   // Pages set by hand win over detected ones and apply even when nothing was detected.
   const grid = project.sheetGrid ? gridSheets(project.sheetGrid, session.height) : null;
-  const sheets = grid ?? analysis.sheets;
+  const sheets = grid ?? analysis.sheets ?? confidentReading(analysis.readings)?.layout ?? null;
   if (sheets && (grid || settings.followSheets) && !manual) {
     try {
       const layout = fitSheets(computeLayout(page, sheets.x1 - sheets.x0), sheets);

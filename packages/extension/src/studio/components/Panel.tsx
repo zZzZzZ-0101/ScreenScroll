@@ -3,12 +3,14 @@ import {
   FILTERS,
   PAPERS,
   QUALITY,
+  confidentReading,
   gridOf,
   printedTextSize,
   type BreakCheck,
   type ExportPreset,
   type FilterId,
   type PaperId,
+  type SheetCandidate,
   type SheetGrid,
   type SheetLayout,
 } from '@screenscroll/core';
@@ -30,6 +32,7 @@ import {
   type Presets,
   type Settings,
 } from '@/shared/settings';
+import { ThemeSwitch } from '@/shared/ThemeSwitch';
 import type { Edits } from '../App';
 
 const field = 'flex items-center justify-between gap-2 py-1';
@@ -124,11 +127,15 @@ function OcrCard({ o }: { o: OcrCardProps }) {
 
 export interface SheetsCardProps {
   detected: SheetLayout | null;
+  /** Ranked readings of the capture as pages, best first (empty for ordinary pages). */
+  readings: SheetCandidate[];
   grid: SheetGrid | null;
-  /** Pages the grid (or detection) makes now. */
+  /** Pages the current choice makes. */
   pages: number;
   /** Capture width, CSS px. */
   width: number;
+  followSheets: boolean;
+  onFollow: (on: boolean) => void;
   onGrid: (g: SheetGrid | null) => void;
 }
 
@@ -142,60 +149,174 @@ const GRID_FIELDS: [keyof SheetGrid, string, string][] = [
 ];
 
 /**
- * Document pages by hand: when detection finds the wrong page size, or none, the user sets
- * the page grid (CSS px of the capture). Prefilled from detection, so a small fix is one field.
+ * Document pages (a PDF or document viewer): the ways the capture can be read as pages,
+ * each with its probability, and an editor to set the pages exactly (CSS px of the
+ * capture), prefilled from the chosen reading, with ±1 px steps for fine work.
  */
 function SheetsCard(p: SheetsCardProps) {
-  if (!p.grid)
+  const [editing, setEditing] = useState(false);
+  const sameGrid = (a: SheetGrid | null, b: SheetGrid | null) =>
+    !!a &&
+    !!b &&
+    (['x0', 'x1', 'top', 'height', 'gap'] as const).every((k) => Math.abs(a[k] - b[k]) < 0.5);
+  const chosen = p.grid
+    ? (p.readings.find((r) => sameGrid(r.grid, p.grid))?.id ?? 'hand')
+    : p.detected
+      ? 'gaps'
+      : (confidentReading(p.readings)?.id ?? null);
+  const start = (): SheetGrid =>
+    p.grid ??
+    (p.detected
+      ? gridOf(p.detected)
+      : p.readings[0]?.grid ?? {
+          x0: 0,
+          x1: p.width,
+          top: 0,
+          height: Math.round(p.width * Math.SQRT2),
+          gap: 0,
+        });
+  if (!p.readings.length && !p.detected && !p.grid && !editing)
     return (
       <button
         type="button"
-        className="mb-2 text-[12px] text-neutral-500 underline-offset-2 hover:text-neutral-900 hover:underline dark:hover:text-white"
-        onClick={() =>
-          p.onGrid(
-            p.detected
-              ? gridOf(p.detected)
-              : { x0: 0, x1: p.width, top: 0, height: Math.round(p.width * Math.SQRT2), gap: 0 },
-          )
-        }
+        className={`${button} mb-2 w-full`}
+        onClick={() => {
+          p.onGrid(start());
+          setEditing(true);
+        }}
       >
-        {p.detected ? 'Wrong page size? Set pages by hand' : 'A document? Set its pages by hand'}
+        A document? Set its pages by hand
       </button>
     );
   const g = p.grid;
   return (
-    <div
-      className="mb-2 rounded-md border border-accent/40 bg-accent/5 p-2"
-      data-testid="sheet-grid"
-    >
-      <p className="font-medium">
-        Pages set by hand · {p.pages ? `${p.pages} pages` : 'no pages: check the numbers'}
+    <div className="mb-2 rounded-md border border-accent/40 bg-accent/5 p-2" data-testid="sheets">
+      <p className="flex justify-between font-medium">
+        Document pages
+        <span className="font-normal text-neutral-500">
+          {p.pages ? `${p.pages} pages` : 'not used'}
+        </span>
       </p>
-      <div className="grid grid-cols-2 gap-x-2 pt-1">
-        {GRID_FIELDS.map(([k, label, name]) => (
-          <label key={k} className="flex items-center justify-between gap-1 py-0.5" title={name}>
-            <span className="text-neutral-600 dark:text-neutral-300">{label}</span>
-            <input
-              type="number"
-              aria-label={name}
-              min={0}
-              step={1}
-              value={Math.round(g[k])}
-              onChange={(e) => {
-                const v = e.target.valueAsNumber;
-                if (Number.isFinite(v)) p.onGrid({ ...g, [k]: v });
-              }}
-              className={`${control} w-16 py-0.5 text-right font-mono text-[11px]`}
-            />
-          </label>
-        ))}
-      </div>
-      <p className="pt-1 text-[11px] text-neutral-500">CSS px of the capture.</p>
-      <div className="flex gap-1 pt-1">
-        <button type="button" className={button} onClick={() => p.onGrid(null)}>
-          {p.detected ? 'Use detected' : 'Turn off'}
+      {p.readings.length > 0 && (
+        <div role="radiogroup" aria-label="Ways to read the pages" className="pt-1">
+          {p.readings.map((r) => (
+            <label key={r.id} className="flex items-center gap-2 py-0.5" title={`Fit ${r.fit.toFixed(3)}: rows between pages that are background × rows inside pages that are not`}>
+              <input
+                type="radio"
+                name="reading"
+                checked={chosen === r.id}
+                onChange={() => p.onGrid(r.grid)}
+                className="accent-[#0e7c7b]"
+              />
+              <span className="min-w-0 flex-1 truncate">
+                {r.label}
+                <span className="text-neutral-500">
+                  {' '}
+                  · {r.layout.sheets.length} ×{' '}
+                  {Math.round(
+                    r.grid?.height ??
+                      Math.max(...r.layout.sheets.map((s) => s.y1 - s.y0)),
+                  )}{' '}
+                  px
+                </span>
+              </span>
+              <span className="font-mono text-[11px] text-neutral-600 dark:text-neutral-300">
+                {Math.round(r.probability * 100)}%
+              </span>
+            </label>
+          ))}
+          {chosen === 'hand' && (
+            <label className="flex items-center gap-2 py-0.5">
+              <input type="radio" name="reading" checked readOnly className="accent-[#0e7c7b]" />
+              <span className="flex-1">Set by hand</span>
+            </label>
+          )}
+        </div>
+      )}
+      <label className="flex items-center gap-2 pt-1 text-neutral-600 dark:text-neutral-300">
+        <input
+          type="checkbox"
+          checked={p.followSheets || !!p.grid}
+          onChange={(e) => {
+            if (!e.target.checked) p.onGrid(null);
+            p.onFollow(e.target.checked);
+          }}
+          className="accent-[#0e7c7b]"
+        />
+        One PDF page per document page
+      </label>
+      {!editing ? (
+        <button
+          type="button"
+          className={`${button} mt-1 w-full`}
+          onClick={() => {
+            if (!p.grid) p.onGrid(start());
+            setEditing(true);
+          }}
+        >
+          Edit pages
         </button>
-      </div>
+      ) : (
+        g && (
+          <div className="mt-1 border-t border-accent/30 pt-1" data-testid="sheet-grid">
+            <p className="pb-1 text-[12px] text-neutral-500">
+              CSS px of the capture. The pages update as you change a number.
+            </p>
+            {GRID_FIELDS.map(([k, label, name]) => (
+              <div key={k} className="flex items-center justify-between gap-1 py-0.5" title={name}>
+                <span className="text-neutral-600 dark:text-neutral-300">{label}</span>
+                <span className="flex items-center gap-0.5">
+                  <button
+                    type="button"
+                    aria-label={`${name} −1`}
+                    className="h-6 w-6 rounded border border-neutral-300 hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
+                    onClick={() => p.onGrid({ ...g, [k]: Math.max(0, Math.round(g[k]) - 1) })}
+                  >
+                    −
+                  </button>
+                  <input
+                    type="number"
+                    aria-label={name}
+                    min={0}
+                    step={1}
+                    value={Math.round(g[k])}
+                    onChange={(e) => {
+                      const v = e.target.valueAsNumber;
+                      if (Number.isFinite(v)) p.onGrid({ ...g, [k]: v });
+                    }}
+                    className={`${control} w-16 py-0.5 text-right font-mono text-[11px]`}
+                  />
+                  <button
+                    type="button"
+                    aria-label={`${name} +1`}
+                    className="h-6 w-6 rounded border border-neutral-300 hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
+                    onClick={() => p.onGrid({ ...g, [k]: Math.round(g[k]) + 1 })}
+                  >
+                    +
+                  </button>
+                </span>
+              </div>
+            ))}
+            <div className="flex gap-1 pt-1">
+              <button type="button" className={button} onClick={() => setEditing(false)}>
+                Done
+              </button>
+              {(p.detected || p.readings.length > 0) && (
+                <button
+                  type="button"
+                  className={button}
+                  onClick={() => {
+                    p.onGrid(p.detected ? null : (p.readings[0]?.grid ?? null));
+                    setEditing(false);
+                  }}
+                >
+                  Back to the best reading
+                </button>
+              )}
+            </div>
+          </div>
+        )
+      )}
     </div>
   );
 }
@@ -286,23 +407,6 @@ export function PagesPanel(p: PagesProps) {
   return (
     <aside className={aside} aria-label="Page setup">
       <OcrCard o={p.ocr} />
-      {p.sheetCount !== null && !p.sheets.grid && (
-        <div
-          className="mb-2 rounded-md border border-accent/40 bg-accent/5 p-2"
-          data-testid="sheets"
-        >
-          <p className="font-medium">{p.sheetCount} document pages found</p>
-          <label className="flex items-center gap-2 pt-1 text-neutral-600 dark:text-neutral-300">
-            <input
-              type="checkbox"
-              checked={p.settings.followSheets}
-              onChange={(e) => p.onSettings({ followSheets: e.target.checked })}
-              className="accent-[#0e7c7b]"
-            />
-            One PDF page per document page
-          </label>
-        </div>
-      )}
       <SheetsCard {...p.sheets} />
       {p.text && <TextSizeCard {...p.text} settings={p.settings} onSettings={p.onSettings} />}
       <label className={field}>
@@ -393,6 +497,10 @@ export function PagesPanel(p: PagesProps) {
       </button>
       {more && (
         <div className="pt-1">
+          <div className={field}>
+            Theme
+            <ThemeSwitch />
+          </div>
           <label className={field}>
             Margins (mm)
             <input
