@@ -97,7 +97,7 @@ export interface SheetLayout {
 }
 
 /** Gaps shorter than this are inside a sheet (a rule, a dark table border). */
-const MIN_GAP = 4;
+const MIN_GAP = 2;
 const MIN_SHEET = 120;
 /** Share of the sheet columns that must look like the background for a gap row. */
 const GAP_SHARE = 0.6;
@@ -164,25 +164,64 @@ export function detectSheets(p: SheetProfile): SheetLayout | null {
     x = e;
   }
   if (!best) return null;
-  const [x0, x1] = best;
+  let [x0, x1] = best;
   // There must be background beside the sheets to compare gaps with, and the sheets must be
   // a real column, not a sliver.
   const margin = 0.02 * width;
   if (x1 - x0 < 0.25 * width || (x0 < margin && width - x1 < margin)) return null;
   // Paper: the commonest grey inside the sheet columns. On an ordinary page that is the page's
   // own background (text on white around white), so it is not a viewer.
-  const inside = new Uint32Array(LEVELS);
+  // Counted in 8-level buckets: a scan's noisy paper spreads over several levels and must
+  // still outweigh its ink, which sits on one.
+  const inside = new Uint32Array(LEVELS / 8);
   for (let x = x0; x < x1; x++)
-    for (let l = 0; l < LEVELS; l++) inside[l]! += p.colHist[x * LEVELS + l]!;
-  let paper = 0;
-  for (let l = 1; l < LEVELS; l++) if (inside[l]! > inside[paper]!) paper = l;
-  if (Math.abs(paper - bg) <= tol) return null;
+    for (let l = 0; l < LEVELS; l++) inside[l >> 3]! += p.colHist[x * LEVELS + l]!;
+  let bucket = 0;
+  for (let b = 1; b < inside.length; b++) if (inside[b]! > inside[bucket]!) bucket = b;
+  // …then the commonest exact level within that bucket (255 and 248 share one).
+  const levels = new Uint32Array(8);
+  for (let x = x0; x < x1; x++)
+    for (let i = 0; i < 8; i++) levels[i]! += p.colHist[x * LEVELS + bucket * 8 + i]!;
+  let top = 0;
+  for (let i = 1; i < 8; i++) if (levels[i]! > levels[top]!) top = i;
+  const paper = bucket * 8 + top;
+  if (Math.abs(paper - bg) <= Math.max(tol, 4)) return null;
+  // Edges: a page's shadow and its anti-aliased edge column differ from the background in
+  // every row, so they join the run, but they hold almost no paper. Trim columns with less
+  // than half the paper of a typical inside column (else a dark line edges the page).
+  const paperRows = (x: number) => {
+    let n = 0;
+    for (let l = Math.max(0, Math.round(paper - 12)); l <= Math.min(255, paper + 12); l++)
+      n += p.colHist[x * LEVELS + l]!;
+    return n;
+  };
+  const typicalPaper = median(
+    Array.from({ length: Math.max(1, x1 - x0 - 6) }, (_, i) => paperRows(x0 + 3 + i)),
+  );
+  while (x1 - x0 > 2 && paperRows(x0) < 0.5 * typicalPaper) x0++;
+  while (x1 - x0 > 2 && paperRows(x1 - 1) < 0.5 * typicalPaper) x1--;
 
   const bw = width / buckets;
   const inner: number[] = [];
   for (let b = 0; b < buckets; b++) if (b * bw >= x0 + 2 && (b + 1) * bw <= x1 - 2) inner.push(b);
   if (inner.length < 2) return null;
 
+  // Like the columns: a page's shadow rows differ from the background but hold no paper.
+  // A uniform row closer to the background than to the paper is shadow, not page.
+  const shadowRow = (y: number) => {
+    const at = y * buckets;
+    let lo = 255;
+    let hi = 0;
+    let sum = 0;
+    for (const b of inner) {
+      const g = p.grey[at + b]!;
+      lo = Math.min(lo, g);
+      hi = Math.max(hi, g);
+      sum += g;
+    }
+    const mean = sum / inner.length;
+    return hi - lo <= 6 && Math.abs(mean - bg) < Math.abs(mean - paper);
+  };
   // Rows: a gap row is mostly background across the sheet columns. Not all of it: whatever
   // the viewer dims behind its pages (a file list) can show through part of a gap.
   const gap = new Uint8Array(height);
@@ -190,7 +229,7 @@ export function detectSheets(p: SheetProfile): SheetLayout | null {
     const at = y * buckets;
     let same = 0;
     for (const b of inner) if (Math.abs(p.grey[at + b]! - bg) <= tol) same++;
-    gap[y] = same >= GAP_SHARE * inner.length ? 1 : 0;
+    gap[y] = same >= GAP_SHARE * inner.length || shadowRow(y) ? 1 : 0;
   }
 
   // Runs of non-gap rows are sheets; short gaps are part of a sheet.
@@ -213,6 +252,11 @@ export function detectSheets(p: SheetProfile): SheetLayout | null {
     }
     sheets.push({ y0: start, y1: end });
   }
+  sheets = sheets.map(({ y0, y1 }) => {
+    for (let k = 0; k < 12 && y1 - y0 > 2 && shadowRow(y0); k++) y0++;
+    for (let k = 0; k < 12 && y1 - y0 > 2 && shadowRow(y1 - 1); k++) y1--;
+    return { y0, y1 };
+  });
   sheets = joinSplitSheets(sheets);
   sheets = sheets.filter((s) => s.y1 - s.y0 >= MIN_SHEET);
   sheets = regainEdgeBands(sheets, height);
@@ -262,7 +306,8 @@ function joinSplitSheets(sheets: Sheet[]): Sheet[] {
 function regainEdgeBands(sheets: Sheet[], height: number): Sheet[] {
   if (sheets.length < 3) return sheets;
   const hs = sheets.map((s) => s.y1 - s.y0);
-  const typical = median(hs);
+  // Whole pages only: the first and last may be cut by the capture.
+  const typical = median(hs.slice(1, -1));
   const gaps = sheets.slice(1).map((s, i) => s.y0 - sheets[i]!.y1);
   const g = median(gaps);
   return sheets.map((s, i) => {

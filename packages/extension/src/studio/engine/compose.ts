@@ -35,7 +35,11 @@ export async function composePage(
   const draw = async (band: { x0: number; x1: number; y0: number; y1: number }, dy: number) => {
     for (const op of composeOps(s.geoms, band, outDpr)) {
       const bitmap = await frames.get(op.frame);
-      ctx.drawImage(bitmap, op.sx, op.sy, op.sw, op.sh, op.dx, op.dy + dy, op.dw, op.dh);
+      // Whole destination pixels, top down and bottom up: at fractional scales (previews)
+      // two frames would otherwise leave a hairline seam between them.
+      const top = Math.floor(op.dy + dy);
+      const bottom = Math.ceil(op.dy + dy + op.dh);
+      ctx.drawImage(bitmap, op.sx, op.sy, op.sw, op.sh, op.dx, top, op.dw, bottom - top);
     }
   };
   if (region.repeat) await draw({ ...region, ...region.repeat }, 0);
