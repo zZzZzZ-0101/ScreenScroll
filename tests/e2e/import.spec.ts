@@ -23,7 +23,7 @@ test('Open an image: a tall screenshot becomes a capture, paginated between its 
   const studioPromise = context.waitForEvent('page', {
     predicate: (p) => p.url().includes('/studio.html'),
   });
-  await lib.locator('input[type=file]').setInputFiles(file);
+  await lib.getByLabel('Open an image file').setInputFiles(file);
   const studio = await studioPromise;
   await expect(studio.getByRole('heading', { name: 'long-screenshot' })).toBeVisible({
     timeout: 30_000,
@@ -62,7 +62,7 @@ test('Open an image: a file that is not an image says so', async ({ context, ext
   writeFileSync('e2e-artifacts/not-an-image.png', 'just text');
   const lib = await context.newPage();
   await lib.goto(`chrome-extension://${extensionId}/captures.html`);
-  await lib.locator('input[type=file]').setInputFiles('e2e-artifacts/not-an-image.png');
+  await lib.getByLabel('Open an image file').setInputFiles('e2e-artifacts/not-an-image.png');
   await expect(
     lib.getByText('not-an-image.png is not an image this browser can open.'),
   ).toBeVisible();

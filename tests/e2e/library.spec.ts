@@ -218,3 +218,55 @@ test('search finds a capture by the text on its page, and shows where', async ({
   await search.fill('nothing like this anywhere');
   await expect(lib.getByText('No capture matches.')).toBeVisible();
 });
+
+test('back up captures to one file and restore them after deleting', async ({
+  context,
+  extensionId,
+  serviceWorker,
+}) => {
+  const page = await context.newPage();
+  await page.goto(`${FIXTURES}/article.html`);
+  await page.bringToFront();
+  await serviceWorker.evaluate(async (u) => {
+    const [tab] = await chrome.tabs.query({ active: true, url: u });
+    const hook = (globalThis as unknown as { __spTest: { capture(id: number): Promise<unknown> } })
+      .__spTest;
+    await hook.capture(tab!.id!);
+  }, `${FIXTURES}/article.html`);
+  const lib = await context.newPage();
+  await lib.goto(`chrome-extension://${extensionId}/captures.html`);
+  await expect(lib.getByText('Article fixture')).toBeVisible();
+  const dl = lib.waitForEvent('download');
+  await lib.getByRole('button', { name: /^Back up/ }).click();
+  const download = await dl;
+  expect(download.suggestedFilename()).toMatch(
+    /^screenscroll-captures-\d{4}-\d{2}-\d{2}\.ssbackup$/,
+  );
+  const file = await download.path();
+  await expect(lib.getByText(/Backup of 1 capture saved/)).toBeVisible();
+
+  // Delete it for good, then bring it back from the file.
+  await lib.getByRole('button', { name: 'Delete all captures' }).click();
+  await lib.getByRole('button', { name: 'Delete 1 for good' }).click();
+  await expect(lib.getByText('Article fixture')).toHaveCount(0);
+  await lib.getByLabel('Restore from a backup file').setInputFiles(file);
+  await expect(lib.getByText('1 capture restored.')).toBeVisible();
+  await expect(lib.getByText('Article fixture')).toBeVisible();
+  // Every frame image is back, byte for byte the size it was.
+  const sizes = () =>
+    serviceWorker.evaluate(async () => {
+      const req = indexedDB.open('scrollpress');
+      const d: IDBDatabase = await new Promise((res) => (req.onsuccess = () => res(req.result)));
+      const all: { blob: Blob }[] = await new Promise((res) => {
+        const q = d.transaction('frames').objectStore('frames').getAll();
+        q.onsuccess = () => res(q.result);
+      });
+      return all.map((f) => f.blob.size);
+    });
+  const restored = await sizes();
+  expect(restored.length).toBeGreaterThan(1);
+  expect(restored.every((n) => n > 1000)).toBe(true);
+  // Restoring the same file again adds nothing.
+  await lib.getByLabel('Restore from a backup file').setInputFiles(file);
+  await expect(lib.getByText(/0 captures restored; 1 already here/)).toBeVisible();
+});

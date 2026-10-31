@@ -156,7 +156,8 @@ Suite: `pnpm test` 219, `pnpm e2e` 53 (see the commit), lint and typecheck clean
 - Firefox: `wxt build -b firefox` builds (MV2, `.output/firefox-mv2`) without errors, 2026-10-31. Not ticked: no Firefox in the build sandbox to smoke-test it, and Sharp capture's `debugger` permission doesn't exist in Firefox (the Firefox manifest must leave it out). Next session.
 - Table header repetition: pages that start inside a table repeat its `thead`; 4 unit tests, 1 e2e test that reads the PDF's pixels and text; checked in the rendered PDF, the Pages preview and the thumbnails.
 - Breaks that need a look (M7): listed in Breaks with reasons, marked on the strip, Previous / Next; 1 unit + 1 e2e test.
-- Settings backup: Save to a file / Load from a file on the Settings page, with Undo; 2 unit + 1 e2e test. Captures backup not done.
+- Settings backup: Save to a file / Load from a file on the Settings page, with Undo; 2 unit + 1 e2e test.
+- Captures backup: Saved captures → Back up / Restore (`.ssbackup`, streamed); 2 unit + 1 e2e test (back up, delete all, restore, restore again adds nothing).
 - Not started: PDF import, CDP capture engine, browser-window capture.
 - Import: Saved captures → Open an image (tall PNG/JPEG/WebP) → Studio; 2 e2e tests (breaks fall between lines; a non-image says so). Not done: tall single-page PDF import (pdf.js).
 - Overlay killer: the pop-up note in the Studio has "Hide pop-ups and capture again"; 6 e2e tests (3 kinds of pop-up, 2 look-alikes that must stay, the Studio flow). Needs the user's check on real consent walls and newsletter pop-ups.

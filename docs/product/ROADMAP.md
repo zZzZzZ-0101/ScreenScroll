@@ -131,7 +131,7 @@ Goal: the most capable screen capture tool available, that still looks simple. A
 
 **Interface**
 - [ ] Interface languages, starting with Chinese (Simplified and Traditional).
-- [ ] Export/import of saved captures and settings as a backup file. (Settings done 2026-10-31; captures not yet.)
+- [x] Export/import of saved captures and settings as a backup file.
 
 **Output**
 - [ ] Markdown/HTML with images, SVG, PDF/A; presets ("Print A4", "Share small", "Archive").

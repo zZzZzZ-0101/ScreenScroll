@@ -1,7 +1,8 @@
-import { ExternalLink, Files, ImageUp, Search, Trash2 } from 'lucide-react';
+import { ArchiveRestore, Download, ExternalLink, Files, ImageUp, Search, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { deleteCapture, deleteOlderThan, listCaptures, type StoredCapture } from '@/shared/db';
 import { loadSettings, saveSettings } from '@/shared/settings';
+import { backupCaptures, restoreCaptures } from '@/shared/backup';
 import { importImage } from '@/shared/import-image';
 import { MergeSheet } from './MergeSheet';
 
@@ -128,6 +129,7 @@ export function App() {
           <input
             type="file"
             accept="image/png,image/jpeg,image/webp"
+            aria-label="Open an image file"
             className="sr-only"
             onChange={(e) => {
               const file = e.target.files?.[0];
@@ -141,6 +143,57 @@ export function App() {
                   void chrome.tabs.create({
                     url: chrome.runtime.getURL(`/studio.html?session=${encodeURIComponent(id)}`),
                   });
+                },
+                (err: unknown) => setNote(err instanceof Error ? err.message : String(err)),
+              );
+            }}
+          />
+        </label>
+        <button
+          type="button"
+          className="flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
+          disabled={!items?.length}
+          title="Save captures, images included, to one file (the selected ones, or all)"
+          onClick={() => {
+            const ids = [...selected];
+            setNote('Writing the backup…');
+            void backupCaptures(ids).then((blob) => {
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `screenscroll-captures-${new Date().toISOString().slice(0, 10)}.ssbackup`;
+              a.click();
+              setTimeout(() => URL.revokeObjectURL(url), 60_000);
+              setNote(
+                `Backup of ${ids.length || items!.length} ${(ids.length || items!.length) === 1 ? 'capture' : 'captures'} saved (${(blob.size / 1048576).toFixed(1)} MB).`,
+              );
+            });
+          }}
+        >
+          <Download aria-hidden size={15} /> Back up{selected.size ? ` (${selected.size})` : ''}
+        </button>
+        <label
+          className="flex cursor-pointer items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 focus-within:outline-2 focus-within:outline-accent dark:border-neutral-700 dark:hover:bg-neutral-800"
+          title="Add the captures from a backup file"
+        >
+          <ArchiveRestore aria-hidden size={15} /> Restore
+          <input
+            type="file"
+            accept=".ssbackup"
+            aria-label="Restore from a backup file"
+            className="sr-only"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (!file) return;
+              setNote(`Restoring ${file.name}…`);
+              restoreCaptures(file).then(
+                ({ added, skipped }) => {
+                  void refresh();
+                  setNote(
+                    `${added} ${added === 1 ? 'capture' : 'captures'} restored` +
+                      (skipped ? `; ${skipped} already here, left as they are.` : '.'),
+                  );
                 },
                 (err: unknown) => setNote(err instanceof Error ? err.message : String(err)),
               );
