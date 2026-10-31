@@ -2,6 +2,7 @@ import {
   buildFilename,
   commit,
   DEFAULT_STYLE,
+  redactions,
   emptyHistory,
   exportScale,
   QUALITY,
@@ -29,6 +30,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EMPTY_PROJECT, saveProject, type Project } from '@/shared/db';
 import { OVERLAY_WARNING } from '@/shared/messages';
+import { RedactCard } from './components/RedactCard';
 import { loadSettings, saveSettings, type Settings } from '@/shared/settings';
 import { analyze, type Analysis } from '@/studio/engine/analysis';
 import { planPages, type Edits, type PageResult } from '@/studio/engine/plan';
@@ -729,7 +731,31 @@ export function App() {
         locked={result.ok && result.sheets}
       />
     ) : view === 'markup' ? (
-      <PageMarkPanel settings={settings} onSettings={updateSettings} />
+      <PageMarkPanel settings={settings} onSettings={updateSettings}>
+        <RedactCard
+          runs={session.hints.textRuns}
+          slices={slices}
+          covered={redactions(annotations)}
+          onBlur={(rects) =>
+            changeProject({
+              annotations: [
+                ...annotations,
+                ...rects.map(
+                  (r): Annotation => ({
+                    id: crypto.randomUUID(),
+                    kind: 'blur',
+                    style: DEFAULT_STYLE,
+                    x: r.x,
+                    y: r.y,
+                    w: r.width,
+                    h: r.height,
+                  }),
+                ),
+              ],
+            })
+          }
+        />
+      </PageMarkPanel>
     ) : null;
   const panel = panelBody && (
     <SidePanel prefs={panelPrefs} onPrefs={changePanel} label="panel">

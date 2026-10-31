@@ -26,3 +26,4 @@ export * from './watermark.js';
 // PDF assembly lives at '@screenscroll/core/pdf' so pdf-lib never lands in the service
 // worker or the content script.
 export * from './capture-width.js';
+export * from './sensitive.js';

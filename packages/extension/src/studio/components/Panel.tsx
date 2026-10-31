@@ -20,7 +20,7 @@ import {
   RectangleVertical,
   X,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   DEFAULT_PRESETS,
   MAX_PRESETS,
@@ -649,9 +649,12 @@ const WM_COLOURS: Array<[string, string]> = [
 export function PageMarkPanel({
   settings,
   onSettings,
+  children,
 }: {
   settings: Settings;
   onSettings: (patch: Partial<Settings>) => void;
+  /** Shown first (Personal data). */
+  children?: ReactNode;
 }) {
   const pdf = settings.pdf;
   const wm = pdf.watermark;
@@ -662,6 +665,7 @@ export function PageMarkPanel({
   const setPresets = (patch: Partial<Presets>) => onSettings({ presets: { ...presets, ...patch } });
   return (
     <aside className={aside} aria-label="Page">
+      {children}
       <FilterPicker
         value={pdf.filter}
         onChange={(filter) => onSettings({ pdf: { ...pdf, filter } })}

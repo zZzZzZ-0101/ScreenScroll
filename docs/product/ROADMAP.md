@@ -86,7 +86,7 @@ Legend: `[ ]` todo · `(L#)` = lesson from `docs/product/PRIOR_ART.md` §7 · `�
 - [x] **Capture at width W** (temporary window resize + restore) for legible A4 (L6). → CAPTURE §8
 - [ ] **Clean (reader) capture** via Readability + print-like stylesheet; optional "real text PDF via print". → CAPTURE §12
 - [x] **Overlay killer**: one click hides modals/cookie banners/chat bubbles, then recapture.
-- [ ] **Auto-redact**: detect emails/phones/card numbers in DOM text → checklist → blur.
+- [x] **Auto-redact**: detect emails/phones/card numbers in DOM text → checklist → blur.
 - [ ] Table header repetition across pages. → PAGINATION §7
 - [x] Watermark. → PDF_OUTPUT §4 (multi-page PDF; Mark up → Page)
 - [ ] **Import**: open a tall PNG/JPEG/WebP or a tall single-page PDF (e.g. old FireShot output) in the Studio → pixel-mode pagination → export. Handle image-only PDFs by rendering at native image resolution via pdf.js.

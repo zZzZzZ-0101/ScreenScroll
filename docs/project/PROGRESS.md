@@ -152,6 +152,7 @@ Suite: `pnpm test` 219, `pnpm e2e` 53 (see the commit), lint and typecheck clean
 ### M6: page width (2026-10-31)
 - Settings → Page width (1000 / 1200 / 1440 px): window narrowed for the capture, put back on finish, Esc and tab close; 3 unit + 3 e2e tests.
 - Needs the user's check: a maximised window comes back maximised.
+- Auto-redact: Mark up → Personal data (email, phone, card with Luhn, Chinese ID with check character); 6 unit tests, 1 e2e test that also reads the PDF's text; blur placement checked in the rendered PDF.
 - Overlay killer: the pop-up note in the Studio has "Hide pop-ups and capture again"; 6 e2e tests (3 kinds of pop-up, 2 look-alikes that must stay, the Studio flow). Needs the user's check on real consent walls and newsletter pop-ups.
 
 ## Manual site checks

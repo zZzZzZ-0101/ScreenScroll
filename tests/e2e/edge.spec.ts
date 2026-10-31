@@ -1,5 +1,5 @@
 import type { BrowserContext, Page, Worker } from '@playwright/test';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { PDFDocument } from 'pdf-lib';
 import { expect, test, FIXTURES } from './fixtures';
 
@@ -625,4 +625,54 @@ test.describe('text recognition', () => {
       'Their text is read when you save',
     );
   });
+});
+
+test('Mark up → Personal data: found in the text, ticked ones blurred and gone from the PDF', async ({
+  context,
+  serviceWorker,
+}) => {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const fonts = new URL('../../node_modules/pdfjs-dist/standard_fonts/', import.meta.url).pathname;
+  const studio = await capture(context, serviceWorker, 'personal.html');
+  await studio.getByRole('tab', { name: 'Mark up' }).click();
+  const card = studio.getByTestId('redact');
+  const items = card.getByRole('listitem');
+  await expect(items).toHaveCount(4);
+  await expect(card).toContainText('ana.lee@example.com');
+  await expect(card).toContainText('+44 20 7946 0958');
+  await expect(card).toContainText('4111 1111 1111 1111');
+  await expect(card).toContainText('11010519491231002X');
+  await expect(card).not.toContainText('2026-10-31');
+  // Keep the phone number; blur the rest.
+  await items.filter({ hasText: '+44' }).getByRole('checkbox').uncheck();
+  await card.getByRole('button', { name: 'Blur 3 selected' }).click();
+  await expect(items).toHaveCount(1);
+  const blurs = await studio.evaluate(
+    () =>
+      (
+        window as unknown as { __spStudio: { project(): { annotations: { kind: string }[] } } }
+      ).__spStudio
+        .project()
+        .annotations.filter((a) => a.kind === 'blur').length,
+  );
+  expect(blurs).toBe(3);
+  const b64 = (await studio.evaluate(() =>
+    (window as unknown as { __spStudio: { pdfBase64(): Promise<string> } }).__spStudio.pdfBase64(),
+  )) as string;
+  mkdirSync('e2e-artifacts', { recursive: true });
+  writeFileSync('e2e-artifacts/personal-data.pdf', Buffer.from(b64, 'base64'));
+  const pdf = await pdfjs.getDocument({
+    data: new Uint8Array(Buffer.from(b64, 'base64')),
+    standardFontDataUrl: fonts,
+  }).promise;
+  const text = (await (await pdf.getPage(1)).getTextContent()).items
+    .map((it) => ('str' in it ? it.str : ''))
+    .join(' ');
+  // A line with a blur loses its whole text (redaction never leaves a fragment); the others
+  // keep theirs.
+  expect(text).toContain('7946');
+  expect(text).toContain('Not private');
+  expect(text).not.toContain('ana.lee');
+  expect(text).not.toContain('4111');
+  expect(text).not.toContain('1949');
 });
