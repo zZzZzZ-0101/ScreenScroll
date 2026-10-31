@@ -93,3 +93,33 @@ describe('stored settings', () => {
     expect(labelName({ left: ' ', center: '', right: '' })).toBe('');
   });
 });
+
+describe('settings file (backup)', () => {
+  it('round-trips every setting and preset', async () => {
+    const { DEFAULT_SETTINGS, readSettingsFile, settingsFile } = await import(
+      '../src/shared/settings'
+    );
+    const mine = {
+      ...DEFAULT_SETTINGS,
+      breakStyle: 0.8,
+      capture: { ...DEFAULT_SETTINGS.capture, width: 1000 as const },
+      presets: { ...DEFAULT_SETTINGS.presets, watermarks: ['MINE', 'DRAFT'] },
+    };
+    expect(readSettingsFile(settingsFile(mine))).toEqual(mine);
+  });
+  it('refuses other files; bad values inside fall back to defaults', async () => {
+    const { DEFAULT_SETTINGS, readSettingsFile } = await import('../src/shared/settings');
+    expect(() => readSettingsFile('not json')).toThrow(/not a ScreenScroll settings file/);
+    expect(() => readSettingsFile('{"settings":{}}')).toThrow(/not a ScreenScroll settings file/);
+    const odd = readSettingsFile(
+      JSON.stringify({
+        app: 'ScreenScroll',
+        kind: 'settings',
+        version: 1,
+        settings: { breakStyle: 'loud', capture: { width: 777 } },
+      }),
+    );
+    expect(odd.breakStyle).toBe(DEFAULT_SETTINGS.breakStyle);
+    expect(odd.capture.width).toBe(0);
+  });
+});

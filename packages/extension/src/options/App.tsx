@@ -1,6 +1,13 @@
 import { RotateCcw, ShieldCheck } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { DEFAULT_SETTINGS, loadSettings, saveSettings, type Settings } from '@/shared/settings';
+import {
+  DEFAULT_SETTINGS,
+  loadSettings,
+  readSettingsFile,
+  saveSettings,
+  settingsFile,
+  type Settings,
+} from '@/shared/settings';
 import {
   defaultOf,
   labelOf,
@@ -18,7 +25,7 @@ import { modelStatus, removeModel, type ModelStatus } from '@/ocr/store';
  */
 export function App() {
   const [s, setS] = useState<Settings | null>(null);
-  const [undo, setUndo] = useState<Settings | null>(null);
+  const [undo, setUndo] = useState<{ settings: Settings; text: string } | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
   useEffect(() => {
@@ -44,7 +51,7 @@ export function App() {
     void saveSettings(patch);
   };
   const resetAll = () => {
-    setUndo(s);
+    setUndo({ settings: s, text: 'All settings are back to their defaults.' });
     setS(DEFAULT_SETTINGS);
     void saveSettings(DEFAULT_SETTINGS);
     setTimeout(() => setUndo(null), 8000);
@@ -103,6 +110,54 @@ export function App() {
         </p>
       </section>
 
+      <section
+        aria-label="Settings file"
+        className="mt-5 flex flex-wrap items-center gap-2 rounded-lg border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900"
+      >
+        <span className="mr-auto text-neutral-600 dark:text-neutral-300">
+          Keep these settings and presets, or move them to another computer.
+        </span>
+        <button
+          type="button"
+          className="rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
+          onClick={() => {
+            const url = URL.createObjectURL(
+              new Blob([settingsFile(s)], { type: 'application/json' }),
+            );
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'screenscroll-settings.json';
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+          }}
+        >
+          Save to a file
+        </button>
+        <label className="cursor-pointer rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 focus-within:outline-2 focus-within:outline-accent dark:border-neutral-700 dark:hover:bg-neutral-800">
+          Load from a file
+          <input
+            type="file"
+            accept="application/json,.json"
+            className="sr-only"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (!file) return;
+              try {
+                const next = readSettingsFile(await file.text());
+                setUndo({ settings: s, text: `Settings loaded from ${file.name}.` });
+                setS(next);
+                await saveSettings(next);
+                setNote(null);
+                setTimeout(() => setUndo(null), 8000);
+              } catch (err) {
+                setNote(err instanceof Error ? err.message : String(err));
+              }
+            }}
+          />
+        </label>
+      </section>
+
       <p className="mt-4 text-neutral-500">
         Keyboard shortcuts:{' '}
         <button
@@ -120,13 +175,13 @@ export function App() {
           role="status"
           className="fixed bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-md bg-neutral-900 px-3 py-2 text-white shadow-sm dark:bg-neutral-100 dark:text-neutral-900"
         >
-          All settings are back to their defaults.
+          {undo.text}
           <button
             type="button"
             className="font-medium underline underline-offset-2"
             onClick={() => {
-              setS(undo);
-              void saveSettings(undo);
+              setS(undo.settings);
+              void saveSettings(undo.settings);
               setUndo(null);
             }}
           >

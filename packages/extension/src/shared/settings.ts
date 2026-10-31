@@ -271,3 +271,24 @@ export async function saveSettings(patch: Partial<Settings>): Promise<Settings> 
   await chrome.storage.local.set({ [KEY]: next });
   return next;
 }
+
+/** Settings backup (M7): every setting and preset, as a small JSON file. */
+export function settingsFile(s: Settings): string {
+  return JSON.stringify({ app: 'ScreenScroll', kind: 'settings', version: 1, settings: s }, null, 2);
+}
+
+/**
+ * Reads a settings backup. Each value is checked as stored settings are (unknown or invalid
+ * ones fall back to the default), so an old or hand-edited file can't break anything.
+ */
+export function readSettingsFile(text: string): Settings {
+  let o: unknown;
+  try {
+    o = JSON.parse(text);
+  } catch {
+    throw new Error('This file is not a ScreenScroll settings file.');
+  }
+  if (!isObject(o) || o.app !== 'ScreenScroll' || o.kind !== 'settings' || !isObject(o.settings))
+    throw new Error('This file is not a ScreenScroll settings file.');
+  return normalizeSettings(o.settings);
+}
