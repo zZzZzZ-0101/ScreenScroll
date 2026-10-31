@@ -80,3 +80,16 @@ describe('readability', () => {
     expect(medianFontPx([])).toBeNull();
   });
 });
+
+describe('printed text size', () => {
+  it('16 px text from a 1280 px page on A4 with 10 mm margins, and the two fixes', async () => {
+    const { printedTextSize, DEFAULT_PAGE_SETTINGS, PT_PER_MM } = await import('../src/layout.js');
+    const r = printedTextSize(16, DEFAULT_PAGE_SETTINGS, 1280);
+    const portraitW = (210 - 20) * PT_PER_MM; // 538.6 pt
+    const landscapeW = (297 - 20) * PT_PER_MM; // 785.2 pt
+    expect(r.pt).toBeCloseTo((16 * portraitW) / 1280, 6); // 6.7 pt
+    expect(r.turnedPt).toBeCloseTo((16 * landscapeW) / 1280, 6); // 9.8 pt
+    expect(r.narrowPt).toBeCloseTo((16 * portraitW) / 1000, 6); // 8.6 pt
+    expect(printedTextSize(16, DEFAULT_PAGE_SETTINGS, 900).narrowPt).toBeNull();
+  });
+});

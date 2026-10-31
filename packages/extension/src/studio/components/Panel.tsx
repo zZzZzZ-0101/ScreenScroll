@@ -4,6 +4,7 @@ import {
   PAPERS,
   QUALITY,
   gridOf,
+  printedTextSize,
   type BreakCheck,
   type ExportPreset,
   type FilterId,
@@ -46,6 +47,8 @@ interface PagesProps {
   /** Pages of a document viewer found in the capture, or null. */
   sheetCount: number | null;
   sheets: SheetsCardProps;
+  /** Median text size of the page (px) and the content width, for the printed size. */
+  text: { fontPx: number; contentWidth: number } | null;
   /** Estimated PDF size in bytes, or null while it is computed. */
   estimate: number | null;
   ocr: OcrCardProps;
@@ -197,6 +200,79 @@ function SheetsCard(p: SheetsCardProps) {
   );
 }
 
+/** Below this the PDF needs zooming to read (books use 9–11 pt). */
+const SMALL_PT = 8;
+
+/**
+ * How big the text comes out on paper (text px × scale), and when it is small, what would
+ * make it bigger: turning the paper (now) or a narrower page width (next capture).
+ */
+function TextSizeCard(p: {
+  fontPx: number;
+  contentWidth: number;
+  settings: Settings;
+  onSettings: (patch: Partial<Settings>) => void;
+}) {
+  const page = p.settings.page;
+  const t = printedTextSize(p.fontPx, page, p.contentWidth);
+  const pt = (n: number) => `${n.toFixed(1)} pt`;
+  const how = `${p.fontPx.toFixed(0)} px text × ${(t.pt / p.fontPx).toFixed(2)} (paper width ÷ ${Math.round(p.contentWidth)} px)`;
+  if (t.pt >= SMALL_PT)
+    return (
+      <p className="mb-2 text-[12px] text-neutral-500" title={how} data-testid="text-size">
+        Text prints at {pt(t.pt)}
+      </p>
+    );
+  const narrowSet = p.settings.capture.width === 1000;
+  return (
+    <div
+      className="mb-2 rounded-md border border-amber-300 bg-amber-50 p-2 dark:border-amber-700 dark:bg-amber-950"
+      data-testid="text-size"
+    >
+      <p className="font-medium" title={how}>
+        Text prints at {pt(t.pt)}: small
+      </p>
+      <p className="pb-1 text-[12px] text-neutral-600 dark:text-neutral-300">
+        The page is {Math.round(p.contentWidth)} px wide, so it is scaled down to fit the paper.
+        Books use 9–11 pt.
+      </p>
+      <div className="flex flex-wrap gap-1">
+        {t.turnedPt > t.pt && (
+          <button
+            type="button"
+            className={button}
+            onClick={() =>
+              p.onSettings({
+                page: {
+                  ...page,
+                  orientation: page.orientation === 'landscape' ? 'portrait' : 'landscape',
+                },
+              })
+            }
+          >
+            {page.orientation === 'landscape' ? 'Portrait' : 'Landscape'}: {pt(t.turnedPt)}
+          </button>
+        )}
+        {t.narrowPt !== null && !narrowSet && (
+          <button
+            type="button"
+            className={button}
+            title="Settings → Page width: the next capture lays the page out 1000 px wide"
+            onClick={() => p.onSettings({ capture: { ...p.settings.capture, width: 1000 } })}
+          >
+            Page width 1000 px: {pt(t.narrowPt)}
+          </button>
+        )}
+      </div>
+      {narrowSet && t.narrowPt !== null && (
+        <p className="pt-1 text-[12px] text-neutral-600 dark:text-neutral-300">
+          Page width is 1000 px: capture the page again to use it.
+        </p>
+      )}
+    </div>
+  );
+}
+
 /**
  * Pages mode (UI §3, distilled): the three choices that change what the pages look like,
  * with everything else folded under "More options".
@@ -228,6 +304,7 @@ export function PagesPanel(p: PagesProps) {
         </div>
       )}
       <SheetsCard {...p.sheets} />
+      {p.text && <TextSizeCard {...p.text} settings={p.settings} onSettings={p.onSettings} />}
       <label className={field}>
         Paper
         <select

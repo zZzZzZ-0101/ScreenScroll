@@ -109,3 +109,31 @@ export function medianFontPx(sizes: readonly number[]): number | null {
   const mid = sorted.length >> 1;
   return sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
+
+/** How big the page's text comes out on paper, and what two fixes would make of it. */
+export interface PrintedText {
+  /** Median text size on paper, pt: text px × s. */
+  pt: number;
+  /** The same in the other orientation (landscape is wider, so larger). */
+  turnedPt: number;
+  /** The same if the page were laid out `narrowTo` px wide (Settings → Page width). */
+  narrowPt: number | null;
+}
+
+export function printedTextSize(
+  fontPx: number,
+  page: PageSettings,
+  contentWidth: Px,
+  narrowTo = 1000,
+): PrintedText {
+  const s = computeLayout(page, contentWidth).s;
+  const turned = computeLayout(
+    { ...page, orientation: page.orientation === 'landscape' ? 'portrait' : 'landscape' },
+    contentWidth,
+  ).s;
+  return {
+    pt: fontPx * s,
+    turnedPt: fontPx * turned,
+    narrowPt: contentWidth > narrowTo + 1 ? fontPx * computeLayout(page, narrowTo).s : null,
+  };
+}

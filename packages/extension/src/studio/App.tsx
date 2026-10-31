@@ -95,7 +95,7 @@ export function App() {
   const [edits, setEdits] = useState<Edits>({ pinned: [], removed: [] });
   const [view, setViewState] = useState<View>('pages');
   // Per-viewer UI memory (zoom, panel); nothing here needs to sync or persist reliably.
-  const [zoom, setZoom] = useState<Zoom>(() => readPref('ss-zoom', 'page' as Zoom));
+  const [zoom, setZoom] = useState<Zoom>(() => readPref('ss-zoom', 'width' as Zoom));
   const [effective, setEffective] = useState(1);
   const changeZoom = useCallback((z: Zoom) => {
     setZoom(z);
@@ -226,6 +226,10 @@ export function App() {
 
   const slices = result && result.ok ? result.debug.slices : [];
   const checks = useMemo(() => breaksToCheck(slices), [slices]);
+  const fontPx = useMemo(
+    () => (session ? medianFontPx(session.hints.textRuns.map((t) => t.fontSizePx)) : null),
+    [session],
+  );
 
   const warnings = useMemo(() => {
     if (!session || !result || !result.ok) return [];
@@ -709,6 +713,11 @@ export function App() {
         filename={filename('pdf')}
         cropped={result.ok && result.crop.cropped}
         sheetCount={analysis.sheets?.sheets.length ?? null}
+        text={
+          result.ok && !result.sheets && fontPx
+            ? { fontPx, contentWidth: result.crop.x1 - result.crop.x0 }
+            : null
+        }
         sheets={{
           detected: analysis.sheets,
           grid: project.sheetGrid ?? null,

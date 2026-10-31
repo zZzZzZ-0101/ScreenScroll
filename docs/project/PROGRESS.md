@@ -158,6 +158,7 @@ Suite: `pnpm test` 219, `pnpm e2e` 53 (see the commit), lint and typecheck clean
 - Breaks that need a look (M7): listed in Breaks with reasons, marked on the strip, Previous / Next; 1 unit + 1 e2e test.
 - Settings backup: Save to a file / Load from a file on the Settings page, with Undo; 2 unit + 1 e2e test.
 - Captures backup: Saved captures → Back up / Restore (`.ssbackup`, streamed); 2 unit + 1 e2e test (back up, delete all, restore, restore again adds nothing).
+- Small text: the Pages panel shows the printed text size and offers Landscape / Page width 1000 px when it is under 8 pt; the preview opens at Fit width. 1 unit + 1 e2e test; zoom test updated.
 - Not started: PDF import, CDP capture engine, browser-window capture.
 - Import: Saved captures → Open an image (tall PNG/JPEG/WebP) → Studio; 2 e2e tests (breaks fall between lines; a non-image says so). Not done: tall single-page PDF import (pdf.js).
 - Overlay killer: the pop-up note in the Studio has "Hide pop-ups and capture again"; 6 e2e tests (3 kinds of pop-up, 2 look-alikes that must stay, the Studio flow). Needs the user's check on real consent walls and newsletter pop-ups.
