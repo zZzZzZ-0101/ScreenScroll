@@ -63,6 +63,19 @@ test('a document viewer: one PDF page per document page, cropped to the page', a
   });
   await studio.screenshot({ path: 'e2e-artifacts/doc-viewer-studio.png' });
 
+  // Diagnostics: Details shows what page detection read, and copies it as a test case.
+  await studio.getByRole('button', { name: 'Details' }).click();
+  const details = studio.getByRole('complementary', { name: 'Details' });
+  await expect(details.getByText('Document pages', { exact: true })).toBeVisible();
+  await expect(details.getByText('Viewer background')).toBeVisible();
+  await expect(details.getByText(/\d+% · fit 0\.\d{3}/).first()).toBeVisible();
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await details.getByRole('button', { name: 'Copy page detection as a test case' }).click();
+  const copied = JSON.parse(await studio.evaluate(() => navigator.clipboard.readText()));
+  expect(copied.evidence.gapRuns.length).toBeGreaterThan(10);
+  expect(copied.readings[0].sheets).toHaveLength(6);
+  await studio.getByRole('button', { name: 'Close details' }).click();
+
   // Breaks are the document's; editing them is off while following them.
   await studio.getByRole('tab', { name: 'Breaks' }).click();
   await expect(studio.getByText(/The breaks follow the document/)).toBeVisible();

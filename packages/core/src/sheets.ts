@@ -425,6 +425,7 @@ export interface SheetCandidate {
   layout: SheetLayout;
   /** 0…1: how well the layout matches the background rows the capture shows. */
   fit: number;
+  parts: FitParts;
   /** Share of belief among the alternatives offered (they add up to 1). */
   probability: number;
 }
@@ -445,7 +446,19 @@ const SHAPES: Array<[string, string, number]> = [
  * page unexplained.
  */
 export function layoutFit(ev: SheetEvidence, l: SheetLayout): number {
-  if (!l.sheets.length) return 0;
+  return layoutFitParts(ev, l).fit;
+}
+
+/** The parts of a fit, for Details: fit = gapFit × pageFit × e^−(unexplained ÷ pages). */
+export interface FitParts {
+  gapFit: number;
+  pageFit: number;
+  unexplained: number;
+  fit: number;
+}
+
+export function layoutFitParts(ev: SheetEvidence, l: SheetLayout): FitParts {
+  if (!l.sheets.length) return { gapFit: 0, pageFit: 0, unexplained: 0, fit: 0 };
   let between = 0;
   let betweenGap = 0;
   let inside = 0;
@@ -473,7 +486,28 @@ export function layoutFit(ev: SheetEvidence, l: SheetLayout): number {
   });
   const gapFit = between ? betweenGap / between : 0.5;
   const pageFit = inside ? 1 - insideGap / inside : 0;
-  return gapFit * pageFit * Math.exp(-unexplained / l.sheets.length);
+  const fit = gapFit * pageFit * Math.exp(-unexplained / l.sheets.length);
+  return { gapFit, pageFit, unexplained, fit };
+}
+
+/**
+ * What page detection read, compact enough to paste into a bug report or a test: the
+ * evidence with the gap rows as run lengths (alternating non-gap, gap, …, from row 0).
+ */
+export function evidenceSummary(ev: SheetEvidence) {
+  const runs: number[] = [];
+  let cur = 0;
+  let len = 0;
+  for (let y = 0; y < ev.height; y++) {
+    if (ev.gap[y] === cur) len++;
+    else {
+      runs.push(len);
+      cur = ev.gap[y]!;
+      len = 1;
+    }
+  }
+  runs.push(len);
+  return { x0: ev.x0, x1: ev.x1, bg: ev.bg, paper: ev.paper, height: ev.height, gapRuns: runs };
 }
 
 /**
@@ -499,7 +533,7 @@ export function sheetCandidates(
       label: 'Found from the gaps',
       grid: null,
       layout: detected,
-      fit: layoutFit(ev, detected),
+      ...withParts(ev, detected),
     });
   // Gap length: the commonest run of background rows between content (1–80 rows).
   const runs = new Map<number, number>();
@@ -525,8 +559,8 @@ export function sheetCandidates(
       const grid = { x0: ev.x0, x1: ev.x1, top: first, height, gap };
       const layout = gridSheets(grid, ev.height);
       if (!layout) continue;
-      const fit = layoutFit(ev, layout);
-      if (!best || fit > best.fit) best = { id, label, grid, layout, fit };
+      const parts = layoutFitParts(ev, layout);
+      if (!best || parts.fit > best.fit) best = { id, label, grid, layout, fit: parts.fit, parts };
     }
     if (best) out.push(best);
   }
@@ -542,6 +576,11 @@ export function sheetCandidates(
   const weights = top.map((c) => Math.exp(12 * c.fit));
   const sum = weights.reduce((a, b) => a + b, 0) || 1;
   return top.map((c, i) => ({ ...c, probability: weights[i]! / sum }));
+}
+
+function withParts(ev: SheetEvidence, l: SheetLayout) {
+  const parts = layoutFitParts(ev, l);
+  return { fit: parts.fit, parts };
 }
 
 /** A reading this good is used without asking when the gaps found nothing. */

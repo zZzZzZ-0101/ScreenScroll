@@ -311,9 +311,12 @@ export function App() {
             sheets: result.sheets,
             estimate,
             ocr: { pages: ocrPages, ready: !!ocrModel?.ready },
+            detection: analysis
+              ? { evidence: analysis.evidence, readings: analysis.readings }
+              : undefined,
           })
         : null,
-    [session, settings, result, slices, estimate, ocrPages, ocrModel],
+    [session, settings, result, slices, estimate, ocrPages, ocrModel, analysis],
   );
   useEffect(() => {
     if (!session || !result?.ok || !settings || !frames.current) return;

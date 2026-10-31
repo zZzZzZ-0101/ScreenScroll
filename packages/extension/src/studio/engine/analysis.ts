@@ -1,5 +1,6 @@
 import {
   detectSheets,
+  evidenceSummary,
   sheetCandidates,
   sheetEvidence,
   ownedBands,
@@ -24,6 +25,8 @@ export interface Analysis {
   sheets: SheetLayout | null;
   /** Ranked ways to read the capture as pages (CSS px), best first; empty for ordinary pages. */
   readings: SheetCandidate[];
+  /** What page detection read (CSS px), for Details; null when there is no page column. */
+  evidence: ReturnType<typeof evidenceSummary> | null;
 }
 
 /**
@@ -75,10 +78,12 @@ export async function analyze(
   const k = s.width / aw; // analysis columns → CSS px (rows are already 1 per CSS px)
   const toCss = <T extends { x0: number; x1: number }>(v: T): T => ({ ...v, x0: v.x0 * k, x1: v.x1 * k });
   const sheets = found && toCss(found);
-  const readings = sheetCandidates(sheetEvidence(profile), found, 3, k).map((c) => ({
+  const ev = sheetEvidence(profile);
+  const evidence = ev && { ...evidenceSummary(ev), x0: ev.x0 * k, x1: ev.x1 * k };
+  const readings = sheetCandidates(ev, found, 3, k).map((c) => ({
     ...c,
     layout: toCss(c.layout),
     grid: c.grid && toCss(c.grid),
   }));
-  return { rows: analyzer.finish(), strip, stripScale, sheets, readings };
+  return { rows: analyzer.finish(), strip, stripScale, sheets, readings, evidence };
 }

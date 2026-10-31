@@ -65,6 +65,19 @@ export function DetailsPanel({ details, onClose }: { details: Details; onClose: 
           </dl>
         </section>
       ))}
+      {details.testCase && (
+        <button
+          type="button"
+          className="mb-3 w-full rounded-md border border-neutral-300 px-2 py-1 text-left hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
+          onClick={() => {
+            void navigator.clipboard.writeText(details.testCase!);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          }}
+        >
+          Copy page detection as a test case
+        </button>
+      )}
       <section>
         <h3 className="mb-1 border-b border-neutral-200 pb-0.5 text-[11px] font-semibold tracking-wide text-neutral-500 uppercase dark:border-neutral-700">
           Pages

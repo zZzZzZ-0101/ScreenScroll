@@ -259,3 +259,23 @@ describe('ranked readings of a viewer (several interpretations)', () => {
     expect(sheetCandidates(sheetEvidence(profile(viewer({ bg: 255 }))), null)).toEqual([]);
   });
 });
+
+describe('page detection diagnostics', () => {
+  it('fit parts multiply to the fit, and the evidence summary is run lengths of gap rows', async () => {
+    const { evidenceSummary, layoutFitParts, sheetEvidence } = await import('../src/sheets.js');
+    const img = viewer({ heights: [1000, 1000, 1000], gap: 16 });
+    const p = profile(img);
+    const ev = sheetEvidence(p)!;
+    const parts = layoutFitParts(ev, detectSheets(p)!);
+    expect(parts.fit).toBeCloseTo(
+      parts.gapFit * parts.pageFit * Math.exp(-parts.unexplained / 3),
+      9,
+    );
+    expect(parts.gapFit).toBeGreaterThan(0.95);
+    const sum = evidenceSummary(ev);
+    expect(sum.gapRuns.reduce((a, b) => a + b, 0)).toBe(ev.height);
+    // Gap first (row 0 is background), then page, gap, …: 16, 1000, 16, 1000, 16, 1000, 16.
+    expect(sum.gapRuns[0]).toBe(0);
+    expect(sum.gapRuns.slice(1)).toEqual([16, 1000, 16, 1000, 16, 1000, 16]);
+  });
+});
