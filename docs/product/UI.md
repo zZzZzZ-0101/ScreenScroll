@@ -57,6 +57,11 @@ Distilled (2026-10-28): three modes named by what you do, one primary button, an
 - **Save PDF ▾**: the button saves the PDF (Ctrl+S); the arrow lists every other output: one long page PDF, PNG/JPEG/WebP pages (zip), one long image, Copy this page (Ctrl+Shift+C), Print (Ctrl+P).
 - **Notes** chip (warnings) opens the list; "Page N: …" entries jump to the page.
 - **Details** (header ⓘ, key I): every number behind the pages and how it was calculated, in the side panel: capture (dpr, frames, size, speed), layout (paper, margins, printable box, content width, scale s, content per page T, body text in pt, dpi on paper), breaks (method, weights, cost formula, forced cuts), output (filter, PDF quality, image scale, format rule, estimated size, labels, watermark), then one row per page. Copy all as text.
+- **Breaks that need a look** (Breaks panel): forced cuts, unconfirmed and image-only breaks, each with its reason, marked "!" on the strip; Previous / Next step through them.
+- **Open an image** (Saved captures): a long PNG, JPEG or WebP screenshot opens in the Studio as a capture.
+- **Personal data** (Mark up → Page, first card): emails, phone, card and ID numbers found in the page text, each with its page, ticked; **Blur N selected** adds blur marks over them (also removed from the PDF text).
+- **Pop-ups**: when a pop-up covered the page, the Studio's notes say so with **Hide pop-ups and capture again** (same tab, same mode; the pop-up and its backdrop are hidden for that capture and put back after).
+- **Page width** (Settings → Capture): As it is · 1000 · 1200 · 1440 px. A whole-page capture first narrows the window so the page reflows to that width (never wider), then puts the window back.
 - **PDF quality** (More options, and Settings): Compact ≤ 150 dpi · Balanced ≤ 300 dpi · Best (every pixel) · Lossless (PNG).
 - **Text recognition** (Pages panel card, only when needed): "N pages without text of their own · Pages 3, 5" with Download model (30 MB) once; then "Their text is read when you save". Settings → Text recognition has the mode (Auto / Always / Off) and the model (Download / Remove, size, source).
 - Left rail: page thumbnails (hidden in Mark up, which needs the width).

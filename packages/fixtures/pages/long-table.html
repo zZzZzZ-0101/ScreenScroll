@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Long table fixture</title>
+<style>
+  body { margin: 0 auto; max-width: 760px; font: 15px/1.4 Arial, sans-serif; padding: 16px; }
+  table { border-collapse: collapse; width: 100%; }
+  th { background: #1f3b57; color: #fff; padding: 8px; text-align: left; }
+  td { border-bottom: 1px solid #ccc; padding: 6px 8px; }
+</style></head>
+<body>
+<h1>Long table fixture</h1>
+<p>A table longer than one page, with a header row.</p>
+<table>
+  <thead><tr><th>No.</th><th>Item</th><th>Quantity</th><th>Price</th></tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+<p>End of the table.</p>
+<script>
+  const rows = document.getElementById('rows');
+  for (let i = 1; i <= 120; i++)
+    rows.insertAdjacentHTML('beforeend', `<tr><td>${i}</td><td>Item number ${i}</td><td>${(i * 7) % 50 + 1}</td><td>${(i * 3.25).toFixed(2)}</td></tr>`);
+</script>
+</body>
+</html>

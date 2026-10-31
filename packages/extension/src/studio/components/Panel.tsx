@@ -4,6 +4,7 @@ import {
   PAPERS,
   QUALITY,
   gridOf,
+  type BreakCheck,
   type ExportPreset,
   type FilterId,
   type PaperId,
@@ -20,7 +21,7 @@ import {
   RectangleVertical,
   X,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   DEFAULT_PRESETS,
   MAX_PRESETS,
@@ -396,6 +397,10 @@ export function PagesPanel(p: PagesProps) {
 interface BreaksProps {
   edits: Edits;
   onReset: () => void;
+  /** Breaks worth a look, and which page is shown, to step through them. */
+  checks: BreakCheck[];
+  page: number;
+  onJump: (index: number) => void;
   /** Breaks follow a document's own pages. */
   locked: boolean;
 }
@@ -427,6 +432,7 @@ export function BreaksPanel(p: BreaksProps) {
           </li>
         ))}
       </ul>
+      <ChecksCard checks={p.checks} page={p.page} onJump={p.onJump} />
       <button type="button" className={`${button} w-full`} onClick={p.onReset} disabled={!edited}>
         Reset breaks
       </button>
@@ -436,6 +442,55 @@ export function BreaksPanel(p: BreaksProps) {
           : 'All breaks are automatic.'}
       </p>
     </aside>
+  );
+}
+
+/**
+ * The breaks worth a look (forced cuts, unconfirmed, image-only), so a long capture is
+ * checked in a few steps instead of break by break.
+ */
+function ChecksCard(p: Pick<BreaksProps, 'checks' | 'page' | 'onJump'>) {
+  if (!p.checks.length)
+    return (
+      <p className="mb-3 text-[12px] text-neutral-500" data-testid="break-checks">
+        Every break falls between lines or blocks. Nothing needs a look.
+      </p>
+    );
+  // The check at or after the page shown is "current"; Next and Previous step from there.
+  const at = p.checks.findIndex((c) => c.index + 1 === p.page);
+  const next = p.checks.find((c) => c.index + 1 > p.page) ?? p.checks[0]!;
+  const prev = [...p.checks].reverse().find((c) => c.index + 1 < p.page) ?? p.checks.at(-1)!;
+  return (
+    <div
+      className="mb-3 rounded-md border border-amber-300 bg-amber-50 p-2 dark:border-amber-700 dark:bg-amber-950"
+      data-testid="break-checks"
+    >
+      <p className="font-medium">
+        {p.checks.length} {p.checks.length === 1 ? 'break needs' : 'breaks need'} a look
+        {at >= 0 ? ` · ${at + 1} of ${p.checks.length}` : ''}
+      </p>
+      <ul className="max-h-40 overflow-y-auto py-1 text-[12px]">
+        {p.checks.map((c) => (
+          <li key={c.index}>
+            <button
+              type="button"
+              className={`w-full rounded px-1 py-0.5 text-left hover:bg-amber-100 dark:hover:bg-amber-900 ${c.index + 1 === p.page ? 'font-medium' : ''}`}
+              onClick={() => p.onJump(c.index)}
+            >
+              After page {c.index + 1}: {c.reason}
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="flex gap-1">
+        <button type="button" className={button} onClick={() => p.onJump(prev.index)}>
+          Previous
+        </button>
+        <button type="button" className={button} onClick={() => p.onJump(next.index)}>
+          Next
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -649,9 +704,12 @@ const WM_COLOURS: Array<[string, string]> = [
 export function PageMarkPanel({
   settings,
   onSettings,
+  children,
 }: {
   settings: Settings;
   onSettings: (patch: Partial<Settings>) => void;
+  /** Shown first (Personal data). */
+  children?: ReactNode;
 }) {
   const pdf = settings.pdf;
   const wm = pdf.watermark;
@@ -662,6 +720,7 @@ export function PageMarkPanel({
   const setPresets = (patch: Partial<Presets>) => onSettings({ presets: { ...presets, ...patch } });
   return (
     <aside className={aside} aria-label="Page">
+      {children}
       <FilterPicker
         value={pdf.filter}
         onChange={(filter) => onSettings({ pdf: { ...pdf, filter } })}

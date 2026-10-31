@@ -19,6 +19,8 @@ export interface TableInfo {
   y1: Px;
   rowEnds: Px[];
   headerHeight: Px;
+  /** Top of the header row(s) (`thead`); the table's top when absent. */
+  headerTop?: Px;
 }
 
 export interface TextRun {

@@ -1,4 +1,5 @@
 import {
+  CAPTURE_WIDTHS,
   DEFAULT_FILENAME_TEMPLATE,
   DEFAULT_FOOTER,
   DEFAULT_PAGE_SETTINGS,
@@ -8,6 +9,7 @@ import {
   PAPERS,
   type Watermark,
   type BandTemplate,
+  type CaptureWidth,
   type ExportPreset,
   type FilterId,
   type PageSettings,
@@ -27,6 +29,8 @@ export interface CaptureSettings {
   start: CaptureStart;
   speed: CaptureSpeed;
   resolution: Resolution;
+  /** Lay the page out at most this wide (CSS px) for whole-page captures; 0 = as it is. */
+  width: CaptureWidth;
 }
 
 /** Light, dark, or whatever the system uses. */
@@ -127,7 +131,7 @@ export const DEFAULT_SETTINGS: Settings = {
   keepDays: 0,
   followSheets: true,
   theme: 'system',
-  capture: { start: 'top', speed: 'normal', resolution: 'standard' },
+  capture: { start: 'top', speed: 'normal', resolution: 'standard', width: 0 },
   ocr: 'auto',
   exportPreset: 'balanced',
   presets: DEFAULT_PRESETS,
@@ -184,6 +188,7 @@ export function normalizeSettings(stored: unknown): Settings {
       speed: cap.speed === 'careful' || cap.speed === 'fast' ? cap.speed : 'normal',
       resolution:
         cap.resolution === 'high' || cap.resolution === 'max' ? cap.resolution : 'standard',
+      width: CAPTURE_WIDTHS.find((w) => w === cap.width) ?? 0,
     },
     ocr: o.ocr === 'always' || o.ocr === 'off' ? o.ocr : 'auto',
     exportPreset:
@@ -265,4 +270,25 @@ export async function saveSettings(patch: Partial<Settings>): Promise<Settings> 
   const next = { ...(await loadSettings()), ...patch };
   await chrome.storage.local.set({ [KEY]: next });
   return next;
+}
+
+/** Settings backup (M7): every setting and preset, as a small JSON file. */
+export function settingsFile(s: Settings): string {
+  return JSON.stringify({ app: 'ScreenScroll', kind: 'settings', version: 1, settings: s }, null, 2);
+}
+
+/**
+ * Reads a settings backup. Each value is checked as stored settings are (unknown or invalid
+ * ones fall back to the default), so an old or hand-edited file can't break anything.
+ */
+export function readSettingsFile(text: string): Settings {
+  let o: unknown;
+  try {
+    o = JSON.parse(text);
+  } catch {
+    throw new Error('This file is not a ScreenScroll settings file.');
+  }
+  if (!isObject(o) || o.app !== 'ScreenScroll' || o.kind !== 'settings' || !isObject(o.settings))
+    throw new Error('This file is not a ScreenScroll settings file.');
+  return normalizeSettings(o.settings);
 }

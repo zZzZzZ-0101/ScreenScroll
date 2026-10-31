@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Fixed decoration fixture</title>
+<style>
+  body { margin: 0 auto; max-width: 700px; font: 16px/1.6 system-ui, sans-serif; padding: 16px; }
+  /* Decoration, not a pop-up: an opaque layer behind the page and a faint pattern over it
+     that lets clicks through. Neither may be hidden or warned about. */
+  .bg { position: fixed; inset: 0; z-index: -1; background: linear-gradient(#eef, #fee); }
+  .grain { position: fixed; inset: 0; pointer-events: none; background: rgba(0, 0, 0, 0.03); }
+</style></head>
+<body>
+<div class="bg"></div>
+<h1>Fixed decoration fixture</h1>
+<p style="height: 1600px">Long filler block so the page scrolls.</p>
+<div class="grain"></div>
+</body>
+</html>

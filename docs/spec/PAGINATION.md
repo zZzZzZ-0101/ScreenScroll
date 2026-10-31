@@ -77,6 +77,8 @@ When a forbidden interval is taller than `0.9·T` (a huge image, a long `<pre>`,
 
 If a break falls inside a table with a `thead` (or a detected first row with a heavier background), draw the header row's pixels at the top of the next page, marked so it's clear it's a repetition. The header height comes out of the next page's T budget.
 
+Built (2026-10-31): `thead` only; header ≤ 25% of T; marked by a dashed grey rule under it; its text is not repeated in the text layer; not on the single long page. See DECISIONS.
+
 ## 8. Output of pagination
 
 ```ts

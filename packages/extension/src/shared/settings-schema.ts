@@ -89,6 +89,25 @@ export const SETTINGS: SettingEntry[] = [
     why: 'Small print stays sharp on paper; files grow about 2–4×.',
   },
   {
+    id: 'capture.width',
+    section: 'Capture',
+    label: 'Page width',
+    help: 'Wide pages shrink their text to fit the paper. With a width set, a whole-page capture first makes the window narrower so the page lays itself out at that width, then puts the window back as it was. Pages already narrower are left alone.',
+    kind: 'choice',
+    choices: [
+      { value: '0', label: 'As it is' },
+      { value: '1000', label: '1000 px' },
+      { value: '1200', label: '1200 px' },
+      { value: '1440', label: '1440 px' },
+    ],
+    get: (s) => String(s.capture.width),
+    set: (s, v) => ({
+      capture: { ...s.capture, width: Number(v) as Settings['capture']['width'] },
+    }),
+    recommended: '1000',
+    why: 'On A4 portrait with 10 mm margins (190 mm = 539 pt across), 16 px text prints at 16 × 539 ÷ width: 8.6 pt at 1000 px, 7.2 pt at 1200 px, 6.0 pt at 1440 px. Books use 9–11 pt.',
+  },
+  {
     id: 'afterCapture',
     section: 'Capture',
     label: 'After a capture',

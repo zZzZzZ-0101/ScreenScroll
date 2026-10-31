@@ -1,4 +1,5 @@
 import {
+  repeatHeight,
   watermarkOn,
   type Annotation,
   type FilterId,
@@ -149,7 +150,7 @@ function PageCanvas({
   const ref = useRef<HTMLCanvasElement>(null);
   const k = pageW / layout.paperW; // preview px per pt
   const w = (slice.x1 - slice.x0) * layout.s * k;
-  const h = (slice.y1 - slice.y0) * layout.s * k;
+  const h = (slice.y1 - slice.y0 + repeatHeight(slice)) * layout.s * k;
   useEffect(() => {
     const c = ref.current!;
     const ratio = devicePixelRatio || 1;
@@ -158,10 +159,19 @@ function PageCanvas({
     const ctx = c.getContext('2d')!;
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, c.width, c.height);
-    // Quick, blurry first paint from the thumbnail strip...
+    // Quick, blurry first paint from the thumbnail strip (a repeated header first)...
+    const pxPerCss = c.width / (slice.x1 - slice.x0);
+    const head = repeatHeight(slice) * pxPerCss;
+    if (slice.repeat) drawFromStrip(ctx, analysis, { ...slice, ...slice.repeat }, c.width);
+    ctx.save();
+    ctx.translate(0, head);
     drawFromStrip(ctx, analysis, slice, c.width);
-    filterCanvas(ctx, filter, c.width / (slice.x1 - slice.x0));
-    paintAnnotations(ctx, annotations, slice, c.width / (slice.x1 - slice.x0));
+    ctx.restore();
+    filterCanvas(ctx, filter, pxPerCss);
+    ctx.save();
+    ctx.translate(0, head);
+    paintAnnotations(ctx, annotations, slice, pxPerCss);
+    ctx.restore();
     // ...then the real pixels once the page is on screen, at the preview's own size.
     let cancelled = false;
     const io = new IntersectionObserver(

@@ -1,3 +1,4 @@
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import type { Worker } from '@playwright/test';
 import { expect, test, FIXTURES } from './fixtures';
 
@@ -97,4 +98,27 @@ test('capture settings: start where I am, sharp 2× capture, speeds', async ({
   expect(sharp.frames.every((f) => f.dpr === 2 && f.imageWidth === width * 2)).toBe(true);
   expect(sharp.done.docHeight).toBe(total);
   expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
+});
+
+test('settings file: save, change, load back, undo', async ({ context, extensionId }) => {
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/options.html`);
+  const width = page.getByRole('radiogroup', { name: 'Page width' });
+  await width.getByRole('radio', { name: '1000 px' }).check();
+  const dl = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Save to a file' }).click();
+  const file = await (await dl).path();
+  expect(JSON.parse(readFileSync(file, 'utf8')).settings.capture.width).toBe(1000);
+  await width.getByRole('radio', { name: 'As it is' }).check();
+  await page.locator('input[type=file]').setInputFiles(file);
+  await expect(page.getByText(/^Settings loaded from /)).toBeVisible();
+  await expect(width.getByRole('radio', { name: '1000 px' })).toBeChecked();
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(width.getByRole('radio', { name: 'As it is' })).toBeChecked();
+  // Not a settings file: says so, changes nothing.
+  mkdirSync('e2e-artifacts', { recursive: true });
+  writeFileSync('e2e-artifacts/not-settings.json', '{"hello":1}');
+  await page.locator('input[type=file]').setInputFiles('e2e-artifacts/not-settings.json');
+  await expect(page.getByRole('alert')).toContainText('not a ScreenScroll settings file');
+  await expect(width.getByRole('radio', { name: 'As it is' })).toBeChecked();
 });

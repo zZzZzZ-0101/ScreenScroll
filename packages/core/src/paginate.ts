@@ -19,6 +19,11 @@ export interface PageSlice {
   x1: Px;
   /** Content repeated from the previous page after a forced cut. */
   overlapTop: Px;
+  /**
+   * PAGINATION §7: a table's header rows drawn again above this page's content, because the
+   * page starts inside that table. Document rows; the page shows them first, then y0–y1.
+   */
+  repeat?: { y0: Px; y1: Px };
   breakKind: BreakKind;
   cost: number;
   warnings: string[];
@@ -33,6 +38,8 @@ export interface PaginateOptions {
   pinned: Px[];
   /** Breaks the user removed: never used (±3 px). */
   removed: Px[];
+  /** PAGINATION §7: repeat a table's header at the top of a page that starts inside it. */
+  repeatHeaders: boolean;
   /** Repeated content after a forced cut; 'auto' = max(24, 1.5 × line height). */
   overlap: Px | 'auto';
 }
@@ -43,6 +50,7 @@ export const DEFAULT_PAGINATE_OPTIONS: PaginateOptions = {
   pinned: [],
   removed: [],
   overlap: 'auto',
+  repeatHeaders: true,
 };
 
 export interface PaginateInput {
@@ -153,9 +161,14 @@ export function paginateDebug(input: PaginateInput): PaginationDebug {
     };
   }
 
+  const header = opts.repeatHeaders ? headerFinder(input.hints ?? null, T) : () => null;
+  const rep = (y: Px) => {
+    const h = header(y);
+    return h ? h.y1 - h.y0 : 0;
+  };
   const base = buildCandidates(input, T).filter((c) => c.y > start && c.y < end);
   let cands = applyEdits(base, pinned, opts.removed, start, end);
-  let breaks = solve(cands, T, overlap, opts.alpha, opts.beta);
+  let breaks = solve(cands, T, overlap, opts.alpha, opts.beta, rep);
   if (!breaks) {
     // Some stretch has no usable candidate (pinned breaks too far apart, no hints and no
     // pixels...). Add last-resort cuts everywhere; they carry an overlap and a warning.
@@ -172,7 +185,7 @@ export function paginateDebug(input: PaginateInput): PaginationDebug {
       });
     }
     cands = applyEdits(dedupe([...base, ...extra]), pinned, opts.removed, start, end);
-    breaks = solve(cands, T, overlap, opts.alpha, opts.beta);
+    breaks = solve(cands, T, overlap, opts.alpha, opts.beta, rep);
     if (!breaks) throw new Error('paginate: no feasible page breaks');
   }
 
@@ -193,7 +206,8 @@ export function paginateDebug(input: PaginateInput): PaginationDebug {
       warnings.push(`Page ${page}: the break could not be confirmed against the image.`);
     }
     const kind: BreakKind = k === breaks.length - 1 ? 'end' : to.c.pinned ? 'manual' : to.c.kind;
-    slices.push(slice(from.c.y - ov, to.c.y, crop, ov, kind, to.cost, warnings));
+    const repeat = k > 1 ? header(from.c.y) : null;
+    slices.push(slice(from.c.y - ov, to.c.y, crop, ov, kind, to.cost, warnings, repeat));
   }
   return {
     slices,
@@ -243,8 +257,35 @@ function slice(
   breakKind: BreakKind,
   cost: number,
   warnings: string[],
+  repeat: { y0: Px; y1: Px } | null = null,
 ): PageSlice {
-  return { y0, y1, x0: crop.x0, x1: crop.x1, overlapTop, breakKind, cost, warnings };
+  const s: PageSlice = { y0, y1, x0: crop.x0, x1: crop.x1, overlapTop, breakKind, cost, warnings };
+  if (repeat) s.repeat = repeat;
+  return s;
+}
+
+/** Header rows repeated above a page's content, CSS px (0 without). */
+export function repeatHeight(slice: Pick<PageSlice, 'repeat'>): Px {
+  return slice.repeat ? slice.repeat.y1 - slice.repeat.y0 : 0;
+}
+
+/**
+ * PAGINATION §7: for a break at y, the header rows of the table it falls in, when that table
+ * has a `thead`, the break is below it, and the header is short enough to be worth its
+ * space (≤ 25% of a page). Innermost table wins.
+ */
+function headerFinder(hints: DomHints | null, T: Px): (y: Px) => { y0: Px; y1: Px } | null {
+  const tables = (hints?.tables ?? [])
+    .filter((t) => t.headerHeight > 0 && t.headerHeight <= 0.25 * T)
+    .map((t) => {
+      const y0 = t.headerTop ?? t.y0;
+      return { y0, y1: y0 + t.headerHeight, end: t.y1, top: t.y0 };
+    })
+    .sort((a, b) => b.top - a.top);
+  return (y) => {
+    const t = tables.find((t) => y >= t.y1 + 1 && y < t.end - 1);
+    return t ? { y0: t.y0, y1: t.y1 } : null;
+  };
 }
 
 function autoOverlap(input: PaginateInput): Px {
@@ -468,6 +509,8 @@ function solve(
   overlap: Px,
   alpha: number,
   beta: number,
+  /** Extra height a page starting at y needs (a repeated table header). */
+  rep: (y: Px) => Px = () => 0,
 ): Array<{ c: Cand; cost: number }> | null {
   const n = cands.length;
   const dp = new Float64Array(n).fill(Infinity);
@@ -483,7 +526,7 @@ function solve(
     for (let i = Math.max(lo, lastPinned); i < j; i++) {
       if (dp[i] === Infinity) continue;
       const ci = cands[i]!;
-      const h = cj.y - ci.y + (ci.forced ? overlap : 0);
+      const h = cj.y - ci.y + (ci.forced ? overlap : 0) + (i > 0 ? rep(ci.y) : 0);
       if (h > T + 1e-6 || cj.y - ci.y <= 0) continue;
       const fill = isLast ? 0 : ((T - h) / T) ** 2 * 100;
       const short = !isLast && h < MIN_FILL * T ? SHORT_PAGE : 0;
@@ -505,4 +548,34 @@ function solve(
     if (j === 0) break;
   }
   return path.reverse();
+}
+
+/** A break worth a look before saving, and why (M7 "confidence per break"). */
+export interface BreakCheck {
+  /** Index of the page the break ends (the break is between pages index+1 and index+2). */
+  index: number;
+  y: Px;
+  reason: string;
+}
+
+/**
+ * The breaks the user should look at: cuts through content, breaks the image couldn't
+ * confirm or that had no clean place, and breaks chosen from pixels alone (no text line or
+ * block edge supports them). Clean breaks between lines or blocks are left out.
+ */
+export function breaksToCheck(slices: readonly PageSlice[]): BreakCheck[] {
+  const out: BreakCheck[] = [];
+  slices.slice(0, -1).forEach((s, index) => {
+    const warning = s.warnings[0]?.replace(/^Page \d+: /, '');
+    const reason =
+      s.breakKind === 'forced'
+        ? (warning ?? 'Cuts through content; a strip repeats on the next page.')
+        : warning
+          ? warning
+          : s.breakKind === 'pixel'
+            ? 'Found in the image only; no text line confirms it.'
+            : null;
+    if (reason) out.push({ index, y: s.y1, reason: reason[0]!.toUpperCase() + reason.slice(1) });
+  });
+  return out;
 }

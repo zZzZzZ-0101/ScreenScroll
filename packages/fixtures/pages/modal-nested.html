@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Nested modal fixture</title>
+<style>
+  body { margin: 0 auto; max-width: 700px; font: 16px/1.6 system-ui, sans-serif; padding: 16px; }
+  /* A consent wall: the dialog sits inside its backdrop and the page is locked. */
+  body.locked { overflow: hidden; }
+  .wall { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; z-index: 10; }
+  .wall .box { background: #fff; width: 380px; padding: 24px; border-radius: 8px; }
+</style></head>
+<body class="locked">
+<h1>Nested modal fixture</h1>
+<p>Page text under a consent wall. Paragraph one.</p>
+<p style="height: 2400px">Long filler block so the page scrolls.</p>
+<p>End.</p>
+<div class="wall"><div class="box" role="dialog" aria-modal="true" aria-label="Consent">We use cookies. Accept?</div></div>
+</body>
+</html>

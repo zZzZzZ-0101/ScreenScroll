@@ -173,6 +173,7 @@ export function collectHints(ctx: CollectContext): DomHints {
           y1: docY(r.bottom),
           rowEnds: [...table.rows].map((row) => docY(row.getBoundingClientRect().bottom)),
           headerHeight: table.tHead?.getBoundingClientRect().height ?? 0,
+          ...(table.tHead ? { headerTop: docY(table.tHead.getBoundingClientRect().top) } : {}),
         });
       }
     }

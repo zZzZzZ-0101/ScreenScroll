@@ -11,7 +11,7 @@ M4 — built and verified except manual checks (see M4 below). M1–M3 are compl
 - Vitest: `core/pixel.ts` (port of the reference prototype: ink rows, margin trim, greedy cuts), 6 tests.
 - Offline guard test: builds the production bundle, fails on `fetch(`/XHR/WebSocket/EventSource/sendBeacon or non-allowlisted URL literals, and on any host permission. Verified it fails when a `fetch()` call is planted in the background script.
 - Playwright: persistent Chromium context with the e2e build loaded (headless works); smoke tests open the popup and a fixture page.
-- Manifest: `activeTab, scripting, storage, unlimitedStorage, downloads, clipboardWrite, contextMenus`; `commands` with 3 suggested hotkeys; teal page-with-scissors icons (16/32/48/128, rendered from `assets-src/icon.svg` by `scripts/icons.mjs`).
+- Manifest: `activeTab, scripting, storage, unlimitedStorage, downloads, clipboardWrite, contextMenus`; `commands` with 3 suggested hotkeys; long-cat icons (16/32/48/128, rendered from `assets-src/icon*.svg` by `scripts/icons.mjs`; was a page with scissors until 2026-10-31).
 
 ### Verified
 - `pnpm test` 8/8, `pnpm e2e` 2/2, `pnpm lint`, `pnpm typecheck` clean, `pnpm zip` → `scrollpress-0.0.1-chrome.zip` (78 kB).
@@ -148,6 +148,19 @@ Suite: `pnpm test` 219, `pnpm e2e` 53 (see the commit), lint and typecheck clean
 - Pages by hand (Pages panel): five numbers, prefilled from detection; e2e test.
 - Mark up shows the chosen filter and the watermark at once; e2e tests.
 - Needs the user's check: the PDF preview that came out at 2/3 of a page. If it still does, "Wrong page size? Set pages by hand" fixes it, and a screenshot of that capture would make a test case.
+
+### M6: page width, pop-ups, personal data, import (2026-10-31)
+- Settings → Page width (1000 / 1200 / 1440 px): window narrowed for the capture, put back on finish, Esc and tab close; 3 unit + 3 e2e tests.
+- Needs the user's check: a maximised window comes back maximised.
+- Auto-redact: Mark up → Personal data (email, phone, card with Luhn, Chinese ID with check character); 6 unit tests, 1 e2e test that also reads the PDF's text; blur placement checked in the rendered PDF.
+- Firefox: `wxt build -b firefox` builds (MV2, `.output/firefox-mv2`) without errors, 2026-10-31. Not ticked: no Firefox in the build sandbox to smoke-test it, and Sharp capture's `debugger` permission doesn't exist in Firefox (the Firefox manifest must leave it out). Next session.
+- Table header repetition: pages that start inside a table repeat its `thead`; 4 unit tests, 1 e2e test that reads the PDF's pixels and text; checked in the rendered PDF, the Pages preview and the thumbnails.
+- Breaks that need a look (M7): listed in Breaks with reasons, marked on the strip, Previous / Next; 1 unit + 1 e2e test.
+- Settings backup: Save to a file / Load from a file on the Settings page, with Undo; 2 unit + 1 e2e test.
+- Captures backup: Saved captures → Back up / Restore (`.ssbackup`, streamed); 2 unit + 1 e2e test (back up, delete all, restore, restore again adds nothing).
+- Not started: PDF import, CDP capture engine, browser-window capture.
+- Import: Saved captures → Open an image (tall PNG/JPEG/WebP) → Studio; 2 e2e tests (breaks fall between lines; a non-image says so). Not done: tall single-page PDF import (pdf.js).
+- Overlay killer: the pop-up note in the Studio has "Hide pop-ups and capture again"; 6 e2e tests (3 kinds of pop-up, 2 look-alikes that must stay, the Studio flow). Needs the user's check on real consent walls and newsletter pop-ups.
 
 ## Manual site checks
 | Site | Date | Capture | Header once | Images loaded | No text cut | Text searchable | Links | Time | Notes |
