@@ -189,6 +189,16 @@ export const SETTINGS: SettingEntry[] = [
     recommended: true,
   },
   {
+    id: 'docOriginal',
+    section: 'Pages and PDF',
+    label: 'Document pages as the original',
+    help: 'With document pages, each PDF page is the original page: no margins, no page labels, and the paper that matches its shape (A4, Letter, slides…).',
+    kind: 'toggle',
+    get: (s) => s.docOriginal,
+    set: (_s, v) => ({ docOriginal: !!v }),
+    recommended: true,
+  },
+  {
     id: 'exportPreset',
     section: 'Pages and PDF',
     label: 'PDF quality',

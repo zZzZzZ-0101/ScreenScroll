@@ -52,6 +52,8 @@ export interface Settings {
   keepDays: number;
   /** In a document viewer (Drive, PDF previews), one PDF page per document page. */
   followSheets: boolean;
+  /** Document pages as the original: no margins or page labels, paper matched to the page. */
+  docOriginal: boolean;
   theme: Theme;
   /** Interface language: the browser's, English or Simplified Chinese. */
   language: LangSetting;
@@ -133,6 +135,7 @@ export const DEFAULT_SETTINGS: Settings = {
   pdf: DEFAULT_PDF_SETTINGS,
   keepDays: 0,
   followSheets: true,
+  docOriginal: true,
   theme: 'system',
   language: 'auto',
   capture: { start: 'top', speed: 'normal', resolution: 'standard', width: 0 },
@@ -186,6 +189,7 @@ export function normalizeSettings(stored: unknown): Settings {
       typeof o.filenameTemplate === 'string' ? o.filenameTemplate : d.filenameTemplate,
     afterCapture: o.afterCapture === 'pdf' ? 'pdf' : 'studio',
     followSheets: o.followSheets !== false,
+    docOriginal: o.docOriginal !== false,
     theme: o.theme === 'light' || o.theme === 'dark' ? o.theme : 'system',
     language: o.language === 'en' || o.language === 'zh-CN' ? o.language : 'auto',
     capture: {

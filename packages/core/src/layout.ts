@@ -137,3 +137,32 @@ export function printedTextSize(
     narrowPt: contentWidth > narrowTo + 1 ? fontPx * computeLayout(page, narrowTo).s : null,
   };
 }
+
+/** A paper that matches a page shape (height ÷ width), for "as the original". */
+export interface MatchedPaper {
+  paper: PaperId | { w: number; h: number };
+  orientation: 'portrait' | 'landscape';
+  /** Plain name: "A4", "Letter landscape", "16:9 slide", "Custom 210 × 250 mm". */
+  name: string;
+}
+
+/**
+ * The paper a document page was most likely made on, from its shape: A4, Letter or Legal in
+ * either orientation within 2.5%, slides (16:9, 4:3) on a 10-inch-wide page, else a custom
+ * size at A4 width with the page's own shape.
+ */
+export function matchPaper(ratio: number): MatchedPaper {
+  const near = (r: number) => Math.abs(ratio - r) / r <= 0.025;
+  for (const id of ['A4', 'Letter', 'Legal'] as const) {
+    const { w, h } = PAPERS[id];
+    if (near(h / w)) return { paper: id, orientation: 'portrait', name: id };
+    if (near(w / h)) return { paper: id, orientation: 'landscape', name: `${id} landscape` };
+  }
+  for (const [r, name] of [
+    [9 / 16, '16:9 slide'],
+    [3 / 4, '4:3 slide'],
+  ] as const)
+    if (near(r)) return { paper: { w: 254, h: 254 * r }, orientation: 'portrait', name };
+  const h = Math.round(210 * ratio);
+  return { paper: { w: 210, h }, orientation: 'portrait', name: `Custom 210 × ${h} mm` };
+}

@@ -36,7 +36,7 @@ import { OVERLAY_WARNING } from '@/shared/messages';
 import { RedactCard } from './components/RedactCard';
 import { loadSettings, saveSettings, type Settings } from '@/shared/settings';
 import { analyze, type Analysis } from '@/studio/engine/analysis';
-import { planPages, type Edits, type PageResult } from '@/studio/engine/plan';
+import { pdfFor, planPages, type Edits, type PageResult } from '@/studio/engine/plan';
 import {
   copyPageImage,
   download,
@@ -407,7 +407,7 @@ export function App() {
               slices,
               layout,
               settings.exportPreset,
-              settings.pdf,
+              pdfFor(settings, result),
               progress,
               annotations,
               pageOcr,
@@ -424,7 +424,7 @@ export function App() {
               slices,
               layout,
               settings.exportPreset,
-              settings.pdf,
+              pdfFor(settings, result),
               progress,
               annotations,
               pageOcr,
@@ -499,7 +499,7 @@ export function App() {
           slices,
           result.layout,
           settings.exportPreset,
-          settings.pdf,
+          pdfFor(settings, result),
           progress,
           annotations,
           pageOcr,
@@ -666,7 +666,7 @@ export function App() {
             result.debug.slices,
             result.layout,
             settings.exportPreset,
-            settings.pdf,
+            pdfFor(settings, result),
             undefined,
             project.annotations,
             pageOcr,
@@ -738,6 +738,9 @@ export function App() {
           width: session.width,
           followSheets: settings.followSheets,
           onFollow: (followSheets) => updateSettings({ followSheets }),
+          docOriginal: settings.docOriginal,
+          original: result.ok ? (result.original ?? null) : null,
+          onOriginal: (docOriginal) => updateSettings({ docOriginal }),
           onGrid: (sheetGrid) => changeProject({ sheetGrid }),
         }}
         estimate={estimate}

@@ -324,4 +324,15 @@ export const ZH_CN: Record<string, string> = {
     "分页按文档自己的页面来，长条上用框标出。拖动页面的上下边可调页高和页间距，拖动左右边可调宽度；放大镜会显示精确到行的位置。",
   "To place breaks yourself instead, turn off “One PDF page per document page” in Pages.":
     "如果想自己放置分页，请在“页面”中关闭“每个文档页面对应一页 PDF”。",
+  "As the original": "和原件一样",
+  "No margins, no page labels, and the paper that matches the page’s shape.": "无页边距、无页眉页脚，纸张按页面形状匹配。",
+  "Document pages as the original": "文档页面和原件一样",
+  "With document pages, each PDF page is the original page: no margins, no page labels, and the paper that matches its shape (A4, Letter, slides…).":
+    "识别为文档页面时，每页 PDF 就是原来的那一页：无页边距、无页眉页脚，纸张按页面形状匹配（A4、Letter、幻灯片…）。",
+  "A4": "A4",
+  "A4 landscape": "A4 横版",
+  "Letter landscape": "Letter 横版",
+  "Legal landscape": "Legal 横版",
+  "16:9 slide": "16:9 幻灯片",
+  "4:3 slide": "4:3 幻灯片",
 };

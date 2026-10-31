@@ -137,6 +137,10 @@ export interface SheetsCardProps {
   width: number;
   followSheets: boolean;
   onFollow: (on: boolean) => void;
+  /** "As the original": the setting, and the paper it matched (when pages are followed). */
+  docOriginal: boolean;
+  original: string | null;
+  onOriginal: (on: boolean) => void;
   onGrid: (g: SheetGrid | null) => void;
 }
 
@@ -245,6 +249,23 @@ function SheetsCard(p: SheetsCardProps) {
           className="accent-[#0e7c7b]"
         />
         {t('One PDF page per document page')}
+      </label>
+      <label
+        className="flex items-start gap-2 pt-1 text-neutral-600 dark:text-neutral-300"
+        title={t('No margins, no page labels, and the paper that matches the page’s shape.')}
+      >
+        <input
+          type="checkbox"
+          checked={p.docOriginal}
+          onChange={(e) => p.onOriginal(e.target.checked)}
+          className="mt-0.5 accent-[#0e7c7b]"
+        />
+        <span>
+          {t('As the original')}
+          {p.docOriginal && p.original && (
+            <span className="text-neutral-500"> · {t(p.original)}</span>
+          )}
+        </span>
       </label>
       {!editing ? (
         <button

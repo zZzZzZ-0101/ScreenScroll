@@ -96,7 +96,16 @@ test('a document viewer: one PDF page per document page, cropped to the page', a
     expect(text).toContain(`Document page ${i}`);
     expect(text).toContain(`End of document page ${i}.`);
     expect(text).not.toContain(`Document page ${i + 1}`);
+    // As the original: no page label of ours on the page.
+    expect(text).not.toContain('localhost');
   }
+  // As the original: the page shape (760 × 1075) is A4, so the paper is A4 portrait, and the
+  // page image fills it edge to edge.
+  const first = await pdf.getPage(1);
+  const [, , pw, ph] = first.view;
+  expect(pw).toBeCloseTo(595.28, 0);
+  expect(ph).toBeCloseTo(841.89, 0);
+  await expect(studio.getByTestId('sheets')).toContainText('As the original · A4');
   for (const n of [1, 6]) {
     const pg = await pdf.getPage(n);
     const v = pg.getViewport({ scale: 1 });
@@ -113,6 +122,9 @@ test('a document viewer: one PDF page per document page, cropped to the page', a
   const px = (x: number, y: number) => ctx.getImageData(x, y, 1, 1).data;
   const mid = Math.round(vp.height / 2);
   expect(px(Math.round(vp.width / 2), mid)[0]).toBeGreaterThan(200);
+  // Edge to edge: the corners are the page's own white, not a margin of another colour, and
+  // the 1 px edge columns are not the viewer's dark background.
+  for (const x of [1, Math.round(vp.width) - 2]) expect(px(x, mid)[0]).toBeGreaterThan(200);
   writeFileSync('e2e-artifacts/doc-viewer-p3.png', canvas.toBuffer('image/png'));
 
   // Turned off, ordinary smart breaks come back.

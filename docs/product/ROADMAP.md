@@ -140,7 +140,7 @@ Goal: the most capable screen capture tool available, that still looks simple. A
 
 - [x] **Drag the pages**: in Breaks, the document pages drawn over the strip; drag a page's top, bottom, left or right edge (and the gap) and the page grid follows, with the magnifier for the last pixel.
 - [x] **Diagnostics**: Details shows what page detection read (background and paper grey, column, gap) and each reading's fit and its parts; copy it as a test case.
-- [ ] **Exam / handout mode**: recognise "page X of Y" and running headers and footers; drop the viewer's own page numbers or renumber.
+- [ ] **Exam / handout mode**: recognise "page X of Y" and running headers and footers; drop the viewer's own page numbers or renumber. (First part done 2026-10-31: "As the original". Reading "page X of Y" needs the page text, so it waits for OCR at analysis time.)
 - [ ] Recognised text out as Markdown / .docx (scans, PDF previews).
 - [ ] Capture the same page again later and mark what changed.
 - [ ] Several files from a folder (e.g. paper, insert, answers) captured one by one into one bookmarked PDF.

@@ -93,3 +93,18 @@ describe('printed text size', () => {
     expect(printedTextSize(16, DEFAULT_PAGE_SETTINGS, 900).narrowPt).toBeNull();
   });
 });
+
+describe('paper matched to a page shape', () => {
+  it('A4, Letter, landscape, slides, and a custom size otherwise', async () => {
+    const { matchPaper } = await import('../src/layout.js');
+    expect(matchPaper(1075 / 760)).toMatchObject({ paper: 'A4', orientation: 'portrait' });
+    expect(matchPaper(11 / 8.5)).toMatchObject({ paper: 'Letter', orientation: 'portrait' });
+    expect(matchPaper(210 / 297)).toMatchObject({ paper: 'A4', orientation: 'landscape' });
+    expect(matchPaper(9 / 16).name).toBe('16:9 slide');
+    expect(matchPaper(1.2)).toEqual({
+      paper: { w: 210, h: 252 },
+      orientation: 'portrait',
+      name: 'Custom 210 × 252 mm',
+    });
+  });
+});
