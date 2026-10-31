@@ -2,6 +2,7 @@ import {
   buildFilename,
   commit,
   DEFAULT_STYLE,
+  breaksToCheck,
   redactions,
   emptyHistory,
   exportScale,
@@ -224,6 +225,7 @@ export function App() {
   const setView = setViewState;
 
   const slices = result && result.ok ? result.debug.slices : [];
+  const checks = useMemo(() => breaksToCheck(slices), [slices]);
 
   const warnings = useMemo(() => {
     if (!session || !result || !result.ok) return [];
@@ -729,6 +731,9 @@ export function App() {
         edits={edits}
         onReset={() => setEdits({ pinned: [], removed: [] })}
         locked={result.ok && result.sheets}
+        checks={checks}
+        page={page}
+        onJump={(i) => setPage(i + 1)}
       />
     ) : view === 'markup' ? (
       <PageMarkPanel settings={settings} onSettings={updateSettings}>
@@ -980,6 +985,7 @@ export function App() {
                   onEdits={setEdits}
                   page={page}
                   locked={result.sheets}
+                  checks={checks}
                 />
               )}
             </main>

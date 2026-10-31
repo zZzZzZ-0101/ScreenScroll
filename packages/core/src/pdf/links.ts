@@ -2,7 +2,7 @@ import { PDFName, PDFNull, PDFString, type PDFDocument, type PDFPage } from 'pdf
 import type { LinkRect } from '../hints.js';
 import type { PageLayout } from '../layout.js';
 import type { PageSlice } from '../paginate.js';
-import { locate } from './locate.js';
+import { contentLayout, locate } from './locate.js';
 
 /**
  * PDF_OUTPUT §3: a /Link annotation over every link rectangle shown on each page. External
@@ -27,11 +27,12 @@ export function addLinks(
       const x0 = Math.max(l.rect.x, slice.x0);
       const x1 = Math.min(l.rect.x + l.rect.width, slice.x1);
       if (y1 - y0 < 1 || x1 - x0 < 1) continue;
+      const box = contentLayout(layout, slice).box;
       const rect = [
-        layout.box.x + (x0 - slice.x0) * s,
-        layout.paperH - (layout.box.y + (y1 - slice.y0) * s),
-        layout.box.x + (x1 - slice.x0) * s,
-        layout.paperH - (layout.box.y + (y0 - slice.y0) * s),
+        box.x + (x0 - slice.x0) * s,
+        layout.paperH - (box.y + (y1 - slice.y0) * s),
+        box.x + (x1 - slice.x0) * s,
+        layout.paperH - (box.y + (y0 - slice.y0) * s),
       ];
       let action: Record<string, unknown>;
       const dest = l.targetY === undefined ? null : locate(slices, layout, l.targetY);

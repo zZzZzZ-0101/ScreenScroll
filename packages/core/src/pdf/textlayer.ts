@@ -29,6 +29,7 @@ import {
   GLYPHLESS_NAME,
   GLYPHLESS_UNITS_PER_EM,
 } from './glyphless.js';
+import { contentLayout } from './locate.js';
 
 /**
  * PDF_OUTPUT §2: Type0 font, Identity-H encoding, over the glyphless TrueType. Each distinct
@@ -153,8 +154,9 @@ export interface PlacedRun {
 export function placeRuns(
   runs: readonly TextRun[],
   slice: PageSlice,
-  layout: PageLayout,
+  pageLayout: PageLayout,
 ): PlacedRun[] {
+  const layout = contentLayout(pageLayout, slice);
   const top = slice.y0 + slice.overlapTop;
   const mine = runs.filter((r) => {
     const cy = r.rect.y + r.rect.height / 2;

@@ -7,6 +7,7 @@ import {
   imagePx,
   medianFontPx,
   pageDpi,
+  repeatHeight,
   sliderWeights,
   watermarkOn,
   type PageLayout,
@@ -260,7 +261,8 @@ export function buildDetails(i: DetailsInput): Details {
   ];
 
   const pages: PageRow[] = slices.map((sl, k) => {
-    const h = sl.y1 - sl.y0;
+    // A repeated table header is part of the page and its image.
+    const h = sl.y1 - sl.y0 + repeatHeight(sl);
     const img = imagePx(sl.x1 - sl.x0, h, s.dpr, scale);
     return {
       n: k + 1,

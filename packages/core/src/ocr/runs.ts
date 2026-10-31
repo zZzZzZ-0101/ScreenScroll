@@ -15,16 +15,20 @@ export const MIN_CONFIDENCE = 0.5;
  */
 export function ocrRuns(
   lines: readonly OcrLine[],
-  slice: { x0: number; y0: number },
+  slice: { x0: number; y0: number; repeat?: { y0: number; y1: number } },
   pxPerCss: number,
   existing: readonly { rect: Rect }[] = [],
 ): TextRun[] {
   const out: TextRun[] = [];
+  // A repeated table header sits above the slice's rows in the image; its text is already
+  // where the header first appears, so it is skipped here.
+  const head = slice.repeat ? slice.repeat.y1 - slice.repeat.y0 : 0;
   for (const l of lines) {
     if (l.confidence < MIN_CONFIDENCE) continue;
+    if (head && (l.box.y + l.box.h / 2) / pxPerCss < head) continue;
     const rect = {
       x: slice.x0 + l.box.x / pxPerCss,
-      y: slice.y0 + l.box.y / pxPerCss,
+      y: slice.y0 + l.box.y / pxPerCss - head,
       width: l.box.w / pxPerCss,
       height: l.box.h / pxPerCss,
     };

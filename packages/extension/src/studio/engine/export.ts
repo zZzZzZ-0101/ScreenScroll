@@ -123,8 +123,10 @@ export function exportLongPagePdf(
   ocr?: PageOcr,
 ): Promise<Uint8Array> {
   const total = slices.reduce((h, sl) => h + sl.y1 - sl.y0 - sl.overlapTop, 0);
+  // One long page has no page tops, so table headers aren't repeated on it.
+  const plain = slices.map(({ repeat: _repeat, ...sl }) => sl);
   return buildSingleLongPagePdf(
-    pageImages(s, frames, slices, layout, preset, onProgress, annotations, pdf.filter, ocr),
+    pageImages(s, frames, plain, layout, preset, onProgress, annotations, pdf.filter, ocr),
     total,
     layout,
     metaOf(s),

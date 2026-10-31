@@ -1,4 +1,4 @@
-import { KIND_COLOURS, type BreakKind, type PaginationDebug } from '@screenscroll/core';
+import { KIND_COLOURS, type BreakCheck, type BreakKind, type PaginationDebug } from '@screenscroll/core';
 import { Pin } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Analysis } from '@/studio/engine/analysis';
@@ -37,6 +37,8 @@ interface Props {
   page: number;
   /** Breaks follow a document's own pages: shown, not editable. */
   locked?: boolean;
+  /** Breaks worth a look get a marker. */
+  checks?: BreakCheck[];
 }
 
 export function StripView(p: Props) {
@@ -156,6 +158,17 @@ export function StripView(p: Props) {
                     borderTop: `${b.kind === 'forced' ? '2px dashed' : '2px solid'} ${colour}`,
                   }}
                 />
+                {p.checks?.some((c) => c.index === i) && (
+                  <span
+                    role="img"
+                    aria-label="Needs a look"
+                    title={p.checks.find((c) => c.index === i)!.reason}
+                    data-testid="break-check"
+                    className="absolute -left-6 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white"
+                  >
+                    !
+                  </span>
+                )}
                 {b.pinned && (
                   <Pin
                     aria-label="Pinned break"

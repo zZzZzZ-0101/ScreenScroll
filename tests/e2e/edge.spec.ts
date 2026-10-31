@@ -676,3 +676,74 @@ test('Mark up → Personal data: found in the text, ticked ones blurred and gone
   expect(text).not.toContain('4111');
   expect(text).not.toContain('1949');
 });
+
+test('a long table: pages that start inside it repeat its header row, in the image and the PDF', async ({
+  context,
+  serviceWorker,
+}) => {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const { createCanvas } = await import('@napi-rs/canvas');
+  const fonts = new URL('../../node_modules/pdfjs-dist/standard_fonts/', import.meta.url).pathname;
+  const studio = await capture(context, serviceWorker, 'long-table.html');
+  type S = { y0: number; y1: number; repeat?: { y0: number; y1: number } };
+  const all = (await studio.evaluate(() =>
+    (window as unknown as { __spStudio: { slices(): unknown[] } }).__spStudio.slices(),
+  )) as S[];
+  expect(all.length).toBeGreaterThan(1);
+  expect(all[0]!.repeat).toBeUndefined();
+  const repeated = all.filter((s) => s.repeat);
+  expect(repeated.length).toBeGreaterThan(0);
+  // The header row is ~35 px tall (8 px padding, 15 px text), and the same band on every page.
+  const band = repeated[0]!.repeat!;
+  expect(band.y1 - band.y0).toBeGreaterThan(25);
+  expect(band.y1 - band.y0).toBeLessThan(50);
+  for (const s of repeated) expect(s.repeat).toEqual(band);
+
+  const b64 = (await studio.evaluate(() =>
+    (window as unknown as { __spStudio: { pdfBase64(): Promise<string> } }).__spStudio.pdfBase64(),
+  )) as string;
+  mkdirSync('e2e-artifacts', { recursive: true });
+  writeFileSync('e2e-artifacts/long-table.pdf', Buffer.from(b64, 'base64'));
+  const pdf = await pdfjs.getDocument({
+    data: new Uint8Array(Buffer.from(b64, 'base64')),
+    standardFontDataUrl: fonts,
+  }).promise;
+  expect(pdf.numPages).toBe(all.length);
+  const n = all.indexOf(repeated[0]!) + 1;
+  const pg = await pdf.getPage(n);
+  const vp = pg.getViewport({ scale: 1 });
+  const canvas = createCanvas(Math.ceil(vp.width), Math.ceil(vp.height));
+  await pg.render({ canvas: canvas as never, viewport: vp }).promise;
+  // The top of that page's content is the dark header row (#1f3b57).
+  const g = canvas.getContext('2d');
+  let dark = 0;
+  for (let y = 0; y < vp.height * 0.2; y++) {
+    const d = g.getImageData(Math.round(vp.width / 2), y, 1, 1).data;
+    if (Math.abs(d[0]! - 0x1f) < 25 && Math.abs(d[1]! - 0x3b) < 25 && Math.abs(d[2]! - 0x57) < 25)
+      dark++;
+  }
+  expect(dark).toBeGreaterThan(5);
+  // Its text layer has that page's rows, and no second copy of the header words.
+  const text = (await pg.getTextContent()).items.map((it) => ('str' in it ? it.str : '')).join(' ');
+  expect(text).toMatch(/Item number \d+/);
+  expect(text).not.toContain('Quantity');
+});
+
+test('Breaks: the breaks worth a look are listed, marked on the strip, and stepped through', async ({
+  context,
+  serviceWorker,
+}) => {
+  const studio = await capture(context, serviceWorker, 'tall-image.html');
+  await studio.getByRole('tab', { name: 'Breaks' }).click();
+  const card = studio.getByTestId('break-checks');
+  await expect(card).toContainText(/\d+ breaks? needs? a look/);
+  await expect(card).toContainText(/taller than one page was split/i);
+  const marks = studio.getByTestId('break-check');
+  expect(await marks.count()).toBeGreaterThan(0);
+  // Next goes to the page after the first flagged break.
+  const first = await card.getByRole('listitem').first().textContent();
+  const n = Number(/After page (\d+)/.exec(first ?? '')![1]);
+  await card.getByRole('button', { name: 'Next' }).click();
+  await expect(card).toContainText(/· 1 of \d+/);
+  await expect(studio.getByText(`After page ${n}:`)).toBeVisible();
+});

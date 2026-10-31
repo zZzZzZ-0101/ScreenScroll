@@ -18,25 +18,46 @@ import type { FrameCache, LoadedSession } from './session';
 export async function composePage(
   s: LoadedSession,
   frames: FrameCache,
-  region: { x0: number; x1: number; y0: number; y1: number },
+  region: { x0: number; x1: number; y0: number; y1: number; repeat?: { y0: number; y1: number } },
   scale = 1,
   annotations: readonly Annotation[] = [],
   filter: FilterId = 'original',
 ): Promise<OffscreenCanvas> {
   const outDpr = s.dpr * scale;
+  // PAGINATION §7: a repeated table header goes above the page's own rows.
+  const head = region.repeat ? region.repeat.y1 - region.repeat.y0 : 0;
   const w = Math.max(1, Math.round((region.x1 - region.x0) * outDpr));
-  const h = Math.max(1, Math.round((region.y1 - region.y0) * outDpr));
+  const h = Math.max(1, Math.round((region.y1 - region.y0 + head) * outDpr));
   const canvas = new OffscreenCanvas(w, h);
   const ctx = canvas.getContext('2d')!;
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, w, h);
-  for (const op of composeOps(s.geoms, region, outDpr)) {
-    const bitmap = await frames.get(op.frame);
-    ctx.drawImage(bitmap, op.sx, op.sy, op.sw, op.sh, op.dx, op.dy, op.dw, op.dh);
-  }
+  const draw = async (band: { x0: number; x1: number; y0: number; y1: number }, dy: number) => {
+    for (const op of composeOps(s.geoms, band, outDpr)) {
+      const bitmap = await frames.get(op.frame);
+      ctx.drawImage(bitmap, op.sx, op.sy, op.sw, op.sh, op.dx, op.dy + dy, op.dw, op.dh);
+    }
+  };
+  if (region.repeat) await draw({ ...region, ...region.repeat }, 0);
+  await draw(region, head * outDpr);
   // The filter acts on the page, then mark-up goes on top in its own colours.
   filterCanvas(ctx, filter, outDpr);
+  ctx.save();
+  ctx.translate(0, head * outDpr);
   paintAnnotations(ctx, annotations, region, outDpr);
+  ctx.restore();
+  if (head) {
+    // Marked as a repetition: a fine dashed rule under the repeated header.
+    ctx.save();
+    ctx.strokeStyle = '#9aa0a6';
+    ctx.lineWidth = Math.max(1, outDpr);
+    ctx.setLineDash([4 * outDpr, 3 * outDpr]);
+    ctx.beginPath();
+    ctx.moveTo(0, head * outDpr - ctx.lineWidth / 2);
+    ctx.lineTo(w, head * outDpr - ctx.lineWidth / 2);
+    ctx.stroke();
+    ctx.restore();
+  }
   return canvas;
 }
 

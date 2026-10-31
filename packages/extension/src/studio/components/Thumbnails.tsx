@@ -1,4 +1,4 @@
-import type { Annotation, FilterId, PageSlice } from '@screenscroll/core';
+import { repeatHeight, type Annotation, type FilterId, type PageSlice } from '@screenscroll/core';
 import { useEffect, useRef } from 'react';
 import type { Analysis } from '@/studio/engine/analysis';
 import { filterCanvas, paintAnnotations } from '@/studio/engine/compose';
@@ -59,15 +59,25 @@ function Thumb({
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const c = ref.current!;
-    const h = Math.max(1, Math.round((W * (slice.y1 - slice.y0)) / (slice.x1 - slice.x0)));
+    const k = W / (slice.x1 - slice.x0);
+    const head = repeatHeight(slice) * k;
+    const h = Math.max(1, Math.round((slice.y1 - slice.y0) * k + head));
     c.width = W;
     c.height = h;
     const ctx = c.getContext('2d')!;
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, W, h);
+    // A repeated table header first, as on the page.
+    if (slice.repeat) drawFromStrip(ctx, analysis, { ...slice, ...slice.repeat }, W);
+    ctx.save();
+    ctx.translate(0, head);
     drawFromStrip(ctx, analysis, slice, W);
-    filterCanvas(ctx, filter, W / (slice.x1 - slice.x0));
-    paintAnnotations(ctx, annotations, slice, W / (slice.x1 - slice.x0));
+    ctx.restore();
+    filterCanvas(ctx, filter, k);
+    ctx.save();
+    ctx.translate(0, head);
+    paintAnnotations(ctx, annotations, slice, k);
+    ctx.restore();
   }, [analysis, slice, annotations, filter]);
   return (
     <canvas

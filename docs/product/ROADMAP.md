@@ -87,7 +87,7 @@ Legend: `[ ]` todo · `(L#)` = lesson from `docs/product/PRIOR_ART.md` §7 · `�
 - [ ] **Clean (reader) capture** via Readability + print-like stylesheet; optional "real text PDF via print". → CAPTURE §12
 - [x] **Overlay killer**: one click hides modals/cookie banners/chat bubbles, then recapture.
 - [x] **Auto-redact**: detect emails/phones/card numbers in DOM text → checklist → blur.
-- [ ] Table header repetition across pages. → PAGINATION §7
+- [x] Table header repetition across pages. → PAGINATION §7
 - [x] Watermark. → PDF_OUTPUT §4 (multi-page PDF; Mark up → Page)
 - [ ] **Import** (images done 2026-10-31; PDF not yet): open a tall PNG/JPEG/WebP or a tall single-page PDF (e.g. old FireShot output) in the Studio → pixel-mode pagination → export. Handle image-only PDFs by rendering at native image resolution via pdf.js.
 - [ ] Firefox desktop build (`wxt build -b firefox`), smoke-tested on the fixtures.
@@ -103,7 +103,7 @@ Goal: the most capable screen capture tool available, that still looks simple. A
 - [ ] Never downscale on export unless asked; show the effective DPI per page.
 
 **Smarter automation (less hand-editing)**
-- [ ] Confidence per break: highlight only the breaks that "need a look"; jump between them.
+- [x] Confidence per break: highlight only the breaks that "need a look"; jump between them.
 - [ ] Main-content detection: offer the article / chat / document panel pre-selected, with one click for "whole page instead".
 - [ ] Repeated headers, footers and sticky bars detected across frames and removed automatically (with a note).
 - [ ] Seam check by image registration on every frame; re-capture a frame automatically when a seam doesn't match.

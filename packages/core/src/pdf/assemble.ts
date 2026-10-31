@@ -10,7 +10,7 @@ import {
 import { hexToRgb, watermarkOn, type Watermark } from '../watermark.js';
 import type { Heading, LinkRect, TextRun } from '../hints.js';
 import type { PageLayout } from '../layout.js';
-import type { PageSlice } from '../paginate.js';
+import { repeatHeight, type PageSlice } from '../paginate.js';
 import {
   bandTokens,
   DEFAULT_FOOTER,
@@ -138,7 +138,8 @@ export async function buildMergedPdf(
       slices.push(p.slice);
       const img = await embed(doc, p);
       const w = (p.slice.x1 - p.slice.x0) * layout.s;
-      const h = (p.slice.y1 - p.slice.y0) * layout.s;
+      // The image holds a repeated table header (if any) above the slice's own rows.
+      const h = (p.slice.y1 - p.slice.y0 + repeatHeight(p.slice)) * layout.s;
       const top = layout.paperH - layout.box.y; // pdf-lib's origin is bottom-left
       page.drawImage(img, { x: layout.box.x, y: top - h, width: w, height: h });
       const pageRuns = opts.textLayer && p.textRuns?.length ? [...runs, ...p.textRuns] : runs;
