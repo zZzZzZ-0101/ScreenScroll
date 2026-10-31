@@ -6,6 +6,7 @@ import {
   PanelRightOpen,
 } from 'lucide-react';
 import { useRef, type ReactNode } from 'react';
+import { t } from '@/shared/i18n';
 
 export interface PanelPrefs {
   side: 'left' | 'right';
@@ -96,7 +97,7 @@ export function SidePanel(p: {
         <button
           type="button"
           aria-label={`Hide ${p.label}`}
-          title="Hide"
+          title={t('Hide')}
           onClick={() => set({ open: false })}
           className="rounded p-1 text-neutral-500 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:hover:bg-neutral-800"
         >

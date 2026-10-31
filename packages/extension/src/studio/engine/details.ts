@@ -12,7 +12,9 @@ import {
   watermarkOn,
   type PageLayout,
   type PageSlice,
+  type SheetCandidate,
 } from '@screenscroll/core';
+import type { Analysis } from './analysis';
 import { DEFAULT_ENGINE, MIN_CONFIDENCE } from '@screenscroll/core/ocr';
 import { RESOLUTION_SCALE, SPEED_TIMING, type Settings } from '../../shared/settings';
 import type { LoadedSession } from './session';
@@ -47,6 +49,8 @@ export interface PageRow {
 export interface Details {
   sections: Section[];
   pages: PageRow[];
+  /** Page detection as JSON, to paste into a bug report or a test (document viewers). */
+  testCase?: string;
 }
 
 export interface DetailsInput {
@@ -60,6 +64,8 @@ export interface DetailsInput {
   estimate: number | null;
   /** Pages (0-based) text recognition will read, and whether its model is here. */
   ocr: { pages: number[]; ready: boolean };
+  /** What page detection read, and its ranked readings (M8 diagnostics). */
+  detection?: { evidence: Analysis['evidence']; readings: SheetCandidate[] };
 }
 
 const f = (v: number, d = 1) =>
@@ -278,7 +284,46 @@ export function buildDetails(i: DetailsInput): Details {
       warnings: sl.warnings.length,
     };
   });
-  return { sections, pages };
+  const det = i.detection;
+  let testCase: string | undefined;
+  if (det) {
+    const ev = det.evidence;
+    const runs = ev ? ev.gapRuns.filter((_, k) => k % 2 === 1) : [];
+    const common = runs.length
+      ? [...runs].sort((a, b) => runs.filter((r) => r === b).length - runs.filter((r) => r === a).length)[0]!
+      : 0;
+    sections.push({
+      title: 'Document pages',
+      rows: ev
+        ? [
+            { label: 'Viewer background', value: `grey ${ev.bg}`, how: 'commonest grey in the 2% edge columns' },
+            { label: 'Paper', value: `grey ${ev.paper}`, how: 'commonest grey inside the page column (8-level bucket, then exact)' },
+            { label: 'Page column', value: `x ${f(ev.x0, 0)}–${f(ev.x1, 0)} (${f(ev.x1 - ev.x0, 0)} px)` },
+            {
+              label: 'Background runs',
+              value: `${runs.length}, commonest ${common} rows`,
+              how: 'rows ≥ 60% background (or uniform shadow) across the column',
+            },
+            ...det.readings.map((r) => ({
+              label: r.label,
+              value: `${Math.round(r.probability * 100)}% · fit ${f(r.fit, 3)}`,
+              how: `= ${f(r.parts.gapFit, 3)} between pages × ${f(r.parts.pageFit, 3)} inside × e^−${r.parts.unexplained}/${r.layout.sheets.length}; ${r.layout.sheets.length} pages`,
+            })),
+          ]
+        : [{ label: 'Detection', value: 'no page column on a background: an ordinary page' }],
+    });
+    if (ev)
+      testCase = JSON.stringify({
+        evidence: ev,
+        readings: det.readings.map((r) => ({
+          id: r.id,
+          fit: Number(r.fit.toFixed(4)),
+          probability: Number(r.probability.toFixed(4)),
+          sheets: r.layout.sheets,
+        })),
+      });
+  }
+  return { sections, pages, testCase };
 }
 
 /** Plain text of the whole panel, for "Copy all". */

@@ -1,3 +1,4 @@
+import type { Lang } from './i18n';
 import type { Annotation, CaptureLimits, DomHints, Rect, Region } from '@screenscroll/core';
 
 /** CAPTURE §14. Selection, element and scroll-area modes start with an in-page picker. */
@@ -20,6 +21,8 @@ export interface StartCapture {
   timing?: { settleMs: number; frameImageWaitMs: number; pageImageWaitMs: number };
   /** Overlay killer: hide pop-ups, their backdrops and dialogs for this capture. */
   hideOverlays?: boolean;
+  /** Interface language for the hints shown on the page. */
+  lang?: Lang;
 }
 
 /** Content script → background: grab the visible tab for this frame. */

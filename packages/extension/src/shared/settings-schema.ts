@@ -189,6 +189,16 @@ export const SETTINGS: SettingEntry[] = [
     recommended: true,
   },
   {
+    id: 'docOriginal',
+    section: 'Pages and PDF',
+    label: 'Document pages as the original',
+    help: 'With document pages, each PDF page is the original page: no margins, no page labels, and the paper that matches its shape (A4, Letter, slides…).',
+    kind: 'toggle',
+    get: (s) => s.docOriginal,
+    set: (_s, v) => ({ docOriginal: !!v }),
+    recommended: true,
+  },
+  {
     id: 'exportPreset',
     section: 'Pages and PDF',
     label: 'PDF quality',
@@ -284,6 +294,21 @@ export const SETTINGS: SettingEntry[] = [
     set: (_s, v) => ({ keepDays: Number(v) }),
     recommended: 90,
     why: 'Long enough to re-export, short enough not to fill the disk.',
+  },
+  {
+    id: 'language',
+    section: 'Appearance',
+    label: 'Language',
+    help: 'The language of ScreenScroll itself. Auto follows the browser.',
+    kind: 'choice',
+    choices: [
+      { value: 'auto', label: 'Auto' },
+      { value: 'en', label: 'English' },
+      { value: 'zh-CN', label: '简体中文' },
+    ],
+    get: (s) => s.language,
+    set: (_s, v) => ({ language: v as Settings['language'] }),
+    recommended: 'auto',
   },
   {
     id: 'theme',

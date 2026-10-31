@@ -14,6 +14,7 @@ import {
   type FilterId,
   type PageSettings,
 } from '@screenscroll/core';
+import type { LangSetting } from './i18n';
 
 /** Where a full-page capture starts: the top of the page, or where you are now. */
 export type CaptureStart = 'top' | 'here';
@@ -51,7 +52,11 @@ export interface Settings {
   keepDays: number;
   /** In a document viewer (Drive, PDF previews), one PDF page per document page. */
   followSheets: boolean;
+  /** Document pages as the original: no margins or page labels, paper matched to the page. */
+  docOriginal: boolean;
   theme: Theme;
+  /** Interface language: the browser's, English or Simplified Chinese. */
+  language: LangSetting;
   capture: CaptureSettings;
   ocr: OcrMode;
   /** PDF quality (core `QUALITY`): image resolution cap and encoding. */
@@ -130,7 +135,9 @@ export const DEFAULT_SETTINGS: Settings = {
   pdf: DEFAULT_PDF_SETTINGS,
   keepDays: 0,
   followSheets: true,
+  docOriginal: true,
   theme: 'system',
+  language: 'auto',
   capture: { start: 'top', speed: 'normal', resolution: 'standard', width: 0 },
   ocr: 'auto',
   exportPreset: 'balanced',
@@ -182,7 +189,9 @@ export function normalizeSettings(stored: unknown): Settings {
       typeof o.filenameTemplate === 'string' ? o.filenameTemplate : d.filenameTemplate,
     afterCapture: o.afterCapture === 'pdf' ? 'pdf' : 'studio',
     followSheets: o.followSheets !== false,
+    docOriginal: o.docOriginal !== false,
     theme: o.theme === 'light' || o.theme === 'dark' ? o.theme : 'system',
+    language: o.language === 'en' || o.language === 'zh-CN' ? o.language : 'auto',
     capture: {
       start: cap.start === 'here' ? 'here' : 'top',
       speed: cap.speed === 'careful' || cap.speed === 'fast' ? cap.speed : 'normal',

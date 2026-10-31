@@ -12,6 +12,7 @@ import {
   Type,
   Undo2,
 } from 'lucide-react';
+import { t } from '@/shared/i18n';
 
 /**
  * Tools for scanned and captured documents (like a scanning app), not a paint box: select,
@@ -90,7 +91,7 @@ export function MarkupToolbar(a: MarkupControls) {
   return (
     <div className="border-b border-neutral-200 bg-white px-3 py-1.5 dark:border-neutral-800 dark:bg-neutral-900">
       <div className="flex flex-wrap items-center gap-1">
-        <div role="toolbar" aria-label="Tools" className="flex flex-wrap items-center gap-0.5">
+        <div role="toolbar" aria-label={t('Tools')} className="flex flex-wrap items-center gap-0.5">
           {GROUPS.map((group, g) => (
             <div
               key={g}
@@ -113,7 +114,7 @@ export function MarkupToolbar(a: MarkupControls) {
           ))}
         </div>
 
-        <div role="radiogroup" aria-label="Colour" className="ml-2 flex items-center gap-1">
+        <div role="radiogroup" aria-label={t('Colour')} className="ml-2 flex items-center gap-1">
           {SWATCHES.map((c) => (
             <button
               key={c}
@@ -121,7 +122,7 @@ export function MarkupToolbar(a: MarkupControls) {
               role="radio"
               aria-checked={a.style.color === c}
               aria-label={c}
-              title="Colour"
+              title={t('Colour')}
               onClick={() => a.onStyle({ ...a.style, color: c })}
               className={`h-5 w-5 rounded-full border border-neutral-300 focus-visible:outline-2 focus-visible:outline-accent dark:border-neutral-600 ${a.style.color === c ? 'ring-2 ring-accent ring-offset-1 dark:ring-offset-neutral-900' : ''}`}
               style={{ background: c }}
@@ -129,8 +130,8 @@ export function MarkupToolbar(a: MarkupControls) {
           ))}
           <input
             type="color"
-            aria-label="Custom colour"
-            title="Custom colour"
+            aria-label={t('Custom colour')}
+            title={t('Custom colour')}
             value={a.style.color}
             onChange={(e) => a.onStyle({ ...a.style, color: e.target.value })}
             className="h-5 w-6 cursor-pointer border-0 bg-transparent p-0"
@@ -139,7 +140,7 @@ export function MarkupToolbar(a: MarkupControls) {
 
         <div
           role="radiogroup"
-          aria-label="Size"
+          aria-label={t('Size')}
           className="ml-2 flex rounded-md border border-neutral-200 p-0.5 dark:border-neutral-700"
         >
           {SIZES.map(([short, label, s]) => (
@@ -161,8 +162,8 @@ export function MarkupToolbar(a: MarkupControls) {
         <div className="ml-auto flex items-center gap-0.5">
           <button
             type="button"
-            aria-label="Undo"
-            title="Undo (Ctrl+Z)"
+            aria-label={t('Undo')}
+            title={t('Undo (Ctrl+Z)')}
             disabled={!a.canUndo}
             onClick={a.onUndo}
             className={`${iconBtn} hover:bg-neutral-100 dark:hover:bg-neutral-800`}
@@ -171,8 +172,8 @@ export function MarkupToolbar(a: MarkupControls) {
           </button>
           <button
             type="button"
-            aria-label="Redo"
-            title="Redo (Ctrl+Y)"
+            aria-label={t('Redo')}
+            title={t('Redo (Ctrl+Y)')}
             disabled={!a.canRedo}
             onClick={a.onRedo}
             className={`${iconBtn} hover:bg-neutral-100 dark:hover:bg-neutral-800`}
@@ -181,8 +182,8 @@ export function MarkupToolbar(a: MarkupControls) {
           </button>
           <button
             type="button"
-            aria-label="Delete"
-            title="Delete selected (Del)"
+            aria-label={t('Delete')}
+            title={t('Delete selected (Del)')}
             disabled={!a.selected}
             onClick={a.onDelete}
             className={`${iconBtn} hover:bg-neutral-100 dark:hover:bg-neutral-800`}
@@ -202,7 +203,7 @@ export function MarkupToolbar(a: MarkupControls) {
             className="text-accent underline-offset-2 hover:underline"
             onClick={a.onResetCrop}
           >
-            Reset crop
+            {t('Reset crop')}
           </button>
         )}
         {a.count > 0 && (

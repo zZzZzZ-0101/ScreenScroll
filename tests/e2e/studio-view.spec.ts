@@ -39,8 +39,9 @@ test('zoom like a PDF viewer: buttons, presets, keys and Ctrl+wheel', async ({
 }) => {
   const studio = await studioFor(context, serviceWorker, 'article.html');
   const level = studio.getByRole('combobox', { name: 'Zoom level' });
-  await expect(level).toHaveValue('page'); // fits a whole page by default
-  const fit = await firstPageWidth(studio);
+  // Opens at a readable size: the page fills the width of the view.
+  await expect(level).toHaveValue('width');
+  expect(await firstPageWidth(studio)).toBeGreaterThan(900);
 
   await level.selectOption('1');
   // 100% = actual size: A4 is 595 pt = 794 CSS px.
@@ -56,7 +57,7 @@ test('zoom like a PDF viewer: buttons, presets, keys and Ctrl+wheel', async ({
   await expect(level).toHaveValue('1');
   await studio.keyboard.press('0');
   await expect(level).toHaveValue('page');
-  expect(await firstPageWidth(studio)).toBeCloseTo(fit, 0);
+  const fit = await firstPageWidth(studio);
 
   // Ctrl+wheel zooms the pages, not the browser.
   const box = (await studio.getByTestId('pages-view').boundingBox())!;

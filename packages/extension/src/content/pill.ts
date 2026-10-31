@@ -7,6 +7,7 @@
  * Lives in a closed shadow root on <html>, outside the page's styles and outside what hint
  * collection walks.
  */
+import { t } from '@/shared/i18n';
 
 export type PillPlace = 'bottom' | 'top';
 
@@ -54,16 +55,16 @@ export function makePill(actions: PillActions = {}) {
   const text = document.createElement('span');
   text.className = 'text';
   const how = document.createElement('span');
-  how.innerHTML = 'Press <kbd>Esc</kbd> to cancel';
+  how.innerHTML = t('Press <kbd>Esc</kbd> to cancel');
   const stop = document.createElement('button');
   stop.className = 'stop';
-  stop.textContent = 'Stop here';
-  stop.title = 'Stop now and keep what is captured so far';
+  stop.textContent = t('Stop here');
+  stop.title = t('Stop now and keep what is captured so far');
   stop.onclick = () => actions.onStop?.();
   const cancel = document.createElement('button');
   cancel.className = 'cancel';
-  cancel.textContent = 'Cancel';
-  cancel.title = 'Stop and keep nothing (Esc)';
+  cancel.textContent = t('Cancel');
+  cancel.title = t('Stop and keep nothing (Esc)');
   cancel.onclick = () => actions.onCancel?.();
   pill.append(dot, text, how, stop, cancel);
   root.append(style, pill);
@@ -96,10 +97,10 @@ export function makePill(actions: PillActions = {}) {
      * The user scrolled, clicked or typed during the capture: say, without flashing, that
      * the page is paused and how to stop. Goes back to the normal line after a few seconds.
      */
-    alert(t = 'Capturing, so the page is paused.') {
+    alert(message = t('Capturing, so the page is paused.')) {
       pill.classList.add('alert');
-      host.dataset.alert = t;
-      text.textContent = t;
+      host.dataset.alert = message;
+      text.textContent = message;
       clearTimeout(alertTimer);
       alertTimer = window.setTimeout(() => {
         alertTimer = 0;

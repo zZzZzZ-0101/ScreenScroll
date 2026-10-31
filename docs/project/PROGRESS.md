@@ -158,6 +158,14 @@ Suite: `pnpm test` 219, `pnpm e2e` 53 (see the commit), lint and typecheck clean
 - Breaks that need a look (M7): listed in Breaks with reasons, marked on the strip, Previous / Next; 1 unit + 1 e2e test.
 - Settings backup: Save to a file / Load from a file on the Settings page, with Undo; 2 unit + 1 e2e test.
 - Captures backup: Saved captures → Back up / Restore (`.ssbackup`, streamed); 2 unit + 1 e2e test (back up, delete all, restore, restore again adds nothing).
+- Small text: the Pages panel shows the printed text size and offers Landscape / Page width 1000 px when it is under 8 pt; the preview opens at Fit width. 1 unit + 1 e2e test; zoom test updated.
+- Document page detection: 1,224-case combination test, all passing; fixes for scans, cut pages with edge bands, shadows, tight gaps and the 1 px dark edge; preview seam fixed.
+- Side crop: a sparse full-width top bar no longer prevents cropping wide margins (GitHub); 2 unit tests.
+- Document pages: ranked readings with probabilities and a visible Edit pages editor with ±1 px steps; 3 unit tests, doc-viewer e2e updated. Theme switch in the toolbar panel and the Pages panel.
+- Simplified Chinese: language setting, toolbar panel, Studio main views, Settings, Saved captures and capture hints; coverage unit test; 1 e2e test.
+- M8 drag the pages: outlines on the Breaks strip, edges to drag, one undo per drag; 1 e2e test.
+- M8 diagnostics: Details section with the evidence and fit parts; copy as a test case; 1 unit + e2e checks.
+- M8 as the original: document pages become the original pages (matched paper, no margins or labels); unit test for paper matching; doc-viewer e2e checks A4, edge to edge, no label.
 - Not started: PDF import, CDP capture engine, browser-window capture.
 - Import: Saved captures → Open an image (tall PNG/JPEG/WebP) → Studio; 2 e2e tests (breaks fall between lines; a non-image says so). Not done: tall single-page PDF import (pdf.js).
 - Overlay killer: the pop-up note in the Studio has "Hide pop-ups and capture again"; 6 e2e tests (3 kinds of pop-up, 2 look-alikes that must stay, the Studio flow). Needs the user's check on real consent walls and newsletter pop-ups.

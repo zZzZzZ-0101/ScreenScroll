@@ -109,3 +109,60 @@ export function medianFontPx(sizes: readonly number[]): number | null {
   const mid = sorted.length >> 1;
   return sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
+
+/** How big the page's text comes out on paper, and what two fixes would make of it. */
+export interface PrintedText {
+  /** Median text size on paper, pt: text px × s. */
+  pt: number;
+  /** The same in the other orientation (landscape is wider, so larger). */
+  turnedPt: number;
+  /** The same if the page were laid out `narrowTo` px wide (Settings → Page width). */
+  narrowPt: number | null;
+}
+
+export function printedTextSize(
+  fontPx: number,
+  page: PageSettings,
+  contentWidth: Px,
+  narrowTo = 1000,
+): PrintedText {
+  const s = computeLayout(page, contentWidth).s;
+  const turned = computeLayout(
+    { ...page, orientation: page.orientation === 'landscape' ? 'portrait' : 'landscape' },
+    contentWidth,
+  ).s;
+  return {
+    pt: fontPx * s,
+    turnedPt: fontPx * turned,
+    narrowPt: contentWidth > narrowTo + 1 ? fontPx * computeLayout(page, narrowTo).s : null,
+  };
+}
+
+/** A paper that matches a page shape (height ÷ width), for "as the original". */
+export interface MatchedPaper {
+  paper: PaperId | { w: number; h: number };
+  orientation: 'portrait' | 'landscape';
+  /** Plain name: "A4", "Letter landscape", "16:9 slide", "Custom 210 × 250 mm". */
+  name: string;
+}
+
+/**
+ * The paper a document page was most likely made on, from its shape: A4, Letter or Legal in
+ * either orientation within 2.5%, slides (16:9, 4:3) on a 10-inch-wide page, else a custom
+ * size at A4 width with the page's own shape.
+ */
+export function matchPaper(ratio: number): MatchedPaper {
+  const near = (r: number) => Math.abs(ratio - r) / r <= 0.025;
+  for (const id of ['A4', 'Letter', 'Legal'] as const) {
+    const { w, h } = PAPERS[id];
+    if (near(h / w)) return { paper: id, orientation: 'portrait', name: id };
+    if (near(w / h)) return { paper: id, orientation: 'landscape', name: `${id} landscape` };
+  }
+  for (const [r, name] of [
+    [9 / 16, '16:9 slide'],
+    [3 / 4, '4:3 slide'],
+  ] as const)
+    if (near(r)) return { paper: { w: 254, h: 254 * r }, orientation: 'portrait', name };
+  const h = Math.round(210 * ratio);
+  return { paper: { w: 210, h }, orientation: 'portrait', name: `Custom 210 × ${h} mm` };
+}

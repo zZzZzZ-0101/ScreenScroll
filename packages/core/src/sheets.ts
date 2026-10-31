@@ -97,7 +97,7 @@ export interface SheetLayout {
 }
 
 /** Gaps shorter than this are inside a sheet (a rule, a dark table border). */
-const MIN_GAP = 4;
+const MIN_GAP = 2;
 const MIN_SHEET = 120;
 /** Share of the sheet columns that must look like the background for a gap row. */
 const GAP_SHARE = 0.6;
@@ -133,7 +133,22 @@ function background(p: SheetProfile): number {
  * 4. Sheets: runs between gaps of ≥ 4 rows. A band as dark as B across a whole page looks
  *    like a gap, so neighbours that together make one typical page are joined again.
  */
-export function detectSheets(p: SheetProfile): SheetLayout | null {
+/** What page detection reads from a capture: the column, the background and gap rows. */
+export interface SheetEvidence {
+  x0: number;
+  x1: number;
+  bg: number;
+  paper: number;
+  /** Per row: 1 where the row is background (or a page shadow) across the column. */
+  gap: Uint8Array;
+  height: number;
+}
+
+/**
+ * The evidence for document pages, or null when the capture has no page-like column on a
+ * background (an ordinary web page). Shared by detection and by the ranked alternatives.
+ */
+export function sheetEvidence(p: SheetProfile): SheetEvidence | null {
   const { width, height, buckets } = p;
   if (height < 2 * MIN_SHEET || width < 50) return null;
   const bg = background(p);
@@ -164,25 +179,64 @@ export function detectSheets(p: SheetProfile): SheetLayout | null {
     x = e;
   }
   if (!best) return null;
-  const [x0, x1] = best;
+  let [x0, x1] = best;
   // There must be background beside the sheets to compare gaps with, and the sheets must be
   // a real column, not a sliver.
   const margin = 0.02 * width;
   if (x1 - x0 < 0.25 * width || (x0 < margin && width - x1 < margin)) return null;
   // Paper: the commonest grey inside the sheet columns. On an ordinary page that is the page's
   // own background (text on white around white), so it is not a viewer.
-  const inside = new Uint32Array(LEVELS);
+  // Counted in 8-level buckets: a scan's noisy paper spreads over several levels and must
+  // still outweigh its ink, which sits on one.
+  const inside = new Uint32Array(LEVELS / 8);
   for (let x = x0; x < x1; x++)
-    for (let l = 0; l < LEVELS; l++) inside[l]! += p.colHist[x * LEVELS + l]!;
-  let paper = 0;
-  for (let l = 1; l < LEVELS; l++) if (inside[l]! > inside[paper]!) paper = l;
-  if (Math.abs(paper - bg) <= tol) return null;
+    for (let l = 0; l < LEVELS; l++) inside[l >> 3]! += p.colHist[x * LEVELS + l]!;
+  let bucket = 0;
+  for (let b = 1; b < inside.length; b++) if (inside[b]! > inside[bucket]!) bucket = b;
+  // …then the commonest exact level within that bucket (255 and 248 share one).
+  const levels = new Uint32Array(8);
+  for (let x = x0; x < x1; x++)
+    for (let i = 0; i < 8; i++) levels[i]! += p.colHist[x * LEVELS + bucket * 8 + i]!;
+  let top = 0;
+  for (let i = 1; i < 8; i++) if (levels[i]! > levels[top]!) top = i;
+  const paper = bucket * 8 + top;
+  if (Math.abs(paper - bg) <= Math.max(tol, 4)) return null;
+  // Edges: a page's shadow and its anti-aliased edge column differ from the background in
+  // every row, so they join the run, but they hold almost no paper. Trim columns with less
+  // than half the paper of a typical inside column (else a dark line edges the page).
+  const paperRows = (x: number) => {
+    let n = 0;
+    for (let l = Math.max(0, Math.round(paper - 12)); l <= Math.min(255, paper + 12); l++)
+      n += p.colHist[x * LEVELS + l]!;
+    return n;
+  };
+  const typicalPaper = median(
+    Array.from({ length: Math.max(1, x1 - x0 - 6) }, (_, i) => paperRows(x0 + 3 + i)),
+  );
+  while (x1 - x0 > 2 && paperRows(x0) < 0.5 * typicalPaper) x0++;
+  while (x1 - x0 > 2 && paperRows(x1 - 1) < 0.5 * typicalPaper) x1--;
 
   const bw = width / buckets;
   const inner: number[] = [];
   for (let b = 0; b < buckets; b++) if (b * bw >= x0 + 2 && (b + 1) * bw <= x1 - 2) inner.push(b);
   if (inner.length < 2) return null;
 
+  // Like the columns: a page's shadow rows differ from the background but hold no paper.
+  // A uniform row closer to the background than to the paper is shadow, not page.
+  const shadowRow = (y: number) => {
+    const at = y * buckets;
+    let lo = 255;
+    let hi = 0;
+    let sum = 0;
+    for (const b of inner) {
+      const g = p.grey[at + b]!;
+      lo = Math.min(lo, g);
+      hi = Math.max(hi, g);
+      sum += g;
+    }
+    const mean = sum / inner.length;
+    return hi - lo <= 6 && Math.abs(mean - bg) < Math.abs(mean - paper);
+  };
   // Rows: a gap row is mostly background across the sheet columns. Not all of it: whatever
   // the viewer dims behind its pages (a file list) can show through part of a gap.
   const gap = new Uint8Array(height);
@@ -190,9 +244,15 @@ export function detectSheets(p: SheetProfile): SheetLayout | null {
     const at = y * buckets;
     let same = 0;
     for (const b of inner) if (Math.abs(p.grey[at + b]! - bg) <= tol) same++;
-    gap[y] = same >= GAP_SHARE * inner.length ? 1 : 0;
+    gap[y] = same >= GAP_SHARE * inner.length || shadowRow(y) ? 1 : 0;
   }
+  return { x0, x1, bg, paper, gap, height };
+}
 
+export function detectSheets(p: SheetProfile): SheetLayout | null {
+  const ev = sheetEvidence(p);
+  if (!ev) return null;
+  const { x0, x1, gap, height } = ev;
   // Runs of non-gap rows are sheets; short gaps are part of a sheet.
   let sheets: Sheet[] = [];
   let y = 0;
@@ -262,7 +322,8 @@ function joinSplitSheets(sheets: Sheet[]): Sheet[] {
 function regainEdgeBands(sheets: Sheet[], height: number): Sheet[] {
   if (sheets.length < 3) return sheets;
   const hs = sheets.map((s) => s.y1 - s.y0);
-  const typical = median(hs);
+  // Whole pages only: the first and last may be cut by the capture.
+  const typical = median(hs.slice(1, -1));
   const gaps = sheets.slice(1).map((s, i) => s.y0 - sheets[i]!.y1);
   const g = median(gaps);
   return sheets.map((s, i) => {
@@ -352,4 +413,180 @@ export function fitSheets(layout: PageLayout, l: SheetLayout): PageLayout {
     T: layout.box.h / s,
     box: { ...layout.box, x: layout.box.x + (layout.box.w - w) / 2, w },
   };
+}
+
+/** A way to read the capture as pages, with how well the pixels support it. */
+export interface SheetCandidate {
+  id: string;
+  /** Plain name: "Found from the gaps", "A4 pages"… */
+  label: string;
+  /** The grid behind it, or null for the layout found from the gaps. */
+  grid: SheetGrid | null;
+  layout: SheetLayout;
+  /** 0…1: how well the layout matches the background rows the capture shows. */
+  fit: number;
+  parts: FitParts;
+  /** Share of belief among the alternatives offered (they add up to 1). */
+  probability: number;
+}
+
+/** Page shapes (height ÷ width) common in viewers: paper, then slides. */
+const SHAPES: Array<[string, string, number]> = [
+  ['a4', 'A4 pages', Math.SQRT2],
+  ['letter', 'Letter pages', 11 / 8.5],
+  ['legal', 'Legal pages', 14 / 8.5],
+  ['a4-land', 'A4 landscape pages', 1 / Math.SQRT2],
+  ['slides-16-9', '16:9 slides', 9 / 16],
+  ['slides-4-3', '4:3 slides', 3 / 4],
+];
+
+/**
+ * How well a layout explains the evidence, 0…1: rows between its pages should be
+ * background, rows inside them should not, and no long background run should sit inside a
+ * page unexplained.
+ */
+export function layoutFit(ev: SheetEvidence, l: SheetLayout): number {
+  return layoutFitParts(ev, l).fit;
+}
+
+/** The parts of a fit, for Details: fit = gapFit × pageFit × e^−(unexplained ÷ pages). */
+export interface FitParts {
+  gapFit: number;
+  pageFit: number;
+  unexplained: number;
+  fit: number;
+}
+
+export function layoutFitParts(ev: SheetEvidence, l: SheetLayout): FitParts {
+  if (!l.sheets.length) return { gapFit: 0, pageFit: 0, unexplained: 0, fit: 0 };
+  let between = 0;
+  let betweenGap = 0;
+  let inside = 0;
+  let insideGap = 0;
+  let unexplained = 0;
+  l.sheets.forEach((s, i) => {
+    let run = 0;
+    for (let y = Math.max(0, s.y0 + 2); y < Math.min(ev.height, s.y1 - 2); y++) {
+      inside++;
+      if (ev.gap[y]) {
+        insideGap++;
+        if (++run === 6) unexplained++;
+      } else run = 0;
+    }
+    const next = l.sheets[i + 1];
+    if (next) {
+      // Pages that touch are judged on the rows right at the join.
+      const a = next.y0 > s.y1 ? s.y1 : s.y1 - 1;
+      const b = next.y0 > s.y1 ? next.y0 : s.y1 + 1;
+      for (let y = Math.max(0, a); y < Math.min(ev.height, b); y++) {
+        between++;
+        betweenGap += ev.gap[y]!;
+      }
+    }
+  });
+  const gapFit = between ? betweenGap / between : 0.5;
+  const pageFit = inside ? 1 - insideGap / inside : 0;
+  const fit = gapFit * pageFit * Math.exp(-unexplained / l.sheets.length);
+  return { gapFit, pageFit, unexplained, fit };
+}
+
+/**
+ * What page detection read, compact enough to paste into a bug report or a test: the
+ * evidence with the gap rows as run lengths (alternating non-gap, gap, …, from row 0).
+ */
+export function evidenceSummary(ev: SheetEvidence) {
+  const runs: number[] = [];
+  let cur = 0;
+  let len = 0;
+  for (let y = 0; y < ev.height; y++) {
+    if (ev.gap[y] === cur) len++;
+    else {
+      runs.push(len);
+      cur = ev.gap[y]!;
+      len = 1;
+    }
+  }
+  runs.push(len);
+  return { x0: ev.x0, x1: ev.x1, bg: ev.bg, paper: ev.paper, height: ev.height, gapRuns: runs };
+}
+
+/**
+ * Ranked ways to read a document viewer capture as pages (M7 "several interpretations"):
+ * the layout found from the gaps, and grids of common page shapes at the column's width,
+ * each placed on a page top the capture shows. Each gets a fit; probabilities are a softmax
+ * of the fits (sharp: a clearly better reading takes most of the belief). Readings that put
+ * the same breaks within 3 px are one.
+ */
+export function sheetCandidates(
+  ev: SheetEvidence | null,
+  detected: SheetLayout | null,
+  max = 3,
+  /** CSS px per analysis column: rows are CSS px, columns may be scaled down. */
+  colScale = 1,
+): SheetCandidate[] {
+  if (!ev) return [];
+  const width = (ev.x1 - ev.x0) * colScale;
+  const out: Array<Omit<SheetCandidate, 'probability'>> = [];
+  if (detected)
+    out.push({
+      id: 'gaps',
+      label: 'Found from the gaps',
+      grid: null,
+      layout: detected,
+      ...withParts(ev, detected),
+    });
+  // Gap length: the commonest run of background rows between content (1–80 rows).
+  const runs = new Map<number, number>();
+  const tops: number[] = [];
+  for (let y = 0, run = 0; y < ev.height; y++) {
+    if (ev.gap[y]) run++;
+    else {
+      if (run >= 1 && run <= 80) runs.set(run, (runs.get(run) ?? 0) + 1);
+      if (run >= 1 || y === 0) tops.push(y);
+      run = 0;
+    }
+  }
+  let gap = 0;
+  let seen = 0;
+  for (const [len, n] of runs) if (n > seen || (n === seen && len < gap)) [gap, seen] = [len, n];
+  for (const [id, label, shape] of SHAPES) {
+    const height = Math.round(width * shape);
+    if (height < MIN_SHEET || height > ev.height * 1.5) continue;
+    let best: Omit<SheetCandidate, 'probability'> | null = null;
+    for (const top of tops.slice(0, 40)) {
+      // Back up whole pages so the grid also covers what is above this top.
+      const first = top - Math.floor(top / (height + gap)) * (height + gap);
+      const grid = { x0: ev.x0, x1: ev.x1, top: first, height, gap };
+      const layout = gridSheets(grid, ev.height);
+      if (!layout) continue;
+      const parts = layoutFitParts(ev, layout);
+      if (!best || parts.fit > best.fit) best = { id, label, grid, layout, fit: parts.fit, parts };
+    }
+    if (best) out.push(best);
+  }
+  const same = (a: SheetLayout, b: SheetLayout) =>
+    a.sheets.length === b.sheets.length &&
+    a.sheets.every(
+      (s, i) => Math.abs(s.y1 - b.sheets[i]!.y1) <= 3 && Math.abs(s.y0 - b.sheets[i]!.y0) <= 3,
+    );
+  const kept: typeof out = [];
+  for (const c of [...out].sort((a, b) => b.fit - a.fit))
+    if (!kept.some((k) => same(k.layout, c.layout))) kept.push(c);
+  const top = kept.slice(0, max);
+  const weights = top.map((c) => Math.exp(12 * c.fit));
+  const sum = weights.reduce((a, b) => a + b, 0) || 1;
+  return top.map((c, i) => ({ ...c, probability: weights[i]! / sum }));
+}
+
+function withParts(ev: SheetEvidence, l: SheetLayout) {
+  const parts = layoutFitParts(ev, l);
+  return { fit: parts.fit, parts };
+}
+
+/** A reading this good is used without asking when the gaps found nothing. */
+export const CONFIDENT_FIT = 0.9;
+
+export function confidentReading(readings: readonly SheetCandidate[]): SheetCandidate | null {
+  const r = readings[0];
+  return r && r.fit >= CONFIDENT_FIT ? r : null;
 }

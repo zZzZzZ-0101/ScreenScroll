@@ -20,6 +20,7 @@ import {
 } from '@/shared/messages';
 import { BATCH_KEY, type BatchItem, type BatchStart, type BatchState } from '@/shared/batch';
 import { dataUrlToBlob, pngSize } from '@/shared/png';
+import { resolveLang } from '@/shared/i18n';
 import { loadSettings, RESOLUTION_SCALE, SPEED_TIMING } from '@/shared/settings';
 
 export default defineBackground(() => {
@@ -96,6 +97,7 @@ export default defineBackground(() => {
         mode,
         startAt: settings.capture.start,
         timing,
+        lang: resolveLang(settings.language),
         ...opts,
       });
     } catch (e) {

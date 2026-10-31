@@ -1,3 +1,4 @@
+import { t, resolveLang, setLang } from '@/shared/i18n';
 import { RotateCcw, ShieldCheck } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import {
@@ -46,6 +47,8 @@ export function App() {
       }
     }
     setNote(null);
+    // The page shows the new language at once; others follow when they next open.
+    if (patch.language) setLang(resolveLang(patch.language));
     const next = { ...s, ...patch };
     setS(next);
     void saveSettings(patch);
@@ -62,9 +65,9 @@ export function App() {
     <main className="mx-auto max-w-3xl p-6 text-[13px] text-neutral-900 dark:text-neutral-100">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-lg font-semibold">Settings</h1>
+          <h1 className="text-lg font-semibold">{t('Settings')}</h1>
           <p className="text-neutral-500">
-            Changes save at once. Each setting shows its default and what we recommend.
+            {t('Changes save at once. Each setting shows its default and what we recommend.')}
           </p>
         </div>
         <button
@@ -73,7 +76,8 @@ export function App() {
           onClick={resetAll}
           className="flex shrink-0 items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
         >
-          <RotateCcw aria-hidden size={14} /> Reset all{changed ? ` (${changed})` : ''}
+          <RotateCcw aria-hidden size={14} /> {t('Reset all')}
+          {changed ? ` (${changed})` : ''}
         </button>
       </div>
 
@@ -88,7 +92,7 @@ export function App() {
 
       {SECTIONS.map((section) => (
         <section key={section} aria-label={section} className="mt-5">
-          <h2 className="pb-2 text-sm font-semibold">{section}</h2>
+          <h2 className="pb-2 text-sm font-semibold">{t(section)}</h2>
           <div className="divide-y divide-neutral-200 rounded-lg border border-neutral-200 bg-white dark:divide-neutral-800 dark:border-neutral-800 dark:bg-neutral-900">
             {SETTINGS.filter((e) => e.section === section).map((e) => (
               <Row key={e.id} entry={e} settings={s} onChange={(p) => void apply(p)} />
@@ -104,9 +108,9 @@ export function App() {
       >
         <ShieldCheck aria-hidden size={18} className="mt-0.5 shrink-0 text-accent" />
         <p className="text-neutral-600 dark:text-neutral-300">
-          ScreenScroll never sends your data anywhere. Captures, text recognition and PDFs are made
-          on this computer. The one connection it can make is downloading the text recognition
-          model, once, when you ask; nothing of yours is sent.
+          {t(
+            'ScreenScroll never sends your data anywhere. Captures, text recognition and PDFs are made on this computer. The one connection it can make is downloading the text recognition model, once, when you ask; nothing of yours is sent.',
+          )}
         </p>
       </section>
 
@@ -115,7 +119,7 @@ export function App() {
         className="mt-5 flex flex-wrap items-center gap-2 rounded-lg border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900"
       >
         <span className="mr-auto text-neutral-600 dark:text-neutral-300">
-          Keep these settings and presets, or move them to another computer.
+          {t('Keep these settings and presets, or move them to another computer.')}
         </span>
         <button
           type="button"
@@ -131,10 +135,10 @@ export function App() {
             setTimeout(() => URL.revokeObjectURL(url), 1000);
           }}
         >
-          Save to a file
+          {t('Save to a file')}
         </button>
         <label className="cursor-pointer rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 focus-within:outline-2 focus-within:outline-accent dark:border-neutral-700 dark:hover:bg-neutral-800">
-          Load from a file
+          {t('Load from a file')}
           <input
             type="file"
             accept="application/json,.json"
@@ -159,13 +163,13 @@ export function App() {
       </section>
 
       <p className="mt-4 text-neutral-500">
-        Keyboard shortcuts:{' '}
+        {t('Keyboard shortcuts')}:{' '}
         <button
           type="button"
           className="text-accent underline-offset-2 hover:underline"
           onClick={() => void chrome.tabs.create({ url: 'chrome://extensions/shortcuts' })}
         >
-          change them in the browser
+          {t('change them in the browser')}
         </button>
         .
       </p>
@@ -185,7 +189,7 @@ export function App() {
               setUndo(null);
             }}
           >
-            Undo
+            {t('Undo')}
           </button>
         </div>
       )}
@@ -283,12 +287,13 @@ function Row({
           id={`${id}-label`}
           className="font-medium"
         >
-          {e.label}
+          {t(e.label)}
         </label>
-        <p className="text-neutral-500">{e.help}</p>
+        <p className="text-neutral-500">{t(e.help)}</p>
         <p className="pt-0.5 text-[12px] text-neutral-500">
-          Default: {labelOf(e, def)} · Recommended: {labelOf(e, e.recommended)}
-          {e.why ? ` — ${e.why}` : ''}
+          {t('Default')}: {t(String(labelOf(e, def)))} · {t('Recommended')}:{' '}
+          {t(String(labelOf(e, e.recommended)))}
+          {e.why ? ` — ${t(e.why)}` : ''}
           {value !== def && (
             <>
               {' · '}
@@ -297,7 +302,7 @@ function Row({
                 className="text-accent underline-offset-2 hover:underline"
                 onClick={() => set(def)}
               >
-                Reset
+                {t('Reset')}
               </button>
             </>
           )}
@@ -309,7 +314,7 @@ function Row({
                 className="text-accent underline-offset-2 hover:underline"
                 onClick={() => set(e.recommended)}
               >
-                Use recommended
+                {t('Use recommended')}
               </button>
             </>
           )}
@@ -360,8 +365,10 @@ function Row({
                 onClick={() => set(c.value)}
                 className={`rounded px-2 py-0.5 focus-visible:outline-2 focus-visible:outline-accent ${value === c.value ? 'bg-accent font-medium text-white' : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-white'}`}
               >
-                {c.label}
-                {c.value === e.recommended && <span className="sr-only"> (recommended)</span>}
+                {t(c.label)}
+                {c.value === e.recommended && (
+                  <span className="sr-only"> ({t('recommended')})</span>
+                )}
               </button>
             ))}
           </div>
@@ -374,8 +381,8 @@ function Row({
           >
             {e.choices!.map((c) => (
               <option key={String(c.value)} value={String(c.value)}>
-                {c.label}
-                {c.value === e.recommended ? ' (recommended)' : ''}
+                {t(c.label)}
+                {c.value === e.recommended ? ` (${t('recommended')})` : ''}
               </option>
             ))}
           </select>

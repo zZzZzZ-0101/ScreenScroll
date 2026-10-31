@@ -80,3 +80,31 @@ describe('readability', () => {
     expect(medianFontPx([])).toBeNull();
   });
 });
+
+describe('printed text size', () => {
+  it('16 px text from a 1280 px page on A4 with 10 mm margins, and the two fixes', async () => {
+    const { printedTextSize, DEFAULT_PAGE_SETTINGS, PT_PER_MM } = await import('../src/layout.js');
+    const r = printedTextSize(16, DEFAULT_PAGE_SETTINGS, 1280);
+    const portraitW = (210 - 20) * PT_PER_MM; // 538.6 pt
+    const landscapeW = (297 - 20) * PT_PER_MM; // 785.2 pt
+    expect(r.pt).toBeCloseTo((16 * portraitW) / 1280, 6); // 6.7 pt
+    expect(r.turnedPt).toBeCloseTo((16 * landscapeW) / 1280, 6); // 9.8 pt
+    expect(r.narrowPt).toBeCloseTo((16 * portraitW) / 1000, 6); // 8.6 pt
+    expect(printedTextSize(16, DEFAULT_PAGE_SETTINGS, 900).narrowPt).toBeNull();
+  });
+});
+
+describe('paper matched to a page shape', () => {
+  it('A4, Letter, landscape, slides, and a custom size otherwise', async () => {
+    const { matchPaper } = await import('../src/layout.js');
+    expect(matchPaper(1075 / 760)).toMatchObject({ paper: 'A4', orientation: 'portrait' });
+    expect(matchPaper(11 / 8.5)).toMatchObject({ paper: 'Letter', orientation: 'portrait' });
+    expect(matchPaper(210 / 297)).toMatchObject({ paper: 'A4', orientation: 'landscape' });
+    expect(matchPaper(9 / 16).name).toBe('16:9 slide');
+    expect(matchPaper(1.2)).toEqual({
+      paper: { w: 210, h: 252 },
+      orientation: 'portrait',
+      name: 'Custom 210 × 252 mm',
+    });
+  });
+});

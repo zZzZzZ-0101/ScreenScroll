@@ -8,6 +8,7 @@ import { readImage } from '@/ocr/client';
 import { modelStatus } from '@/ocr/store';
 import { download } from '@/studio/engine/export';
 import { exportMerged } from '@/studio/engine/merge';
+import { t } from '@/shared/i18n';
 
 const button =
   'rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800';
@@ -62,17 +63,17 @@ export function MergeSheet(p: { captures: StoredCapture[]; onClose: () => void }
 
   return (
     <section
-      aria-label="Merge into one PDF"
+      aria-label={t('Merge into one PDF')}
       className="mt-3 rounded-lg border border-accent/50 bg-white p-3 dark:bg-neutral-900"
     >
       <div className="flex items-center justify-between">
         <h2 className="font-semibold">Merge into one PDF</h2>
-        <button type="button" className={icon} aria-label="Close merge" onClick={p.onClose}>
+        <button type="button" className={icon} aria-label={t('Close merge')} onClick={p.onClose}>
           <X aria-hidden size={16} />
         </button>
       </div>
       <p className="pb-2 text-neutral-500">
-        In this order, on the paper set in Settings. Pages: empty for all, or e.g. 1-3, 5.
+        {t('In this order, on the paper set in Settings. Pages: empty for all, or e.g. 1-3, 5.')}
       </p>
       <ol className="divide-y divide-neutral-200 dark:divide-neutral-800">
         {list.map(({ c, pages }, i) => {
@@ -85,7 +86,7 @@ export function MergeSheet(p: { captures: StoredCapture[]; onClose: () => void }
               </span>
               <input
                 aria-label={`Pages of ${title}`}
-                placeholder="all"
+                placeholder={t('all')}
                 value={pages}
                 onChange={(e) =>
                   setList((l) => l.map((x, j) => (j === i ? { ...x, pages: e.target.value } : x)))
@@ -130,10 +131,10 @@ export function MergeSheet(p: { captures: StoredCapture[]; onClose: () => void }
           onClick={() => void save()}
           className="rounded-md bg-accent px-3 py-1 font-medium text-white hover:bg-accent-strong disabled:opacity-50"
         >
-          Save as one PDF
+          {t('Save as one PDF')}
         </button>
         <button type="button" className={button} onClick={p.onClose}>
-          Cancel
+          {t('Cancel')}
         </button>
         <span role="status" className="text-neutral-500">
           {busy ?? note ?? ''}

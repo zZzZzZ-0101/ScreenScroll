@@ -114,9 +114,10 @@ describe('document sheets', () => {
       [880, 1000],
     ] as const) {
       const r = detectSheets(profile(viewer({ band: [2, a, b, 50] })));
-      expect(r?.sheets.map((s) => s.y1 - s.y0), `band ${a}-${b}`).toEqual([
-        1000, 1000, 1000, 1000, 1000,
-      ]);
+      expect(
+        r?.sheets.map((s) => s.y1 - s.y0),
+        `band ${a}-${b}`,
+      ).toEqual([1000, 1000, 1000, 1000, 1000]);
     }
   });
 
@@ -147,7 +148,9 @@ describe('document sheets', () => {
   it('a white page of evenly sized text blocks is not a viewer', () => {
     // Paper = background: sections of an article, however regular, are not sheets.
     expect(detectSheets(profile(viewer({ bg: 255 })))).toBeNull();
-    expect(detectSheets(profile(viewer({ bg: 255, gap: 40, list: true, listFrom: 500 })))).toBeNull();
+    expect(
+      detectSheets(profile(viewer({ bg: 255, gap: 40, list: true, listFrom: 500 }))),
+    ).toBeNull();
   });
 
   it('pages set by hand: a grid down to the end, without a trailing sliver', () => {
@@ -227,5 +230,52 @@ describe('document sheets', () => {
     expect(1200 * t.s).toBeCloseTo(t.box.h, 3);
     const base2 = computeLayout(DEFAULT_PAGE_SETTINGS, 500);
     expect(t.box.x - base2.box.x).toBeCloseTo((base2.box.w - t.box.w) / 2, 3);
+  });
+});
+
+describe('ranked readings of a viewer (several interpretations)', () => {
+  it('an ordinary viewer: the gaps reading wins clearly', async () => {
+    const { sheetCandidates, sheetEvidence } = await import('../src/sheets.js');
+    const p = profile(viewer());
+    const c = sheetCandidates(sheetEvidence(p), detectSheets(p));
+    expect(c[0]!.id).toBe('gaps');
+    expect(c[0]!.probability).toBeGreaterThan(0.9);
+    expect(c.reduce((a, x) => a + x.probability, 0)).toBeCloseTo(1, 6);
+  });
+  it('pages a 1 px line apart defeat the gaps; the A4 reading finds them', async () => {
+    const { sheetCandidates, sheetEvidence } = await import('../src/sheets.js');
+    // A4 pages 500 px wide (707 tall) with a single background row between them.
+    const p = profile(viewer({ heights: [707, 707, 707, 707], gap: 1, top: 1 }));
+    expect(detectSheets(p)).toBeNull();
+    const c = sheetCandidates(sheetEvidence(p), null);
+    expect(c[0]!.id).toBe('a4');
+    expect(c[0]!.probability).toBeGreaterThan(0.6);
+    const pages = c[0]!.layout.sheets;
+    expect(pages.length).toBe(4);
+    pages.forEach((s, i) => expect(Math.abs(s.y0 - (1 + i * 708))).toBeLessThanOrEqual(2));
+  });
+  it('an ordinary page has no readings at all', async () => {
+    const { sheetCandidates, sheetEvidence } = await import('../src/sheets.js');
+    expect(sheetCandidates(sheetEvidence(profile(viewer({ bg: 255 }))), null)).toEqual([]);
+  });
+});
+
+describe('page detection diagnostics', () => {
+  it('fit parts multiply to the fit, and the evidence summary is run lengths of gap rows', async () => {
+    const { evidenceSummary, layoutFitParts, sheetEvidence } = await import('../src/sheets.js');
+    const img = viewer({ heights: [1000, 1000, 1000], gap: 16 });
+    const p = profile(img);
+    const ev = sheetEvidence(p)!;
+    const parts = layoutFitParts(ev, detectSheets(p)!);
+    expect(parts.fit).toBeCloseTo(
+      parts.gapFit * parts.pageFit * Math.exp(-parts.unexplained / 3),
+      9,
+    );
+    expect(parts.gapFit).toBeGreaterThan(0.95);
+    const sum = evidenceSummary(ev);
+    expect(sum.gapRuns.reduce((a, b) => a + b, 0)).toBe(ev.height);
+    // Gap first (row 0 is background), then page, gap, …: 16, 1000, 16, 1000, 16, 1000, 16.
+    expect(sum.gapRuns[0]).toBe(0);
+    expect(sum.gapRuns.slice(1)).toEqual([16, 1000, 16, 1000, 16, 1000, 16]);
   });
 });

@@ -7,6 +7,7 @@ import {
   type TextRun,
 } from '@screenscroll/core';
 import { useMemo, useState } from 'react';
+import { t } from '@/shared/i18n';
 
 const KIND: Record<SensitiveKind, string> = {
   email: 'Email',
@@ -67,14 +68,14 @@ export function RedactCard(p: {
       <h2 className="font-semibold">Personal data</h2>
       {!found.length ? (
         <p className="text-[12px] text-neutral-500">
-          No emails, phone, card or ID numbers in the page text.
+          {t('No emails, phone, card or ID numbers in the page text.')}
         </p>
       ) : !open.length ? (
         <p className="text-[12px] text-neutral-500">All {found.length} found are blurred.</p>
       ) : (
         <>
           <p className="pb-1 text-[12px] text-neutral-500">
-            Found in the page text. Ticked ones are blurred and removed from the PDF.
+            {t('Found in the page text. Ticked ones are blurred and removed from the PDF.')}
           </p>
           <ul className="max-h-48 overflow-y-auto">
             {open.map((f) => (

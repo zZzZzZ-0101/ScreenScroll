@@ -1,9 +1,12 @@
 import {
   annotationForbidden,
   computeLayout,
+  EMPTY_BAND,
   contentCrop,
   cropAround,
+  confidentReading,
   fitSheets,
+  matchPaper,
   gridSheets,
   paginateDebug,
   sheetSlices,
@@ -32,6 +35,8 @@ export type PageResult =
       ok: true;
       /** Pages follow a document viewer's own pages. */
       sheets: boolean;
+      /** "As the original": the matched paper's name (no margins or page labels), or null. */
+      original?: string | null;
       crop: { x0: number; x1: number; cropped: boolean };
       layout: PageLayout;
       debug: PaginationDebug;
@@ -74,14 +79,31 @@ export function planPages(
   // A document viewer: its own pages decide, one PDF page per sheet (a drawn crop wins).
   // Pages set by hand win over detected ones and apply even when nothing was detected.
   const grid = project.sheetGrid ? gridSheets(project.sheetGrid, session.height) : null;
-  const sheets = grid ?? analysis.sheets;
+  const sheets = grid ?? analysis.sheets ?? confidentReading(analysis.readings)?.layout ?? null;
   if (sheets && (grid || settings.followSheets) && !manual) {
     try {
-      const layout = fitSheets(computeLayout(page, sheets.x1 - sheets.x0), sheets);
+      // As the original: the page's own paper, edge to edge, without our page labels.
+      const hs = sheets.sheets.map((s) => s.y1 - s.y0).sort((a, b) => a - b);
+      const whole = hs.length > 2 ? hs.slice(1, -1) : hs;
+      const matched = settings.docOriginal
+        ? matchPaper(whole[whole.length >> 1]! / (sheets.x1 - sheets.x0))
+        : null;
+      const docPage = matched
+        ? {
+            ...page,
+            paper: matched.paper,
+            orientation: matched.orientation,
+            marginsMm: { top: 0, right: 0, bottom: 0, left: 0 },
+            headerPt: 0,
+            footerPt: 0,
+          }
+        : page;
+      const layout = fitSheets(computeLayout(docPage, sheets.x1 - sheets.x0), sheets);
       const slices = sheetSlices(sheets);
       return {
         ok: true,
         sheets: true,
+        original: matched?.name ?? null,
         crop: { x0: sheets.x0, x1: sheets.x1, cropped: true },
         layout,
         debug: { slices, candidates: [], forbidden: [], opaque: [] },
@@ -113,4 +135,11 @@ export function planPages(
   if (!debug.slices.length)
     return { ok: false, error: 'Nothing to show: the captured area is empty.' };
   return { ok: true, sheets: false, crop, layout, debug };
+}
+
+/** PDF settings for these pages: "as the original" leaves our page labels out. */
+export function pdfFor(settings: Settings, result: PageResult | null): Settings['pdf'] {
+  return result?.ok && result.original
+    ? { ...settings.pdf, header: EMPTY_BAND, footer: EMPTY_BAND }
+    : settings.pdf;
 }

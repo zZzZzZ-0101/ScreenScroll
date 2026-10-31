@@ -2,6 +2,8 @@ import {
   buildFilename,
   commit,
   DEFAULT_STYLE,
+  confidentReading,
+  gridOf,
   breaksToCheck,
   redactions,
   emptyHistory,
@@ -34,7 +36,7 @@ import { OVERLAY_WARNING } from '@/shared/messages';
 import { RedactCard } from './components/RedactCard';
 import { loadSettings, saveSettings, type Settings } from '@/shared/settings';
 import { analyze, type Analysis } from '@/studio/engine/analysis';
-import { planPages, type Edits, type PageResult } from '@/studio/engine/plan';
+import { pdfFor, planPages, type Edits, type PageResult } from '@/studio/engine/plan';
 import {
   copyPageImage,
   download,
@@ -65,6 +67,7 @@ import { PagesView } from './components/PagesView';
 import { StripView } from './components/StripView';
 import { Thumbnails } from './components/Thumbnails';
 import { exportDebugOverlay } from './debug-export';
+import { t } from '@/shared/i18n';
 
 type Stage =
   | { kind: 'loading' }
@@ -95,7 +98,7 @@ export function App() {
   const [edits, setEdits] = useState<Edits>({ pinned: [], removed: [] });
   const [view, setViewState] = useState<View>('pages');
   // Per-viewer UI memory (zoom, panel); nothing here needs to sync or persist reliably.
-  const [zoom, setZoom] = useState<Zoom>(() => readPref('ss-zoom', 'page' as Zoom));
+  const [zoom, setZoom] = useState<Zoom>(() => readPref('ss-zoom', 'width' as Zoom));
   const [effective, setEffective] = useState(1);
   const changeZoom = useCallback((z: Zoom) => {
     setZoom(z);
@@ -226,6 +229,16 @@ export function App() {
 
   const slices = result && result.ok ? result.debug.slices : [];
   const checks = useMemo(() => breaksToCheck(slices), [slices]);
+  // The page grid shown for dragging: the one set by hand, else the detected or best reading.
+  const editGrid = useMemo(() => {
+    if (project.sheetGrid) return project.sheetGrid;
+    const l = analysis?.sheets ?? (analysis ? confidentReading(analysis.readings)?.layout : null);
+    return l ? gridOf(l) : null;
+  }, [project.sheetGrid, analysis]);
+  const fontPx = useMemo(
+    () => (session ? medianFontPx(session.hints.textRuns.map((t) => t.fontSizePx)) : null),
+    [session],
+  );
 
   const warnings = useMemo(() => {
     if (!session || !result || !result.ok) return [];
@@ -298,9 +311,12 @@ export function App() {
             sheets: result.sheets,
             estimate,
             ocr: { pages: ocrPages, ready: !!ocrModel?.ready },
+            detection: analysis
+              ? { evidence: analysis.evidence, readings: analysis.readings }
+              : undefined,
           })
         : null,
-    [session, settings, result, slices, estimate, ocrPages, ocrModel],
+    [session, settings, result, slices, estimate, ocrPages, ocrModel, analysis],
   );
   useEffect(() => {
     if (!session || !result?.ok || !settings || !frames.current) return;
@@ -391,7 +407,7 @@ export function App() {
               slices,
               layout,
               settings.exportPreset,
-              settings.pdf,
+              pdfFor(settings, result),
               progress,
               annotations,
               pageOcr,
@@ -408,7 +424,7 @@ export function App() {
               slices,
               layout,
               settings.exportPreset,
-              settings.pdf,
+              pdfFor(settings, result),
               progress,
               annotations,
               pageOcr,
@@ -483,7 +499,7 @@ export function App() {
           slices,
           result.layout,
           settings.exportPreset,
-          settings.pdf,
+          pdfFor(settings, result),
           progress,
           annotations,
           pageOcr,
@@ -650,7 +666,7 @@ export function App() {
             result.debug.slices,
             result.layout,
             settings.exportPreset,
-            settings.pdf,
+            pdfFor(settings, result),
             undefined,
             project.annotations,
             pageOcr,
@@ -709,11 +725,22 @@ export function App() {
         filename={filename('pdf')}
         cropped={result.ok && result.crop.cropped}
         sheetCount={analysis.sheets?.sheets.length ?? null}
+        text={
+          result.ok && !result.sheets && fontPx
+            ? { fontPx, contentWidth: result.crop.x1 - result.crop.x0 }
+            : null
+        }
         sheets={{
           detected: analysis.sheets,
+          readings: analysis.readings,
           grid: project.sheetGrid ?? null,
           pages: result.ok && result.sheets ? result.debug.slices.length : 0,
           width: session.width,
+          followSheets: settings.followSheets,
+          onFollow: (followSheets) => updateSettings({ followSheets }),
+          docOriginal: settings.docOriginal,
+          original: result.ok ? (result.original ?? null) : null,
+          onOriginal: (docOriginal) => updateSettings({ docOriginal }),
           onGrid: (sheetGrid) => changeProject({ sheetGrid }),
         }}
         estimate={estimate}
@@ -799,7 +826,9 @@ export function App() {
             {[
               domain,
               captured,
-              result.ok ? `${slices.length} ${slices.length === 1 ? 'page' : 'pages'}` : '',
+              result.ok
+                ? t(slices.length === 1 ? '{n} page' : '{n} pages', { n: slices.length })
+                : '',
             ]
               .filter(Boolean)
               .join(' · ')}
@@ -807,7 +836,7 @@ export function App() {
         </div>
         <div
           role="tablist"
-          aria-label="Mode"
+          aria-label={t('Mode')}
           className="flex rounded-lg bg-neutral-100 p-0.5 dark:bg-neutral-800"
         >
           {MODES.map(([v, label, Icon, hint]) => (
@@ -816,13 +845,13 @@ export function App() {
               role="tab"
               type="button"
               aria-selected={view === v}
-              title={hint}
+              title={t(hint)}
               disabled={!result.ok}
               onClick={() => setView(v)}
               className={`flex items-center gap-1.5 rounded-md px-3 py-1 focus-visible:outline-2 focus-visible:outline-accent ${view === v ? 'bg-white font-medium shadow-sm dark:bg-neutral-700' : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-white'}`}
             >
               <Icon aria-hidden size={15} />
-              {label}
+              {t(label)}
             </button>
           ))}
         </div>
@@ -836,7 +865,7 @@ export function App() {
                 className="flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-amber-900 focus-visible:outline-2 focus-visible:outline-accent dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100"
               >
                 <TriangleAlert aria-hidden size={14} />
-                {warnings.length} {warnings.length === 1 ? 'note' : 'notes'}
+                {t(warnings.length === 1 ? '{n} note' : '{n} notes', { n: warnings.length })}
               </button>
               {showWarnings && (
                 <ul
@@ -874,7 +903,7 @@ export function App() {
                                   });
                               }}
                             >
-                              Hide pop-ups and capture again
+                              {t('Hide pop-ups and capture again')}
                             </button>
                           </>
                         ) : (
@@ -889,9 +918,9 @@ export function App() {
           )}
           <button
             type="button"
-            aria-label="Details"
+            aria-label={t('Details')}
             aria-pressed={showDetails}
-            title="Details: every number and how it was calculated (I)"
+            title={t('Details: every number and how it was calculated (I)')}
             onClick={() => setShowDetails((v) => !v)}
             className={`rounded-md p-1.5 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:hover:bg-neutral-800 ${showDetails ? 'bg-neutral-200 text-neutral-900 dark:bg-neutral-700 dark:text-white' : 'text-neutral-600 dark:text-neutral-300'}`}
           >
@@ -980,12 +1009,17 @@ export function App() {
                   frames={frames.current!}
                   analysis={analysis}
                   debug={result.debug}
-                  crop={result.crop}
+                  crop={result.sheets ? { x0: 0, x1: session.width } : result.crop}
                   edits={edits}
                   onEdits={setEdits}
                   page={page}
                   locked={result.sheets}
                   checks={checks}
+                  sheetGrid={
+                    result.sheets && editGrid
+                      ? { grid: editGrid, onGrid: (sheetGrid) => changeProject({ sheetGrid }) }
+                      : undefined
+                  }
                 />
               )}
             </main>

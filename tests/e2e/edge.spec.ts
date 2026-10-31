@@ -747,3 +747,25 @@ test('Breaks: the breaks worth a look are listed, marked on the strip, and stepp
   await expect(card).toContainText(/· 1 of \d+/);
   await expect(studio.getByText(`After page ${n}:`)).toBeVisible();
 });
+
+test('Pages: the printed text size, and one-click fixes when it is small', async ({
+  context,
+  serviceWorker,
+}) => {
+  // fluid.html: 16 px text running the full 1280 px width, so A4 portrait prints it at
+  // 16 × 538.6 ÷ ~1232 ≈ 7 pt.
+  const studio = await capture(context, serviceWorker, 'fluid.html');
+  const card = studio.getByTestId('text-size');
+  await expect(card).toContainText(/Text prints at \d+\.\d pt: small/);
+  const pt = Number(/(\d+\.\d) pt/.exec((await card.textContent()) ?? '')![1]);
+  expect(pt).toBeGreaterThan(6);
+  expect(pt).toBeLessThan(8);
+  // Page width 1000 px is offered for the next capture, with what it would give.
+  await expect(card.getByRole('button', { name: /Page width 1000 px: 8\.\d pt/ })).toBeVisible();
+  // Landscape fixes this capture at once, to the size the button promised.
+  const turn = card.getByRole('button', { name: /Landscape: \d+\.\d pt/ });
+  const promised = Number(/(\d+\.\d) pt/.exec((await turn.textContent()) ?? '')![1]);
+  expect(promised).toBeGreaterThan(9);
+  await turn.click();
+  await expect(card).toHaveText(`Text prints at ${promised.toFixed(1)} pt`);
+});

@@ -1,4 +1,5 @@
 import { createElement, useEffect, useState, type ReactNode } from 'react';
+import { resolveLang, setLang, type LangSetting } from './i18n';
 import { loadSettings, saveSettings, type Theme } from './settings';
 
 const dark = () => matchMedia('(prefers-color-scheme: dark)');
@@ -37,8 +38,25 @@ export function useTheme(): [Theme, (t: Theme) => void] {
   return [theme, change];
 }
 
-/** Wraps a page so it follows the theme setting from the first paint on. */
+/**
+ * Wraps a page so it follows the theme and language settings from the first paint on. The
+ * page waits for the language (one storage read) so it never flashes in the wrong one.
+ */
 export function Themed({ children }: { children: ReactNode }) {
   useTheme();
-  return createElement('div', { className: 'contents' }, children);
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    void loadSettings().then((s) => {
+      setLang(resolveLang(s.language));
+      setReady(true);
+    });
+    const onStorage = (changes: Record<string, chrome.storage.StorageChange>) => {
+      const next = (changes.settings?.newValue as { language?: LangSetting } | undefined)
+        ?.language;
+      if (next) setLang(resolveLang(next));
+    };
+    chrome.storage.onChanged.addListener(onStorage);
+    return () => chrome.storage.onChanged.removeListener(onStorage);
+  }, []);
+  return ready ? createElement('div', { className: 'contents' }, children) : null;
 }
