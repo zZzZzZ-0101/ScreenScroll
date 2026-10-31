@@ -11,7 +11,7 @@ M4 — built and verified except manual checks (see M4 below). M1–M3 are compl
 - Vitest: `core/pixel.ts` (port of the reference prototype: ink rows, margin trim, greedy cuts), 6 tests.
 - Offline guard test: builds the production bundle, fails on `fetch(`/XHR/WebSocket/EventSource/sendBeacon or non-allowlisted URL literals, and on any host permission. Verified it fails when a `fetch()` call is planted in the background script.
 - Playwright: persistent Chromium context with the e2e build loaded (headless works); smoke tests open the popup and a fixture page.
-- Manifest: `activeTab, scripting, storage, unlimitedStorage, downloads, clipboardWrite, contextMenus`; `commands` with 3 suggested hotkeys; teal page-with-scissors icons (16/32/48/128, rendered from `assets-src/icon.svg` by `scripts/icons.mjs`).
+- Manifest: `activeTab, scripting, storage, unlimitedStorage, downloads, clipboardWrite, contextMenus`; `commands` with 3 suggested hotkeys; long-cat icons (16/32/48/128, rendered from `assets-src/icon*.svg` by `scripts/icons.mjs`; was a page with scissors until 2026-10-31).
 
 ### Verified
 - `pnpm test` 8/8, `pnpm e2e` 2/2, `pnpm lint`, `pnpm typecheck` clean, `pnpm zip` → `scrollpress-0.0.1-chrome.zip` (78 kB).
