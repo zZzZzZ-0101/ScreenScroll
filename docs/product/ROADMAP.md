@@ -83,7 +83,7 @@ Legend: `[ ]` todo · `(L#)` = lesson from `docs/product/PRIOR_ART.md` §7 · `�
 
 ## M6 — Beyond FireShot (pick in order; ~4 h+)
 
-- [ ] **Capture at width W** (temporary window resize + restore) for legible A4 (L6). → CAPTURE §8
+- [x] **Capture at width W** (temporary window resize + restore) for legible A4 (L6). → CAPTURE §8
 - [ ] **Clean (reader) capture** via Readability + print-like stylesheet; optional "real text PDF via print". → CAPTURE §12
 - [ ] **Overlay killer**: one click hides modals/cookie banners/chat bubbles, then recapture.
 - [ ] **Auto-redact**: detect emails/phones/card numbers in DOM text → checklist → blur.

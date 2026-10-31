@@ -149,6 +149,10 @@ Suite: `pnpm test` 219, `pnpm e2e` 53 (see the commit), lint and typecheck clean
 - Mark up shows the chosen filter and the watermark at once; e2e tests.
 - Needs the user's check: the PDF preview that came out at 2/3 of a page. If it still does, "Wrong page size? Set pages by hand" fixes it, and a screenshot of that capture would make a test case.
 
+### M6: page width (2026-10-31)
+- Settings → Page width (1000 / 1200 / 1440 px): window narrowed for the capture, put back on finish, Esc and tab close; 3 unit + 3 e2e tests.
+- Needs the user's check: a maximised window comes back maximised.
+
 ## Manual site checks
 | Site | Date | Capture | Header once | Images loaded | No text cut | Text searchable | Links | Time | Notes |
 |---|---|---|---|---|---|---|---|---|---|

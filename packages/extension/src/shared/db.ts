@@ -14,8 +14,19 @@ export interface SessionRecord {
   /** Where the capture runs, so a restarted service worker can carry on. */
   tabId: number;
   windowId: number;
+  /** The window as it was before "Page width" narrowed it, until it is put back. */
+  window?: SavedWindow;
   /** The Studio's edits (TODO M4: projects are re-editable later). */
   project?: Project;
+}
+
+export interface SavedWindow {
+  id: number;
+  state: string;
+  left?: number;
+  top?: number;
+  width?: number;
+  height?: number;
 }
 
 export interface Project {

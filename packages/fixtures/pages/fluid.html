@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Fluid fixture</title>
+<style>
+  body { margin: 0; font: 16px/1.5 Arial, sans-serif; }
+  /* No max width: the text runs as wide as the window, like many wiki and forum pages. */
+  main { padding: 16px 24px; }
+  #w { position: fixed; top: 0; right: 0; background: #ffe; padding: 2px 6px; font: 12px monospace; }
+</style></head>
+<body>
+<div id="w"></div>
+<main id="text"></main>
+<script>
+  const text = document.getElementById('text');
+  for (let i = 1; i <= 40; i++)
+    text.insertAdjacentHTML('beforeend', `<p>Paragraph ${i}. ` + 'A line of text that reflows with the width of the window. '.repeat(12) + '</p>');
+  const show = () => (document.getElementById('w').textContent = `${document.documentElement.clientWidth} px`);
+  addEventListener('resize', show);
+  show();
+</script>
+</body></html>

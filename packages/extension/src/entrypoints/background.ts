@@ -2,6 +2,7 @@ import {
   CAPTURE_PACING,
   Pacer,
   blockedReason,
+  narrowWindowTo,
   type CaptureLimits,
   type Region,
 } from '@screenscroll/core';
@@ -68,22 +69,112 @@ export default defineBackground(() => {
       const why = await startSharp(id, tab.id, scale);
       if (why) warnings.push(why);
     }
+    if (settings.capture.width && (mode === 'full' || mode === 'visible')) {
+      try {
+        const why = await narrowWindow(id, tab.id, tab.windowId, settings.capture.width);
+        if (why) warnings.push(why);
+      } catch (e) {
+        await restoreWindow(id);
+        warnings.push(
+          `The page width could not be set (${e instanceof Error ? e.message : String(e)}); captured as it was.`,
+        );
+      }
+    }
     if (warnings.length) {
       const d = await db();
       const rec = await d.get('sessions', id);
       if (rec) await d.put('sessions', { ...rec, warnings });
     }
-    await showCapturing(tab.id);
-    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['/capture.js'] });
-    await chrome.tabs.sendMessage(tab.id, {
-      type: 'sp:start',
-      sessionId: id,
-      mode,
-      startAt: settings.capture.start,
-      timing,
-      ...opts,
-    });
+    try {
+      await showCapturing(tab.id);
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['/capture.js'] });
+      await chrome.tabs.sendMessage(tab.id, {
+        type: 'sp:start',
+        sessionId: id,
+        mode,
+        startAt: settings.capture.start,
+        timing,
+        ...opts,
+      });
+    } catch (e) {
+      await restoreWindow(id);
+      throw e;
+    }
     return id;
+  }
+
+  /** The page's layout width in CSS px. */
+  async function viewportWidth(tabId: number): Promise<number> {
+    const [r] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => document.documentElement.clientWidth,
+    });
+    return r?.result as number;
+  }
+
+  /**
+   * Settings → Page width (CAPTURE §8): narrows the window so the page lays itself out at
+   * `target` CSS px. The window as it was is kept in the session record first, so it is put
+   * back even after a service-worker restart. Returns a warning when the width isn't reached.
+   */
+  async function narrowWindow(
+    sessionId: string,
+    tabId: number,
+    windowId: number,
+    target: number,
+  ): Promise<string | null> {
+    let win = await chrome.windows.get(windowId);
+    const zoom = await chrome.tabs.getZoom(tabId);
+    if (narrowWindowTo(target, { width: win.width ?? 0 }, await viewportWidth(tabId), zoom) === null)
+      return null;
+    const d = await db();
+    const rec = await d.get('sessions', sessionId);
+    if (!rec) return null;
+    await d.put('sessions', {
+      ...rec,
+      window: {
+        id: windowId,
+        state: win.state ?? 'normal',
+        left: win.left,
+        top: win.top,
+        width: win.width,
+        height: win.height,
+      },
+    });
+    // A maximised or full-screen window has no width of its own to change.
+    if (win.state !== 'normal') {
+      await chrome.windows.update(windowId, { state: 'normal' });
+      win = await chrome.windows.get(windowId);
+    }
+    const width = narrowWindowTo(target, { width: win.width ?? 0 }, await viewportWidth(tabId), zoom);
+    if (width !== null) await chrome.windows.update(windowId, { width });
+    // Wait for the reflow, then a moment for layout-dependent content (images, lazy parts).
+    let got = await viewportWidth(tabId);
+    for (let t = 0; t < 20 && Math.abs(got - target) > 1; t++) {
+      await new Promise((r) => setTimeout(r, 100));
+      got = await viewportWidth(tabId);
+    }
+    await new Promise((r) => setTimeout(r, 400));
+    return Math.abs(got - target) > 2
+      ? `The page could only be laid out at ${got} px wide (Page width ${target} px): the window can't be made narrower.`
+      : null;
+  }
+
+  /** Puts a narrowed window back as it was; harmless when there is nothing to do. */
+  async function restoreWindow(sessionId: string): Promise<void> {
+    const d = await db();
+    const rec = await d.get('sessions', sessionId);
+    const w = rec?.window;
+    if (!rec || !w) return;
+    await d.put('sessions', { ...rec, window: undefined });
+    await chrome.windows
+      .update(
+        w.id,
+        w.state === 'normal'
+          ? { left: w.left, top: w.top, width: w.width, height: w.height }
+          : { state: w.state as chrome.windows.WindowState },
+      )
+      .catch(() => undefined);
   }
 
   /**
@@ -227,6 +318,7 @@ export default defineBackground(() => {
         'Sharp capture stopped part-way (the debugging bar was closed); the rest is at screen resolution.',
       );
     await stopSharp(msg.sessionId);
+    await restoreWindow(msg.sessionId);
     const d = await db();
     const session = await d.get('sessions', msg.sessionId);
     await clearCapturing(session?.tabId);
@@ -407,6 +499,14 @@ export default defineBackground(() => {
     );
     return s ? { sessionId: s.id, tabId: tab.id } : null;
   }
+
+  // A tab closed mid-capture can't report back: put a narrowed window back here.
+  chrome.tabs.onRemoved.addListener((tabId) => {
+    void (async () => {
+      const all = await (await db()).getAll('sessions');
+      for (const s of all) if (s.tabId === tabId && s.window) await restoreWindow(s.id);
+    })();
+  });
 
   chrome.runtime.onMessage.addListener(
     (
