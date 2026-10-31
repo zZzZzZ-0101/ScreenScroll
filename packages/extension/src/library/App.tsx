@@ -1,7 +1,8 @@
-import { ExternalLink, Files, Search, Trash2 } from 'lucide-react';
+import { ExternalLink, Files, ImageUp, Search, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { deleteCapture, deleteOlderThan, listCaptures, type StoredCapture } from '@/shared/db';
 import { loadSettings, saveSettings } from '@/shared/settings';
+import { importImage } from '@/shared/import-image';
 import { MergeSheet } from './MergeSheet';
 
 const KEEP: Array<[number, string]> = [
@@ -119,6 +120,33 @@ export function App() {
       </section>
 
       <div className="mt-4 flex items-center gap-2">
+        <label
+          className="flex cursor-pointer items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 focus-within:outline-2 focus-within:outline-accent dark:border-neutral-700 dark:hover:bg-neutral-800"
+          title="Open a long screenshot (PNG, JPEG, WebP) as a capture"
+        >
+          <ImageUp aria-hidden size={15} /> Open an image
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            className="sr-only"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (!file) return;
+              setNote(`Opening ${file.name}…`);
+              importImage(file).then(
+                (id) => {
+                  setNote(null);
+                  void refresh();
+                  void chrome.tabs.create({
+                    url: chrome.runtime.getURL(`/studio.html?session=${encodeURIComponent(id)}`),
+                  });
+                },
+                (err: unknown) => setNote(err instanceof Error ? err.message : String(err)),
+              );
+            }}
+          />
+        </label>
         <label className="flex flex-1 items-center gap-2 rounded-md border border-neutral-300 bg-white px-2 py-1 dark:border-neutral-700 dark:bg-neutral-900">
           <Search aria-hidden size={15} className="text-neutral-500" />
           <input
