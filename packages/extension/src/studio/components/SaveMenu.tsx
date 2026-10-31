@@ -1,5 +1,6 @@
 import { ChevronDown, Download } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { t } from '@/shared/i18n';
 
 export type ExportFormat = 'pdf' | 'pdf-long' | 'png' | 'jpeg' | 'webp' | 'long-png';
 
@@ -54,15 +55,15 @@ export function SaveMenu(p: {
         type="button"
         onClick={() => p.onExport('pdf')}
         disabled={p.disabled}
-        title="Save PDF (Ctrl+S)"
+        title={t('Save PDF (Ctrl+S)')}
         className="flex items-center gap-1.5 rounded-l-md bg-accent px-3 py-1.5 font-medium text-white hover:bg-accent-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-60"
       >
         <Download aria-hidden size={15} />
-        Save PDF
+        {t('Save PDF')}
       </button>
       <button
         type="button"
-        aria-label="More ways to save"
+        aria-label={t('More ways to save')}
         aria-haspopup="menu"
         aria-expanded={open}
         disabled={p.disabled}
@@ -74,7 +75,7 @@ export function SaveMenu(p: {
       {open && (
         <div
           role="menu"
-          aria-label="Save as"
+          aria-label={t('Save as')}
           className="absolute right-0 top-full z-30 mt-1 w-64 rounded-md border border-neutral-200 bg-white py-1 shadow-sm dark:border-neutral-700 dark:bg-neutral-900"
           onKeyDown={(e) => {
             const i = items.current.indexOf(document.activeElement as HTMLButtonElement);

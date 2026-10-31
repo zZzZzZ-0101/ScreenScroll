@@ -65,6 +65,7 @@ import { PagesView } from './components/PagesView';
 import { StripView } from './components/StripView';
 import { Thumbnails } from './components/Thumbnails';
 import { exportDebugOverlay } from './debug-export';
+import { t } from '@/shared/i18n';
 
 type Stage =
   | { kind: 'loading' }
@@ -811,7 +812,9 @@ export function App() {
             {[
               domain,
               captured,
-              result.ok ? `${slices.length} ${slices.length === 1 ? 'page' : 'pages'}` : '',
+              result.ok
+                ? t(slices.length === 1 ? '{n} page' : '{n} pages', { n: slices.length })
+                : '',
             ]
               .filter(Boolean)
               .join(' · ')}
@@ -819,7 +822,7 @@ export function App() {
         </div>
         <div
           role="tablist"
-          aria-label="Mode"
+          aria-label={t('Mode')}
           className="flex rounded-lg bg-neutral-100 p-0.5 dark:bg-neutral-800"
         >
           {MODES.map(([v, label, Icon, hint]) => (
@@ -828,13 +831,13 @@ export function App() {
               role="tab"
               type="button"
               aria-selected={view === v}
-              title={hint}
+              title={t(hint)}
               disabled={!result.ok}
               onClick={() => setView(v)}
               className={`flex items-center gap-1.5 rounded-md px-3 py-1 focus-visible:outline-2 focus-visible:outline-accent ${view === v ? 'bg-white font-medium shadow-sm dark:bg-neutral-700' : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-white'}`}
             >
               <Icon aria-hidden size={15} />
-              {label}
+              {t(label)}
             </button>
           ))}
         </div>
@@ -848,7 +851,7 @@ export function App() {
                 className="flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-amber-900 focus-visible:outline-2 focus-visible:outline-accent dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100"
               >
                 <TriangleAlert aria-hidden size={14} />
-                {warnings.length} {warnings.length === 1 ? 'note' : 'notes'}
+                {t(warnings.length === 1 ? '{n} note' : '{n} notes', { n: warnings.length })}
               </button>
               {showWarnings && (
                 <ul
@@ -886,7 +889,7 @@ export function App() {
                                   });
                               }}
                             >
-                              Hide pop-ups and capture again
+                              {t('Hide pop-ups and capture again')}
                             </button>
                           </>
                         ) : (
@@ -901,9 +904,9 @@ export function App() {
           )}
           <button
             type="button"
-            aria-label="Details"
+            aria-label={t('Details')}
             aria-pressed={showDetails}
-            title="Details: every number and how it was calculated (I)"
+            title={t('Details: every number and how it was calculated (I)')}
             onClick={() => setShowDetails((v) => !v)}
             className={`rounded-md p-1.5 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:hover:bg-neutral-800 ${showDetails ? 'bg-neutral-200 text-neutral-900 dark:bg-neutral-700 dark:text-white' : 'text-neutral-600 dark:text-neutral-300'}`}
           >

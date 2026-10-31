@@ -31,6 +31,7 @@ import { pickArea, type AreaOutput } from '@/content/area-picker';
 import { elementRegion, pickElement, pickLines, pickScrollArea } from '@/content/page-ui';
 import { makePill, type Pill } from '@/content/pill';
 import { documentTarget, elementTarget, isScroller, type Target } from '@/content/targets';
+import { setLang, t as tr } from '@/shared/i18n';
 
 // Injected on demand into the page (CAPTURE §2). All page changes go through `log` so they
 // are undone on success, error, Esc and pagehide (CAPTURE §10).
@@ -40,7 +41,11 @@ export default defineUnlistedScript(() => {
   w.__spCaptureLoaded = true;
 
   chrome.runtime.onMessage.addListener((msg: StartCapture | CaptureControl | PageNotice) => {
-    if (msg.type === 'sp:start') void run(msg);
+    if (msg.type === 'sp:start') {
+      // The page-side hints speak the user's language (it can't read settings itself).
+      if (msg.lang) setLang(msg.lang);
+      void run(msg);
+    }
     // From the toolbar panel: the same Stop here / Cancel as on the pill.
     if (msg.type === 'sp:control') control?.[msg.action]();
     // After a quick output (copy, PDF) finished elsewhere: say so where the user is.
@@ -116,7 +121,7 @@ async function run(msg: StartCapture): Promise<void> {
   };
   const stop = () => {
     stopped = true;
-    pill.set('Stopping…');
+    pill.set(tr('Stopping…'));
   };
   const onKey = (e: KeyboardEvent) => {
     if (e.key === 'Escape') {
@@ -144,7 +149,7 @@ async function run(msg: StartCapture): Promise<void> {
     if (msg.delayMs) {
       // UI §1 delayed capture: time to open a menu or hover a tooltip.
       for (let left = Math.ceil(msg.delayMs / 1000); left > 0 && !cancelled; left--) {
-        pill.set(`Capturing in ${left} s`);
+        pill.set(tr('Capturing in {n} s', { n: left }));
         await sleep(1000);
       }
       if (cancelled) throw new Cancelled();
@@ -161,7 +166,7 @@ async function run(msg: StartCapture): Promise<void> {
     // A zero-size selection or a hidden element: say so rather than produce nothing.
     if (p.kind === 'region' && (p.region.x1 - p.region.x0 < 1 || p.region.y1 - p.region.y0 < 1))
       throw new Error('The selected area is empty, so nothing was captured.');
-    pill.set('Getting the page ready');
+    pill.set(tr('Getting the page ready'));
     pill.show();
     addEventListener('keydown', onKey, true);
     addEventListener('pagehide', onHide);
@@ -389,7 +394,7 @@ async function grabFrame(
     ctx.hints.skipTextRuns = true;
     ctx.warnings.push('Page text was too slow to read; the PDF may not be fully searchable.');
   }
-  ctx.pill.set(frame.pill === 'top' ? 'Finishing' : `Capturing · screen ${index + 1}`);
+  ctx.pill.set(frame.pill === 'top' ? tr('Finishing') : tr('Capturing · screen {n}', { n: index + 1 }));
   ctx.pill.canStop(index > 0);
   if (frame.pill === 'hidden') ctx.pill.hide();
   else ctx.pill.place(frame.pill);
@@ -407,7 +412,7 @@ async function grabFrame(
     if (document.hidden) {
       // captureVisibleTab would picture whatever tab is in front instead.
       await whileHidden(ctx.cancelled);
-      ctx.pill.alert('Paused while this tab was in the background. Continuing.');
+      ctx.pill.alert(tr('Paused while this tab was in the background. Continuing.'));
     }
     if (ctx.cancelled()) throw new Cancelled();
     if (innerWidth !== ctx.size.width || innerHeight !== ctx.size.height)

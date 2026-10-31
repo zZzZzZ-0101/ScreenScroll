@@ -162,6 +162,7 @@ Suite: `pnpm test` 219, `pnpm e2e` 53 (see the commit), lint and typecheck clean
 - Document page detection: 1,224-case combination test, all passing; fixes for scans, cut pages with edge bands, shadows, tight gaps and the 1 px dark edge; preview seam fixed.
 - Side crop: a sparse full-width top bar no longer prevents cropping wide margins (GitHub); 2 unit tests.
 - Document pages: ranked readings with probabilities and a visible Edit pages editor with ±1 px steps; 3 unit tests, doc-viewer e2e updated. Theme switch in the toolbar panel and the Pages panel.
+- Simplified Chinese: language setting, toolbar panel, Studio main views, Settings, Saved captures and capture hints; coverage unit test; 1 e2e test.
 - Not started: PDF import, CDP capture engine, browser-window capture.
 - Import: Saved captures → Open an image (tall PNG/JPEG/WebP) → Studio; 2 e2e tests (breaks fall between lines; a non-image says so). Not done: tall single-page PDF import (pdf.js).
 - Overlay killer: the pop-up note in the Studio has "Hide pop-ups and capture again"; 6 e2e tests (3 kinds of pop-up, 2 look-alikes that must stay, the Studio flow). Needs the user's check on real consent walls and newsletter pop-ups.

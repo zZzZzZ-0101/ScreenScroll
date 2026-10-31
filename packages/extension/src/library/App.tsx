@@ -5,6 +5,7 @@ import { loadSettings, saveSettings } from '@/shared/settings';
 import { backupCaptures, restoreCaptures } from '@/shared/backup';
 import { importImage } from '@/shared/import-image';
 import { MergeSheet } from './MergeSheet';
+import { t } from '@/shared/i18n';
 
 const KEEP: Array<[number, string]> = [
   [0, 'Until I delete them'],
@@ -84,10 +85,10 @@ export function App() {
     <main className="mx-auto max-w-4xl p-6 text-[13px] text-neutral-900 dark:text-neutral-100">
       <h1 className="text-lg font-semibold">Saved captures</h1>
       <p className="text-neutral-500">
-        Kept only on this computer, never uploaded. Open one to edit or export it again.
+        {t('Kept only on this computer, never uploaded. Open one to edit or export it again.')}
       </p>
 
-      <section aria-label="Storage" className="mt-4 grid gap-3 sm:grid-cols-2">
+      <section aria-label={t('Storage')} className="mt-4 grid gap-3 sm:grid-cols-2">
         <div className="rounded-lg border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900">
           <h2 className="font-medium">Space used</h2>
           <p className="text-neutral-500" data-testid="space">
@@ -123,13 +124,13 @@ export function App() {
       <div className="mt-4 flex items-center gap-2">
         <label
           className="flex cursor-pointer items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 focus-within:outline-2 focus-within:outline-accent dark:border-neutral-700 dark:hover:bg-neutral-800"
-          title="Open a long screenshot (PNG, JPEG, WebP) as a capture"
+          title={t('Open a long screenshot (PNG, JPEG, WebP) as a capture')}
         >
           <ImageUp aria-hidden size={15} /> Open an image
           <input
             type="file"
             accept="image/png,image/jpeg,image/webp"
-            aria-label="Open an image file"
+            aria-label={t('Open an image file')}
             className="sr-only"
             onChange={(e) => {
               const file = e.target.files?.[0];
@@ -153,7 +154,7 @@ export function App() {
           type="button"
           className="flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
           disabled={!items?.length}
-          title="Save captures, images included, to one file (the selected ones, or all)"
+          title={t('Save captures, images included, to one file (the selected ones, or all)')}
           onClick={() => {
             const ids = [...selected];
             setNote('Writing the backup…');
@@ -174,13 +175,13 @@ export function App() {
         </button>
         <label
           className="flex cursor-pointer items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 focus-within:outline-2 focus-within:outline-accent dark:border-neutral-700 dark:hover:bg-neutral-800"
-          title="Add the captures from a backup file"
+          title={t('Add the captures from a backup file')}
         >
           <ArchiveRestore aria-hidden size={15} /> Restore
           <input
             type="file"
             accept=".ssbackup"
-            aria-label="Restore from a backup file"
+            aria-label={t('Restore from a backup file')}
             className="sr-only"
             onChange={(e) => {
               const file = e.target.files?.[0];
@@ -204,15 +205,15 @@ export function App() {
           <Search aria-hidden size={15} className="text-neutral-500" />
           <input
             type="search"
-            aria-label="Search captures"
-            placeholder="Search titles, addresses and page text"
+            aria-label={t('Search captures')}
+            placeholder={t('Search titles, addresses and page text')}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="flex-1 bg-transparent outline-none"
           />
         </label>
         {confirm ? (
-          <span className="flex items-center gap-1" role="group" aria-label="Confirm deletion">
+          <span className="flex items-center gap-1" role="group" aria-label={t('Confirm deletion')}>
             <button
               type="button"
               disabled={busy}
@@ -226,7 +227,7 @@ export function App() {
               onClick={() => setConfirm(null)}
               className="rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
             >
-              Cancel
+              {t('Cancel')}
             </button>
           </span>
         ) : (
@@ -234,7 +235,7 @@ export function App() {
           <button
             type="button"
             disabled={selected.size < 2 || busy}
-            title="Save the selected captures as one PDF"
+            title={t('Save the selected captures as one PDF')}
             onClick={() =>
               setMerging(
                 (items ?? [])
@@ -290,7 +291,7 @@ export function App() {
               onClick={() => setConfirm((items ?? []).map((c) => c.session.id))}
               className="text-red-700 underline-offset-2 hover:underline disabled:opacity-50 dark:text-red-400"
             >
-              Delete all captures
+              {t('Delete all captures')}
             </button>
           )}
         </div>
@@ -402,7 +403,7 @@ function Row(p: {
       <button
         type="button"
         aria-label={`Delete ${title}`}
-        title="Delete for good"
+        title={t('Delete for good')}
         disabled={p.busy}
         onClick={p.onDelete}
         className="rounded-md p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-red-700 dark:hover:bg-neutral-800"

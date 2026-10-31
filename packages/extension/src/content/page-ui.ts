@@ -1,5 +1,6 @@
 import type { Region } from '@screenscroll/core';
 import { contentY, isScroller, nearestScroller, targetFor, type Target } from './targets';
+import { t as tr } from '@/shared/i18n';
 
 /**
  * In-page pickers (UI §2): line to line, element and scroll area (area mode is in
@@ -188,7 +189,7 @@ export function pickLines(): Promise<Selection | null> {
       const y = clampY(t, pointer.y);
       place(line, t, y);
       if (startY === null) {
-        hint.set('Click the first line to capture · Press Esc to cancel');
+        hint.set(tr('Click the first line to capture · Press Esc to cancel'));
         tag.textContent = 'Start here';
         startLine.style.display = 'none';
         band.style.display = 'none';

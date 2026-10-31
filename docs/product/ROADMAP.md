@@ -130,7 +130,7 @@ Goal: the most capable screen capture tool available, that still looks simple. A
 - [ ] Combine captures side by side or stacked; compare two captures (visual diff).
 
 **Interface**
-- [ ] Interface languages, starting with Chinese (Simplified and Traditional).
+- [ ] Interface languages, starting with Chinese (Simplified and Traditional). (Simplified Chinese done 2026-10-31: panel, Studio main views, Settings, Saved captures, capture hints; Traditional not yet.)
 - [x] Export/import of saved captures and settings as a backup file.
 
 **Output**

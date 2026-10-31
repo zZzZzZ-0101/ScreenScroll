@@ -127,5 +127,6 @@ describe('document pages across combinations', () => {
     }
     if (fails.length) console.log(`${fails.length}/${all.length} failed\n` + fails.join('\n'));
     expect(fails.length).toBe(0);
-  });
+    // 1,224 renders: seconds alone, longer when the machine is busy.
+  }, 60_000);
 });

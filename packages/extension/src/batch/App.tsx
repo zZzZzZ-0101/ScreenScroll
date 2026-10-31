@@ -11,6 +11,7 @@ import {
 } from '@/shared/batch';
 import { listCaptures, type StoredCapture } from '@/shared/db';
 import { MergeSheet } from '@/library/MergeSheet';
+import { t } from '@/shared/i18n';
 
 const ALL_SITES = { origins: ['<all_urls>'] };
 const button =
@@ -107,20 +108,20 @@ export function App() {
       </p>
 
       {allowed === false && (
-        <section aria-label="Permission" className={`${card} mt-4`}>
+        <section aria-label={t('Permission')} className={`${card} mt-4`}>
           <p>
             To capture pages other than the one you clicked on, ScreenScroll needs the browser’s
             permission to read and capture all sites. Nothing is sent anywhere.
           </p>
           <button type="button" className={`${primary} mt-2`} onClick={() => void allow()}>
-            Allow
+            {t('Allow')}
           </button>
         </section>
       )}
 
       {allowed && (
         <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <section aria-label="Tabs in this window" className={card}>
+          <section aria-label={t('Tabs in this window')} className={card}>
             <h2 className="pb-1 font-medium">Tabs in this window</h2>
             <ul className="max-h-72 overflow-y-auto">
               {tabs.map((t) => (
@@ -170,10 +171,10 @@ export function App() {
             </button>
           </section>
 
-          <section aria-label="Addresses" className={card}>
+          <section aria-label={t('Addresses')} className={card}>
             <h2 className="pb-1 font-medium">Addresses</h2>
             <textarea
-              aria-label="Addresses, one per line"
+              aria-label={t('Addresses, one per line')}
               value={text}
               onChange={(e) => setText(e.target.value)}
               placeholder={'example.com/report\nexample.com/notes'}
@@ -187,7 +188,7 @@ export function App() {
               </p>
             )}
             <p className="text-[12px] text-neutral-500">
-              Each opens in a new tab, is captured once loaded (at most 30 s), and the tab closes.
+              {t('Each opens in a new tab, is captured once loaded (at most 30 s), and the tab closes.')}
             </p>
             <button
               type="button"
@@ -202,7 +203,7 @@ export function App() {
       )}
 
       {state && state.items.length > 0 && (
-        <section aria-label="Progress" className={`${card} mt-4`}>
+        <section aria-label={t('Progress')} className={`${card} mt-4`}>
           <h2 className="pb-1 font-medium">
             {running
               ? `Capturing ${state.items.filter((i) => i.status !== 'waiting' && i.status !== 'capturing').length + 1} of ${state.items.length}`
@@ -221,14 +222,14 @@ export function App() {
                 disabled={!captured.length}
                 onClick={() => void mergeAll()}
               >
-                Merge into one PDF
+                {t('Merge into one PDF')}
               </button>
               <button
                 type="button"
                 className={button}
                 onClick={() => void chrome.tabs.create({ url: chrome.runtime.getURL('/captures.html') })}
               >
-                Open saved captures
+                {t('Open saved captures')}
               </button>
               {note && (
                 <span role="status" className="text-neutral-500">

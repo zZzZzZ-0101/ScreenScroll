@@ -1,6 +1,7 @@
 import { DEFAULT_STYLE, normalizeRegion, type Annotation, type Region } from '@screenscroll/core';
 import { overlay, onKeys, type Selection } from './page-ui';
 import { contentY, nearestScroller, targetFor, type Target } from './targets';
+import { t } from '@/shared/i18n';
 
 /**
  * Area mode (UI §2), in the manner of a chat app's screenshot tool: drag a box; then move it,
@@ -528,6 +529,6 @@ export function pickArea(): Promise<AreaResult | null> {
       ArrowDown: (e) => (editing ? false : nudge(0, 1, e)),
       ...Object.fromEntries(['z', 'c', 's', 'r', 'a', 't', 'm'].map((k) => [k, key(k)])),
     });
-    hint.set('Drag to select an area · Press Esc to cancel');
+    hint.set(t('Drag to select an area · Press Esc to cancel'));
   });
 }

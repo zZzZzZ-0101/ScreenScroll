@@ -18,6 +18,7 @@ import { lastSession, listCaptures, type SessionRecord } from '@/shared/db';
 import type { CaptureMode } from '@/shared/messages';
 import { loadSettings, saveSettings, type Settings } from '@/shared/settings';
 import { ThemeSwitch } from '@/shared/ThemeSwitch';
+import { t } from '@/shared/i18n';
 
 /**
  * UI §1: the small panel under the toolbar icon. One main action, every other way to
@@ -100,7 +101,7 @@ export function App() {
       .catch((e: unknown) => ({ ok: false, error: String(e) }))) as { ok: boolean; error?: string };
     if (res.ok) window.close();
     else {
-      setError(res.error ?? 'Capture failed.');
+      setError(res.error ?? t('Capture failed.'));
       setBusy(false);
     }
   }
@@ -127,8 +128,8 @@ export function App() {
         <div className="flex items-center gap-0.5">
           <button
             type="button"
-            title="Settings"
-            aria-label="Settings"
+            title={t('Settings')}
+            aria-label={t('Settings')}
             onClick={() => {
               void chrome.runtime.openOptionsPage();
               window.close();
@@ -139,8 +140,8 @@ export function App() {
           </button>
           <button
             type="button"
-            title="Change keyboard shortcuts"
-            aria-label="Change keyboard shortcuts"
+            title={t('Change keyboard shortcuts')}
+            aria-label={t('Change keyboard shortcuts')}
             onClick={() => open('chrome://extensions/shortcuts')}
             className="rounded p-1 text-neutral-500 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:hover:bg-neutral-800"
           >
@@ -149,37 +150,37 @@ export function App() {
         </div>
       </header>
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-neutral-500">Theme</span>
+        <span className="text-neutral-500">{t('Theme')}</span>
         <ThemeSwitch />
       </div>
 
       {running && (
         <section
           role="alert"
-          aria-label="Capture in progress"
+          aria-label={t('Capture in progress')}
           className="mb-2 rounded-lg border border-accent bg-accent/10 p-2"
         >
           <p className="mb-2">
-            Capturing this page. On the page, press{' '}
+            {t('Capturing this page. On the page, press')}{' '}
             <kbd className="rounded border border-neutral-400 px-1 font-sans text-[11px]">Esc</kbd>{' '}
-            to cancel, or:
+            {t('to cancel, or:')}
           </p>
           <div className="flex gap-2">
             <button
               type="button"
               onClick={() => void control('stop')}
-              title="Stop now and keep what is captured so far"
+              title={t('Stop now and keep what is captured so far')}
               className="flex-1 rounded-md bg-accent px-2 py-1 font-medium text-white hover:bg-accent-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
-              Stop here
+              {t('Stop here')}
             </button>
             <button
               type="button"
               onClick={() => void control('cancel')}
-              title="Stop and keep nothing"
+              title={t('Stop and keep nothing')}
               className="flex-1 rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:border-neutral-600 dark:hover:bg-neutral-800"
             >
-              Cancel
+              {t('Cancel')}
             </button>
           </div>
         </section>
@@ -202,11 +203,11 @@ export function App() {
       >
         <ScanLine aria-hidden size={22} />
         <span className="flex-1">
-          <span className="block text-sm font-medium">Capture full page</span>
+          <span className="block text-sm font-medium">{t('Capture full page')}</span>
           <span className="block text-[12px] opacity-85">
             {settings?.afterCapture === 'pdf'
-              ? 'Saves a PDF right away'
-              : 'Then check the pages and save'}
+              ? t('Saves a PDF right away')
+              : t('Then check the pages and save')}
           </span>
         </span>
         <kbd className="font-sans text-[11px] opacity-75">Alt+Shift+P</kbd>
@@ -217,19 +218,19 @@ export function App() {
           <button
             key={mode}
             type="button"
-            title={hint}
+            title={t(hint)}
             disabled={disabled}
             onClick={() => void capture(mode)}
             className="flex flex-col items-center gap-1 rounded-lg border border-neutral-200 px-1 py-2 text-center hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
           >
             <Icon aria-hidden size={18} />
-            <span className="leading-tight">{label}</span>
+            <span className="leading-tight">{t(label)}</span>
           </button>
         ))}
       </div>
 
       <section
-        aria-label="Settings"
+        aria-label={t('Settings')}
         className="mt-3 border-t border-neutral-200 pt-2 dark:border-neutral-700"
       >
         <div className={row}>
@@ -237,7 +238,7 @@ export function App() {
             id="timer"
             className="flex items-center gap-1.5 text-neutral-600 dark:text-neutral-300"
           >
-            <Timer aria-hidden size={14} /> Timer
+            <Timer aria-hidden size={14} /> {t('Timer')}
           </span>
           <div
             role="radiogroup"
@@ -250,11 +251,11 @@ export function App() {
                 type="button"
                 role="radio"
                 aria-checked={delay === d}
-                aria-label={d ? `${d} seconds` : 'No timer'}
+                aria-label={d ? t('{n} seconds', { n: d }) : t('No timer')}
                 onClick={() => setDelay(d)}
                 className={segment(delay === d)}
               >
-                {d ? `${d}s` : 'Off'}
+                {d ? `${d}s` : t('Off')}
               </button>
             ))}
           </div>
@@ -263,7 +264,7 @@ export function App() {
           <>
             <div className={row}>
               <span id="after" className="text-neutral-600 dark:text-neutral-300">
-                After capture
+                {t('After capture')}
               </span>
               <div
                 role="radiogroup"
@@ -284,13 +285,13 @@ export function App() {
                     onClick={() => update({ afterCapture: v })}
                     className={segment(settings.afterCapture === v)}
                   >
-                    {label}
+                    {t(label)}
                   </button>
                 ))}
               </div>
             </div>
             <label className={row}>
-              <span className="text-neutral-600 dark:text-neutral-300">Paper</span>
+              <span className="text-neutral-600 dark:text-neutral-300">{t('Paper')}</span>
               <select
                 className="rounded-md border border-neutral-300 bg-white px-2 py-0.5 dark:border-neutral-700 dark:bg-neutral-900"
                 value={typeof settings.page.paper === 'string' ? settings.page.paper : 'A4'}
@@ -314,10 +315,12 @@ export function App() {
             open(chrome.runtime.getURL(`/studio.html?session=${encodeURIComponent(last.id)}`))
           }
           className="mt-2 flex w-full items-center gap-2 rounded-md px-1 py-1 text-left text-neutral-600 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:text-neutral-300 dark:hover:bg-neutral-800"
-          title="Open the last capture in the Studio"
+          title={t('Open the last capture in the Studio')}
         >
           <History aria-hidden size={15} className="shrink-0" />
-          <span className="truncate">Last capture: {last.title || last.url}</span>
+          <span className="truncate">
+            {t('Last capture')}: {last.title || last.url}
+          </span>
         </button>
       )}
 
@@ -325,21 +328,21 @@ export function App() {
         type="button"
         onClick={() => open(chrome.runtime.getURL('/batch.html'))}
         className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left text-neutral-600 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:text-neutral-300 dark:hover:bg-neutral-800"
-        title="All tabs of this window, or a list of addresses, then one PDF"
+        title={t('All tabs of this window, or a list of addresses, then one PDF')}
       >
         <Layers aria-hidden size={15} className="shrink-0" />
-        <span className="truncate">Capture several pages</span>
+        <span className="truncate">{t('Capture several pages')}</span>
       </button>
 
       <button
         type="button"
         onClick={() => open(chrome.runtime.getURL('/captures.html'))}
         className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left text-neutral-600 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:text-neutral-300 dark:hover:bg-neutral-800"
-        title="See, reopen or delete what ScreenScroll keeps on this computer"
+        title={t('See, reopen or delete what ScreenScroll keeps on this computer')}
       >
         <Archive aria-hidden size={15} className="shrink-0" />
         <span className="truncate">
-          Saved captures
+          {t('Saved captures')}
           {stored &&
             ` · ${stored.count} · ${stored.bytes < 1048576 ? `${Math.round(stored.bytes / 1024)} KB` : `${(stored.bytes / 1048576).toFixed(1)} MB`}`}
         </span>

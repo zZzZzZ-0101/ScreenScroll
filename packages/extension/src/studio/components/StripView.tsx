@@ -5,6 +5,7 @@ import type { Analysis } from '@/studio/engine/analysis';
 import { composePage } from '@/studio/engine/compose';
 import type { FrameCache, LoadedSession } from '@/studio/engine/session';
 import type { Edits } from '../App';
+import { t } from '@/shared/i18n';
 
 /** Plain-language names for the break kinds (colours stay as the visual cue). */
 const KIND_TITLES: Record<BreakKind, string> = {
@@ -161,7 +162,7 @@ export function StripView(p: Props) {
                 {p.checks?.some((c) => c.index === i) && (
                   <span
                     role="img"
-                    aria-label="Needs a look"
+                    aria-label={t('Needs a look')}
                     title={p.checks.find((c) => c.index === i)!.reason}
                     data-testid="break-check"
                     className="absolute -left-6 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white"
@@ -171,7 +172,7 @@ export function StripView(p: Props) {
                 )}
                 {b.pinned && (
                   <Pin
-                    aria-label="Pinned break"
+                    aria-label={t('Pinned break')}
                     role="img"
                     size={13}
                     className="absolute -left-5 -top-0.5"
@@ -264,7 +265,7 @@ function Magnifier(p: {
       <canvas
         ref={ref}
         style={{ width: MAG_W }}
-        aria-label="Magnified view of the break"
+        aria-label={t('Magnified view of the break')}
         role="img"
       />
     </div>

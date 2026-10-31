@@ -286,6 +286,21 @@ export const SETTINGS: SettingEntry[] = [
     why: 'Long enough to re-export, short enough not to fill the disk.',
   },
   {
+    id: 'language',
+    section: 'Appearance',
+    label: 'Language',
+    help: 'The language of ScreenScroll itself. Auto follows the browser.',
+    kind: 'choice',
+    choices: [
+      { value: 'auto', label: 'Auto' },
+      { value: 'en', label: 'English' },
+      { value: 'zh-CN', label: '简体中文' },
+    ],
+    get: (s) => s.language,
+    set: (_s, v) => ({ language: v as Settings['language'] }),
+    recommended: 'auto',
+  },
+  {
     id: 'theme',
     section: 'Appearance',
     label: 'Theme',

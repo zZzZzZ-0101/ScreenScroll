@@ -34,6 +34,7 @@ import {
 } from '@/shared/settings';
 import { ThemeSwitch } from '@/shared/ThemeSwitch';
 import type { Edits } from '../App';
+import { t, t as tr } from '@/shared/i18n';
 
 const field = 'flex items-center justify-between gap-2 py-1';
 const control =
@@ -82,7 +83,7 @@ function OcrCard({ o }: { o: OcrCardProps }) {
       className="mb-2 rounded-md border border-accent/40 bg-accent/5 p-2"
       data-testid="ocr"
       role="group"
-      aria-label="Text recognition"
+      aria-label={t('Text recognition')}
     >
       <p className="font-medium">
         {o.pages.length} page{o.pages.length === 1 ? '' : 's'} without text of their own
@@ -90,7 +91,7 @@ function OcrCard({ o }: { o: OcrCardProps }) {
       <p className="text-[12px] text-neutral-600 dark:text-neutral-300">Pages {list}.</p>
       {o.ready ? (
         <p className="pt-1 text-[12px]">
-          Their text is read when you save, so the PDF can be searched.
+          {t('Their text is read when you save, so the PDF can be searched.')}
         </p>
       ) : o.downloading ? (
         <div className="pt-1">
@@ -98,7 +99,7 @@ function OcrCard({ o }: { o: OcrCardProps }) {
             className="w-full accent-[#0e7c7b]"
             max={o.downloading.total}
             value={o.downloading.done}
-            aria-label="Downloading the text recognition model"
+            aria-label={t('Downloading the text recognition model')}
           />
           <p className="text-[12px] text-neutral-500">
             {mb(o.downloading.done)} of {mb(o.downloading.total)}
@@ -185,20 +186,20 @@ function SheetsCard(p: SheetsCardProps) {
           setEditing(true);
         }}
       >
-        A document? Set its pages by hand
+        {t('A document? Set its pages by hand')}
       </button>
     );
   const g = p.grid;
   return (
     <div className="mb-2 rounded-md border border-accent/40 bg-accent/5 p-2" data-testid="sheets">
       <p className="flex justify-between font-medium">
-        Document pages
+        {t('Document pages')}
         <span className="font-normal text-neutral-500">
-          {p.pages ? `${p.pages} pages` : 'not used'}
+          {p.pages ? t('{n} pages', { n: p.pages }) : t('not used')}
         </span>
       </p>
       {p.readings.length > 0 && (
-        <div role="radiogroup" aria-label="Ways to read the pages" className="pt-1">
+        <div role="radiogroup" aria-label={t('Ways to read the pages')} className="pt-1">
           {p.readings.map((r) => (
             <label key={r.id} className="flex items-center gap-2 py-0.5" title={`Fit ${r.fit.toFixed(3)}: rows between pages that are background × rows inside pages that are not`}>
               <input
@@ -209,7 +210,7 @@ function SheetsCard(p: SheetsCardProps) {
                 className="accent-[#0e7c7b]"
               />
               <span className="min-w-0 flex-1 truncate">
-                {r.label}
+                {t(r.label)}
                 <span className="text-neutral-500">
                   {' '}
                   · {r.layout.sheets.length} ×{' '}
@@ -228,7 +229,7 @@ function SheetsCard(p: SheetsCardProps) {
           {chosen === 'hand' && (
             <label className="flex items-center gap-2 py-0.5">
               <input type="radio" name="reading" checked readOnly className="accent-[#0e7c7b]" />
-              <span className="flex-1">Set by hand</span>
+              <span className="flex-1">{t('Set by hand')}</span>
             </label>
           )}
         </div>
@@ -243,7 +244,7 @@ function SheetsCard(p: SheetsCardProps) {
           }}
           className="accent-[#0e7c7b]"
         />
-        One PDF page per document page
+        {t('One PDF page per document page')}
       </label>
       {!editing ? (
         <button
@@ -254,13 +255,13 @@ function SheetsCard(p: SheetsCardProps) {
             setEditing(true);
           }}
         >
-          Edit pages
+          {t('Edit pages')}
         </button>
       ) : (
         g && (
           <div className="mt-1 border-t border-accent/30 pt-1" data-testid="sheet-grid">
             <p className="pb-1 text-[12px] text-neutral-500">
-              CSS px of the capture. The pages update as you change a number.
+              {t('CSS px of the capture. The pages update as you change a number.')}
             </p>
             {GRID_FIELDS.map(([k, label, name]) => (
               <div key={k} className="flex items-center justify-between gap-1 py-0.5" title={name}>
@@ -299,7 +300,7 @@ function SheetsCard(p: SheetsCardProps) {
             ))}
             <div className="flex gap-1 pt-1">
               <button type="button" className={button} onClick={() => setEditing(false)}>
-                Done
+                {t('Done')}
               </button>
               {(p.detected || p.readings.length > 0) && (
                 <button
@@ -310,7 +311,7 @@ function SheetsCard(p: SheetsCardProps) {
                     setEditing(false);
                   }}
                 >
-                  Back to the best reading
+                  {t('Back to the best reading')}
                 </button>
               )}
             </div>
@@ -335,13 +336,13 @@ function TextSizeCard(p: {
   onSettings: (patch: Partial<Settings>) => void;
 }) {
   const page = p.settings.page;
-  const t = printedTextSize(p.fontPx, page, p.contentWidth);
+  const size = printedTextSize(p.fontPx, page, p.contentWidth);
   const pt = (n: number) => `${n.toFixed(1)} pt`;
-  const how = `${p.fontPx.toFixed(0)} px text × ${(t.pt / p.fontPx).toFixed(2)} (paper width ÷ ${Math.round(p.contentWidth)} px)`;
-  if (t.pt >= SMALL_PT)
+  const how = `${p.fontPx.toFixed(0)} px text × ${(size.pt / p.fontPx).toFixed(2)} (paper width ÷ ${Math.round(p.contentWidth)} px)`;
+  if (size.pt >= SMALL_PT)
     return (
       <p className="mb-2 text-[12px] text-neutral-500" title={how} data-testid="text-size">
-        Text prints at {pt(t.pt)}
+        {t('Text prints at {pt}', { pt: pt(size.pt) })}
       </p>
     );
   const narrowSet = p.settings.capture.width === 1000;
@@ -351,14 +352,16 @@ function TextSizeCard(p: {
       data-testid="text-size"
     >
       <p className="font-medium" title={how}>
-        Text prints at {pt(t.pt)}: small
+        {t('Text prints at {pt}: small', { pt: pt(size.pt) })}
       </p>
       <p className="pb-1 text-[12px] text-neutral-600 dark:text-neutral-300">
-        The page is {Math.round(p.contentWidth)} px wide, so it is scaled down to fit the paper.
-        Books use 9–11 pt.
+        {t('The page is {w} px wide, so it is scaled down to fit the paper.', {
+          w: Math.round(p.contentWidth),
+        })}
+        {t('Books use 9–11 pt.')}
       </p>
       <div className="flex flex-wrap gap-1">
-        {t.turnedPt > t.pt && (
+        {size.turnedPt > size.pt && (
           <button
             type="button"
             className={button}
@@ -371,23 +374,23 @@ function TextSizeCard(p: {
               })
             }
           >
-            {page.orientation === 'landscape' ? 'Portrait' : 'Landscape'}: {pt(t.turnedPt)}
+            {t(page.orientation === 'landscape' ? 'Portrait' : 'Landscape')}: {pt(size.turnedPt)}
           </button>
         )}
-        {t.narrowPt !== null && !narrowSet && (
+        {size.narrowPt !== null && !narrowSet && (
           <button
             type="button"
             className={button}
-            title="Settings → Page width: the next capture lays the page out 1000 px wide"
+            title={t('Settings → Page width: the next capture lays the page out 1000 px wide')}
             onClick={() => p.onSettings({ capture: { ...p.settings.capture, width: 1000 } })}
           >
-            Page width 1000 px: {pt(t.narrowPt)}
+            {t('Page width 1000 px')}: {pt(size.narrowPt)}
           </button>
         )}
       </div>
-      {narrowSet && t.narrowPt !== null && (
+      {narrowSet && size.narrowPt !== null && (
         <p className="pt-1 text-[12px] text-neutral-600 dark:text-neutral-300">
-          Page width is 1000 px: capture the page again to use it.
+          {t('Page width is 1000 px: capture the page again to use it.')}
         </p>
       )}
     </div>
@@ -405,12 +408,12 @@ export function PagesPanel(p: PagesProps) {
   const [more, setMore] = useState(() => readFlag('sp-more-options'));
 
   return (
-    <aside className={aside} aria-label="Page setup">
+    <aside className={aside} aria-label={t('Page setup')}>
       <OcrCard o={p.ocr} />
       <SheetsCard {...p.sheets} />
       {p.text && <TextSizeCard {...p.text} settings={p.settings} onSettings={p.onSettings} />}
       <label className={field}>
-        Paper
+        {t('Paper')}
         <select
           className={control}
           value={paperId}
@@ -423,7 +426,7 @@ export function PagesPanel(p: PagesProps) {
         </select>
       </label>
       <div className={field}>
-        <span id="orient">Orientation</span>
+        <span id="orient">{t('Orientation')}</span>
         <div role="radiogroup" aria-labelledby="orient" className="flex gap-1">
           {(
             [
@@ -448,7 +451,7 @@ export function PagesPanel(p: PagesProps) {
       </div>
       <div className="py-2">
         <label htmlFor="style" className="block pb-1">
-          Page breaks
+          {t('Page breaks')}
         </label>
         <input
           id="style"
@@ -461,22 +464,22 @@ export function PagesPanel(p: PagesProps) {
           className="w-full accent-[#0e7c7b]"
           aria-valuetext={
             p.settings.breakStyle < 0.35
-              ? 'Fewer pages'
+              ? t('Fewer pages')
               : p.settings.breakStyle > 0.65
-                ? 'Cleaner breaks'
+                ? t('Cleaner breaks')
                 : 'Balanced'
           }
         />
         <div className="flex justify-between text-[12px] text-neutral-500">
-          <span>Fewer pages</span>
-          <span>Cleaner breaks</span>
+          <span>{t('Fewer pages')}</span>
+          <span>{t('Cleaner breaks')}</span>
         </div>
       </div>
 
       <p className="py-1 text-neutral-500" data-testid="estimate">
         {p.estimate === null
-          ? 'PDF size: estimating'
-          : `PDF size: about ${formatBytes(p.estimate)}`}
+          ? t('PDF size: estimating')
+          : t('PDF size: about {size}', { size: formatBytes(p.estimate) })}
       </p>
 
       <button
@@ -493,16 +496,16 @@ export function PagesPanel(p: PagesProps) {
           size={14}
           className={`transition-transform ${more ? 'rotate-90' : ''}`}
         />
-        More options
+        {t('More options')}
       </button>
       {more && (
         <div className="pt-1">
           <div className={field}>
-            Theme
+            {t('Theme')}
             <ThemeSwitch />
           </div>
           <label className={field}>
-            Margins (mm)
+            {t('Margins (mm)')}
             <input
               type="number"
               min={0}
@@ -518,7 +521,7 @@ export function PagesPanel(p: PagesProps) {
             />
           </label>
           <label className={field}>
-            Crop sides
+            {t('Crop sides')}
             <select
               className={control}
               value={p.settings.crop}
@@ -534,7 +537,7 @@ export function PagesPanel(p: PagesProps) {
             </p>
           )}
           <label className={field}>
-            PDF quality
+            {t('PDF quality')}
             <select
               className={control}
               value={p.settings.exportPreset}
@@ -552,7 +555,7 @@ export function PagesPanel(p: PagesProps) {
           </p>
           <PdfOptions settings={p.settings} onSettings={p.onSettings} />
           <label className="block py-1">
-            File name
+            {t('File name')}
             <input
               className={`${control} mt-1 w-full`}
               value={p.settings.filenameTemplate}
@@ -571,7 +574,7 @@ export function PagesPanel(p: PagesProps) {
             onClick={() => void chrome.runtime.openOptionsPage()}
             className="mt-2 text-accent underline-offset-2 hover:underline"
           >
-            All settings, with defaults and recommendations
+            {t('All settings, with defaults and recommendations')}
           </button>
         </div>
       )}
@@ -600,7 +603,7 @@ export function BreaksPanel(p: BreaksProps) {
   ];
   if (p.locked)
     return (
-      <aside className={aside} aria-label="Page breaks">
+      <aside className={aside} aria-label={t('Page breaks')}>
         <p className="text-neutral-600 dark:text-neutral-300">
           The breaks follow the document&apos;s own pages. To place them yourself, turn off
           &ldquo;One PDF page per document page&rdquo; in Pages.
@@ -608,7 +611,7 @@ export function BreaksPanel(p: BreaksProps) {
       </aside>
     );
   return (
-    <aside className={aside} aria-label="Page breaks">
+    <aside className={aside} aria-label={t('Page breaks')}>
       <ul className="space-y-2 pb-3">
         {tips.map(([Icon, text]) => (
           <li key={text} className="flex gap-2 text-neutral-600 dark:text-neutral-300">
@@ -619,7 +622,7 @@ export function BreaksPanel(p: BreaksProps) {
       </ul>
       <ChecksCard checks={p.checks} page={p.page} onJump={p.onJump} />
       <button type="button" className={`${button} w-full`} onClick={p.onReset} disabled={!edited}>
-        Reset breaks
+        {t('Reset breaks')}
       </button>
       <p className="pt-1 text-[12px] text-neutral-500">
         {edited
@@ -638,7 +641,7 @@ function ChecksCard(p: Pick<BreaksProps, 'checks' | 'page' | 'onJump'>) {
   if (!p.checks.length)
     return (
       <p className="mb-3 text-[12px] text-neutral-500" data-testid="break-checks">
-        Every break falls between lines or blocks. Nothing needs a look.
+        {t('Every break falls between lines or blocks. Nothing needs a look.')}
       </p>
     );
   // The check at or after the page shown is "current"; Next and Previous step from there.
@@ -669,10 +672,10 @@ function ChecksCard(p: Pick<BreaksProps, 'checks' | 'page' | 'onJump'>) {
       </ul>
       <div className="flex gap-1">
         <button type="button" className={button} onClick={() => p.onJump(prev.index)}>
-          Previous
+          {t('Previous')}
         </button>
         <button type="button" className={button} onClick={() => p.onJump(next.index)}>
-          Next
+          {t('Next')}
         </button>
       </div>
     </div>
@@ -711,7 +714,7 @@ function PdfOptions({ settings, onSettings }: Pick<PagesProps, 'settings' | 'onS
         </label>
       ))}
       <p className="pt-1 text-[12px] text-neutral-500">
-        Filter, page labels and watermark: Mark up → Page.
+        {t('Filter, page labels and watermark: Mark up → Page.')}
       </p>
     </div>
   );
@@ -726,7 +729,7 @@ function FilterPicker({ value, onChange }: { value: FilterId; onChange: (f: Filt
   return (
     <fieldset className="min-w-0">
       <legend className="pb-1 font-semibold">Filter</legend>
-      <div role="radiogroup" aria-label="Filter" className="flex flex-col">
+      <div role="radiogroup" aria-label={t('Filter')} className="flex flex-col">
         {FILTERS.map((f) => (
           <div
             key={f.id}
@@ -773,7 +776,7 @@ function FilterPicker({ value, onChange }: { value: FilterId; onChange: (f: Filt
         ))}
       </div>
       <p className="pt-1 text-[12px] text-neutral-500">
-        Every page and output. Mark-up stays in colour.
+        {t('Every page and output. Mark-up stays in colour.')}
       </p>
     </fieldset>
   );
@@ -831,7 +834,7 @@ function PresetChips<T>({
           <button
             type="button"
             aria-label={`Remove preset ${name(t)}`}
-            title="Remove this preset"
+            title={tr('Remove this preset')}
             onClick={() => onChange(items.filter((_, j) => j !== i))}
             className="border-l border-inherit px-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-white"
           >
@@ -904,17 +907,17 @@ export function PageMarkPanel({
   const presets = settings.presets;
   const setPresets = (patch: Partial<Presets>) => onSettings({ presets: { ...presets, ...patch } });
   return (
-    <aside className={aside} aria-label="Page">
+    <aside className={aside} aria-label={t('Page')}>
       {children}
       <FilterPicker
         value={pdf.filter}
         onChange={(filter) => onSettings({ pdf: { ...pdf, filter } })}
       />
       <h2 className="mt-3 border-t border-neutral-200 pt-3 font-semibold dark:border-neutral-700">
-        Page labels
+        {t('Page labels')}
       </h2>
       <p className="pb-1 text-[12px] text-neutral-500">
-        On every page, above and below the content.
+        {t('On every page, above and below the content.')}
       </p>
       {BANDS.map(([band, label]) => (
         <fieldset key={band} className="pt-1">
@@ -978,11 +981,11 @@ export function PageMarkPanel({
       />
 
       <h2 className="mt-4 border-t border-neutral-200 pt-3 font-semibold dark:border-neutral-800">
-        Watermark
+        {t('Watermark')}
       </h2>
       <input
-        aria-label="Watermark text"
-        placeholder="Text, e.g. CONFIDENTIAL"
+        aria-label={t('Watermark text')}
+        placeholder={t('Text, e.g. CONFIDENTIAL')}
         className={`${control} mt-1 w-full`}
         value={wm.text}
         onChange={(e) => setWm({ text: e.target.value })}
@@ -999,7 +1002,7 @@ export function PageMarkPanel({
         same={(a, b) => a === b}
       />
       <label className={field}>
-        Opacity
+        {t('Opacity')}
         <input
           type="range"
           min={0.05}
@@ -1011,7 +1014,7 @@ export function PageMarkPanel({
         />
       </label>
       <label className={field}>
-        Size
+        {t('Size')}
         <input
           type="range"
           min={16}
@@ -1076,10 +1079,10 @@ export function PageMarkPanel({
             {label}
             {v === 'some' && mode === 'some' && (
               <input
-                aria-label="Watermark pages"
+                aria-label={t('Watermark pages')}
                 className={`${control} w-24`}
                 value={wm.pages}
-                placeholder="1-3, 5"
+                placeholder={t('1-3, 5')}
                 onChange={(e) => setWm({ pages: e.target.value })}
               />
             )}
@@ -1092,7 +1095,7 @@ export function PageMarkPanel({
           onClick={() => setWm({ text: '' })}
           className="mt-2 text-[12px] text-accent underline-offset-2 hover:underline"
         >
-          Remove watermark
+          {t('Remove watermark')}
         </button>
       )}
       <p className="pt-2 text-[12px] text-neutral-500">Shown in Pages and in the saved PDF.</p>
