@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EMPTY_PROJECT, saveProject, type Project } from '@/shared/db';
+import { OVERLAY_WARNING } from '@/shared/messages';
 import { loadSettings, saveSettings, type Settings } from '@/shared/settings';
 import { analyze, type Analysis } from '@/studio/engine/analysis';
 import { planPages, type Edits, type PageResult } from '@/studio/engine/plan';
@@ -827,6 +828,24 @@ export function App() {
                           >
                             {w}
                           </button>
+                        ) : w === OVERLAY_WARNING ? (
+                          <>
+                            {w}
+                            <button
+                              type="button"
+                              className="mt-1 block rounded-md border border-neutral-300 px-2 py-0.5 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:border-neutral-700 dark:hover:bg-neutral-800"
+                              onClick={() => {
+                                setShowWarnings(false);
+                                void chrome.runtime
+                                  .sendMessage({ type: 'sp:recapture', sessionId: SESSION_ID })
+                                  .then((r: { ok: boolean; error?: string }) => {
+                                    if (!r.ok) setToast(r.error ?? 'Could not capture again.');
+                                  });
+                              }}
+                            >
+                              Hide pop-ups and capture again
+                            </button>
+                          </>
                         ) : (
                           w
                         )}

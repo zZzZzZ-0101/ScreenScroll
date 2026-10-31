@@ -15,6 +15,7 @@ import {
   type GrabFrame,
   type GrabResult,
   type PageNotice,
+  type Recapture,
   type ToBackground,
 } from '@/shared/messages';
 import { BATCH_KEY, type BatchItem, type BatchStart, type BatchState } from '@/shared/batch';
@@ -59,6 +60,7 @@ export default defineBackground(() => {
       warnings: [],
       tabId: tab.id,
       windowId: tab.windowId,
+      mode,
     });
     const settings = await loadSettings();
     const timing = SPEED_TIMING[settings.capture.speed];
@@ -490,6 +492,29 @@ export default defineBackground(() => {
     await chrome.tabs.update(m.homeTabId, { active: true }).catch(() => undefined);
   }
 
+  /**
+   * Overlay killer (CAPTURE §4): the same tab, captured again the same way with pop-ups
+   * hidden. Only while the tab still shows the captured address: anything else would be a
+   * different page.
+   */
+  async function recapture(sessionId: string): Promise<{ ok: boolean; error?: string }> {
+    const s = await (await db()).get('sessions', sessionId);
+    const tab = s && (await chrome.tabs.get(s.tabId).catch(() => null));
+    if (!s || !tab || tab.url !== s.url)
+      return {
+        ok: false,
+        error: 'The captured page is no longer open in its tab. Open it again and capture it.',
+      };
+    await chrome.tabs.update(tab.id!, { active: true });
+    await chrome.windows.update(tab.windowId, { focused: true }).catch(() => undefined);
+    try {
+      await startCapture(tab, s.mode ?? 'full', { hideOverlays: true });
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
   /** The capture running in the active tab, if any (for the toolbar panel). */
   async function running(): Promise<{ sessionId: string; tabId: number } | null> {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -516,6 +541,7 @@ export default defineBackground(() => {
       | CaptureControl
       | PageNotice
       | BatchStart
+      | Recapture
       | { type: 'sp:running' },
       _sender,
       reply,
@@ -535,6 +561,10 @@ export default defineBackground(() => {
             .sendMessage(msg.tabId, { type: 'sp:notice', text: msg.text })
             .catch(() => undefined);
         return false;
+      }
+      if (msg.type === 'sp:recapture') {
+        void recapture(msg.sessionId).then(reply);
+        return true;
       }
       if (msg.type === 'sp:running') {
         void running().then(reply);
@@ -718,6 +748,7 @@ interface CaptureOptions {
   limits?: CaptureLimits;
   delayMs?: number;
   region?: Region;
+  hideOverlays?: boolean;
 }
 
 interface E2EHook {

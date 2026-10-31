@@ -1,5 +1,6 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { Annotation, DomHints, Rect, Region, SheetGrid } from '@screenscroll/core';
+import type { CaptureMode } from './messages';
 
 export interface SessionRecord {
   id: string;
@@ -16,6 +17,8 @@ export interface SessionRecord {
   windowId: number;
   /** The window as it was before "Page width" narrowed it, until it is put back. */
   window?: SavedWindow;
+  /** How it was captured, so it can be captured again the same way. */
+  mode?: CaptureMode;
   /** The Studio's edits (TODO M4: projects are re-editable later). */
   project?: Project;
 }

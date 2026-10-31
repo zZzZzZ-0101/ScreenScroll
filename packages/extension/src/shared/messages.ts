@@ -18,6 +18,8 @@ export interface StartCapture {
   startAt?: 'top' | 'here';
   /** Settings → Capture speed: how long to let each screen settle. */
   timing?: { settleMs: number; frameImageWaitMs: number; pageImageWaitMs: number };
+  /** Overlay killer: hide pop-ups, their backdrops and dialogs for this capture. */
+  hideOverlays?: boolean;
 }
 
 /** Content script → background: grab the visible tab for this frame. */
@@ -67,6 +69,16 @@ export interface CaptureControl {
 
 /** Grab refused because the capturing tab is not in front; the page waits and retries. */
 export const TAB_HIDDEN = 'sp:tab-hidden';
+
+/** Studio → background: capture the same tab again, with pop-ups hidden. */
+export interface Recapture {
+  type: 'sp:recapture';
+  sessionId: string;
+}
+
+/** The warning that offers the overlay killer (CAPTURE §4). */
+export const OVERLAY_WARNING =
+  'A pop-up or overlay was covering the page and appears in the capture. Hide pop-ups and capture again to remove it.';
 
 export type ToBackground = GrabFrame | CaptureDone;
 export type GrabResult = { ok: true } | { ok: false; error: string };

@@ -18,6 +18,7 @@ import {
 } from '@screenscroll/core';
 import { collectHints, type CollectContext } from '@/content/hints-collector';
 import {
+  OVERLAY_WARNING,
   TAB_HIDDEN,
   type CaptureControl,
   type CaptureDone,
@@ -194,7 +195,7 @@ async function run(msg: StartCapture): Promise<void> {
         },
       };
     }
-    warnings.push(...prepare(log, target));
+    warnings.push(...prepare(log, target, !!msg.hideOverlays));
     // Viewers that live in an embedded frame (some document previews) can't be scrolled from
     // here: say so instead of quietly returning one screen.
     if (p.kind === 'scroll' && !target.el && target.maxScroll <= 2) {
@@ -595,9 +596,17 @@ function pickTarget(): Target {
 }
 
 /** CAPTURE §4, §6: freeze motion, flatten sticky, drop bottom bars and fixed backgrounds. */
-/** Returns warnings, e.g. for overlays it deliberately leaves in place. */
-function prepare(log: MutationLog, target: Target): string[] {
+/**
+ * Returns warnings, e.g. for overlays it leaves in place; with `hideOverlays` (the overlay
+ * killer) it hides them instead, and says how many.
+ */
+function prepare(log: MutationLog, target: Target, hideOverlays = false): string[] {
   let overlays = 0;
+  const hide = (el: HTMLElement) => {
+    overlays++;
+    // display, not visibility: a modal <dialog>'s ::backdrop only goes with the dialog box.
+    if (hideOverlays) log.setStyle(el, 'display', 'none');
+  };
   const style = document.createElement('style');
   style.textContent = FREEZE_CSS;
   document.documentElement.append(style);
@@ -627,13 +636,16 @@ function prepare(log: MutationLog, target: Target): string[] {
     if (cs.position !== 'fixed' && cs.position !== 'sticky') continue;
     if (target.el && (el === target.el || el.contains(target.el))) continue;
     const r = el.getBoundingClientRect();
-    if (r.width * r.height > 0.8 * vpArea) continue;
+    if (r.width * r.height > 0.8 * vpArea) {
+      if (cs.position === 'fixed' && isBackdrop(el, cs)) hide(el);
+      continue;
+    }
     if (cs.position === 'sticky') {
       log.setStyle(el, 'position', 'relative');
       for (const side of ['top', 'right', 'bottom', 'left']) log.setStyle(el, side, 'auto');
     } else if (isMidViewportOverlay(r, cs)) {
       // Modals and pop-ups are content the user may want; leave them, but say so (CAPTURE §4).
-      overlays++;
+      hide(el);
     } else if (r.top >= innerHeight / 2) {
       // Bottom-anchored bars (cookie notices, chat bubbles) are hidden in every frame.
       log.setStyle(el, 'visibility', 'hidden');
@@ -642,11 +654,30 @@ function prepare(log: MutationLog, target: Target): string[] {
       log.record(() => delete el.dataset.spFixedTop);
     }
   }
-  return overlays > 0
-    ? [
-        'A pop-up or overlay was covering the page and appears in the capture. Close it and capture again to remove it.',
-      ]
-    : [];
+  if (!overlays) return [];
+  return hideOverlays
+    ? [`${overlays} pop-up ${overlays === 1 ? 'layer was' : 'layers were'} hidden for this capture.`]
+    : [OVERLAY_WARNING];
+}
+
+const DIALOG = '[role="dialog"], [role="alertdialog"], [aria-modal="true"], dialog[open]';
+
+/**
+ * A layer over the whole viewport that belongs to a pop-up: it holds a dialog, or it is a
+ * see-through dimming sheet (no text or media of its own) lying on top of the page at both
+ * sides. An app's own full-screen shell (a document viewer) has content, so it is neither.
+ */
+function isBackdrop(el: HTMLElement, cs: CSSStyleDeclaration): boolean {
+  if (cs.visibility === 'hidden' || cs.display === 'none' || Number(cs.opacity) === 0) return false;
+  if (el.matches(DIALOG) || el.querySelector(DIALOG)) return true;
+  if (el.innerText.trim() || el.querySelector('img, video, canvas, iframe, svg')) return false;
+  const alpha = Number(/rgba?\([^)]*[,/]\s*([\d.]+)\s*\)/.exec(cs.backgroundColor)?.[1] ?? 1);
+  if (!(Number(cs.opacity) < 1 || (alpha > 0 && alpha < 0.95))) return false;
+  const on = (x: number) => {
+    const hit = document.elementFromPoint(x, innerHeight / 2);
+    return !!hit && (hit === el || el.contains(hit));
+  };
+  return on(0.03 * innerWidth) && on(0.97 * innerWidth);
 }
 
 /** A visible fixed box floating in the middle band of the viewport, not anchored to an edge. */

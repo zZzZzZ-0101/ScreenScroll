@@ -315,7 +315,7 @@ test('a mid-viewport modal is left in place with a warning', async ({ context, s
   const { result } = await captureFixture(context, serviceWorker, 'modal.html');
   expect(result.done.status).toBe('complete');
   expect(result.done.warnings).toEqual([
-    'A pop-up or overlay was covering the page and appears in the capture. Close it and capture again to remove it.',
+    'A pop-up or overlay was covering the page and appears in the capture. Hide pop-ups and capture again to remove it.',
   ]);
 });
 
