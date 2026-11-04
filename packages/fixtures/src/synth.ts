@@ -1,4 +1,4 @@
-import { createCanvas, loadImage, type SKRSContext2D } from '@napi-rs/canvas';
+import { createCanvas, GlobalFonts, loadImage, type SKRSContext2D } from '@napi-rs/canvas';
 import { emptyHints, type DomHints, type Interval } from '@screenscroll/core';
 
 /**
@@ -16,6 +16,27 @@ export interface SynthDoc {
   unbreakable: Interval[];
   /** DOM-like hints derived from the ground truth (lines, block ends, atomic photo). */
   hints: DomHints;
+}
+
+/**
+ * Named families, not `sans-serif`/`monospace`: what a generic family resolves to depends on
+ * the machine, and a CI runner image without these fonts once drew lines whose measured ink
+ * boxes no longer matched the pixels (cuts "through text", forced cuts in plain code).
+ * CI installs them (fonts-dejavu-core, fonts-wqy-zenhei); a missing one stops the run.
+ */
+export const FONTS = {
+  sans: 'DejaVu Sans',
+  mono: 'DejaVu Sans Mono',
+  cjk: 'WenQuanYi Zen Hei',
+} as const;
+
+export function requireFonts(): void {
+  const missing = Object.values(FONTS).filter((f) => !GlobalFonts.has(f));
+  if (missing.length)
+    throw new Error(
+      `Synthetic fixtures need these fonts: ${missing.join(', ')}. ` +
+        'On Debian/Ubuntu: apt-get install fonts-dejavu-core fonts-wqy-zenhei',
+    );
 }
 
 const WIDTH = 800;
@@ -79,10 +100,10 @@ class Builder {
     baseline: number,
     size: number,
     colour = this.theme.fg,
-    font = 'sans-serif',
+    font: string = FONTS.sans,
   ) {
     const ctx = this.ctx;
-    ctx.font = `${size}px ${font}`;
+    ctx.font = `${size}px "${font}"`;
     ctx.fillStyle = colour;
     ctx.fillText(text, x, baseline);
     const m = ctx.measureText(text);
@@ -120,7 +141,7 @@ class Builder {
         this.y + 17,
         16,
         opts.colour,
-        opts.cjk ? 'WenQuanYi Zen Hei' : 'sans-serif',
+        opts.cjk ? FONTS.cjk : FONTS.sans,
       );
       if (i < lines - 1) this.hints.blockEnds.push({ y: this.y + pitch - 2, kind: 'line' });
       this.y += pitch;
@@ -194,7 +215,7 @@ class Builder {
         this.y + 14,
         13,
         this.theme.fg,
-        'monospace',
+        FONTS.mono,
       );
       this.y += 20;
     }
@@ -291,6 +312,7 @@ function articleBody(b: Builder, cjk = false) {
 
 /** All fixtures listed in TESTING §1. */
 export async function synthFixtures(): Promise<SynthDoc[]> {
+  requireFonts();
   const docs: Array<Promise<SynthDoc>> = [];
   const make = (
     name: string,

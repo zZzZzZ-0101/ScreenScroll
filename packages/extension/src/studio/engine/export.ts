@@ -8,6 +8,7 @@ import {
   type PageLayout,
   type PageSlice,
   type Rect,
+  textToMarkdown,
 } from '@screenscroll/core';
 import {
   buildPdf,
@@ -16,6 +17,7 @@ import {
   type PdfContent,
   type PdfMeta,
   type PdfOptions,
+  impose,
 } from '@screenscroll/core/pdf';
 import { ocrRuns, type OcrLine } from '@screenscroll/core/ocr';
 import { zipSync } from 'fflate';
@@ -90,7 +92,7 @@ export function contentOf(s: LoadedSession, annotations: readonly Annotation[]):
 }
 
 /** PDF_OUTPUT §6 default: multi-page PDF, pages composed and encoded one at a time. */
-export function exportPdf(
+export async function exportPdf(
   s: LoadedSession,
   frames: FrameCache,
   slices: PageSlice[],
@@ -101,7 +103,7 @@ export function exportPdf(
   annotations: readonly Annotation[] = [],
   ocr?: PageOcr,
 ): Promise<Uint8Array> {
-  return buildPdf(
+  const bytes = await buildPdf(
     pageImages(s, frames, slices, layout, preset, onProgress, annotations, pdf.filter, ocr),
     slices.length,
     layout,
@@ -109,6 +111,8 @@ export function exportPdf(
     pdfOptions(pdf),
     contentOf(s, annotations),
   );
+  // Two pages a sheet or a booklet: laid out on the finished pages.
+  return impose(bytes, pdf.perSheet);
 }
 
 export function exportLongPagePdf(
@@ -264,4 +268,44 @@ export async function copyPageImage(
 export function openPdfForPrint(bytes: Uint8Array): void {
   const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/pdf' }));
   void chrome.tabs.create({ url });
+}
+
+/**
+ * M8: the capture's text as Markdown: the page's own text, plus recognised text for the
+ * pages that are pictures (read only when there are such pages and the model is here).
+ * Document captures keep their pages, separated by a rule.
+ */
+export async function exportMarkdown(
+  s: LoadedSession,
+  frames: FrameCache,
+  slices: PageSlice[],
+  layout: PageLayout,
+  preset: ExportPreset,
+  documentPages: boolean,
+  onProgress?: Progress,
+  annotations: readonly Annotation[] = [],
+  ocr?: PageOcr,
+): Promise<Uint8Array> {
+  const y0 = slices[0]?.y0 ?? 0;
+  const y1 = slices.at(-1)?.y1 ?? s.height;
+  const hidden = redactions(annotations);
+  const inside = (r: { rect: { x: number; y: number; width: number; height: number } }) => {
+    const cy = r.rect.y + r.rect.height / 2;
+    // Text under a blur or mosaic stays out, as it does in the PDF.
+    return cy >= y0 && cy < y1 && !hidden.some((h) => overlaps(h, r.rect));
+  };
+  const runs = s.hints.textRuns.filter(inside);
+  if (ocr?.pages.size) {
+    for await (const page of pageImages(s, frames, slices, layout, preset, onProgress, annotations, 'original', ocr))
+      runs.push(...(page.textRuns ?? []).filter(inside));
+  }
+  const md = textToMarkdown(runs, s.hints.headings, documentPages ? slices : []);
+  return new TextEncoder().encode(md);
+}
+
+function overlaps(
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number },
+): boolean {
+  return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 }

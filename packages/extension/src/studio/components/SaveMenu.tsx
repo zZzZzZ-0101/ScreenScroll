@@ -2,7 +2,7 @@ import { ChevronDown, Download } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { t } from '@/shared/i18n';
 
-export type ExportFormat = 'pdf' | 'pdf-long' | 'png' | 'jpeg' | 'webp' | 'long-png';
+export type ExportFormat = 'pdf' | 'pdf-long' | 'png' | 'jpeg' | 'webp' | 'long-png' | 'md';
 
 type Item =
   | { kind: 'format'; format: ExportFormat; label: string }
@@ -14,6 +14,7 @@ const ITEMS: Item[] = [
   { kind: 'format', format: 'jpeg', label: 'Pages as JPEG images (zip)' },
   { kind: 'format', format: 'webp', label: 'Pages as WebP images (zip)' },
   { kind: 'format', format: 'long-png', label: 'One long image (PNG)' },
+  { kind: 'format', format: 'md', label: 'Text (Markdown)' },
   { kind: 'action', id: 'copy', label: 'Copy this page', keys: 'Ctrl+Shift+C' },
   { kind: 'action', id: 'print', label: 'Print', keys: 'Ctrl+P' },
 ];
@@ -106,7 +107,7 @@ export function SaveMenu(p: {
                 onClick={() => choose(item)}
                 className="flex w-full justify-between px-3 py-1.5 text-left hover:bg-neutral-100 focus-visible:bg-neutral-100 focus-visible:outline-none dark:hover:bg-neutral-800 dark:focus-visible:bg-neutral-800"
               >
-                {item.label}
+                {t(item.label)}
                 {item.kind === 'action' && (
                   <kbd className="font-sans text-neutral-500">{item.keys}</kbd>
                 )}

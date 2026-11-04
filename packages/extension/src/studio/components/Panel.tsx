@@ -525,6 +525,29 @@ export function PagesPanel(p: PagesProps) {
             {t('Theme')}
             <ThemeSwitch />
           </div>
+          <div className={field}>
+            <span id="per-sheet">{t('Pages per sheet')}</span>
+            <div role="radiogroup" aria-labelledby="per-sheet" className="flex gap-1">
+              {(
+                [
+                  ['single', 'One'],
+                  ['2up', 'Two'],
+                  ['booklet', 'Booklet'],
+                ] as const
+              ).map(([v, label]) => (
+                <button
+                  key={v}
+                  type="button"
+                  role="radio"
+                  aria-checked={p.settings.pdf.perSheet === v}
+                  onClick={() => p.onSettings({ pdf: { ...p.settings.pdf, perSheet: v } })}
+                  className={`rounded-md border px-2 py-0.5 ${p.settings.pdf.perSheet === v ? 'border-accent bg-accent/10 font-medium' : 'border-neutral-300 dark:border-neutral-700'}`}
+                >
+                  {t(label)}
+                </button>
+              ))}
+            </div>
+          </div>
           <label className={field}>
             {t('Margins (mm)')}
             <input

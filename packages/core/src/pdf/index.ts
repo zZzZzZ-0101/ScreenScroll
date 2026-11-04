@@ -6,3 +6,4 @@ export * from './bands.js';
 export * from './links.js';
 export * from './locate.js';
 export * from './outline.js';
+export * from './impose.js';

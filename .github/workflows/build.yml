@@ -17,8 +17,9 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      # pdftotext checks the PDFs' text layer in the unit tests.
-      - run: sudo apt-get update && sudo apt-get install -y poppler-utils
+      # pdftotext checks the PDFs' text layer in the unit tests; the synthetic fixtures draw
+      # with these named fonts (packages/fixtures/src/synth.ts FONTS).
+      - run: sudo apt-get update && sudo apt-get install -y poppler-utils fonts-dejavu-core fonts-wqy-zenhei
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck

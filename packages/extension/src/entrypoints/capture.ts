@@ -40,7 +40,13 @@ export default defineUnlistedScript(() => {
   if (w.__spCaptureLoaded) return;
   w.__spCaptureLoaded = true;
 
-  chrome.runtime.onMessage.addListener((msg: StartCapture | CaptureControl | PageNotice) => {
+  chrome.runtime.onMessage.addListener(
+    (msg: StartCapture | CaptureControl | PageNotice | { type: 'sp:status' }, _sender, reply) => {
+    // Is a capture really running here? (A record can say so after a reload or crash.)
+    if (msg.type === 'sp:status') {
+      reply({ sessionId: control?.sessionId ?? null });
+      return false;
+    }
     if (msg.type === 'sp:start') {
       // The page-side hints speak the user's language (it can't read settings itself).
       if (msg.lang) setLang(msg.lang);
@@ -50,7 +56,9 @@ export default defineUnlistedScript(() => {
     if (msg.type === 'sp:control') control?.[msg.action]();
     // After a quick output (copy, PDF) finished elsewhere: say so where the user is.
     if (msg.type === 'sp:notice') makePill().notice(msg.text, 'done', 3000);
-  });
+    return false;
+  },
+  );
 });
 
 const FREEZE_CSS = `*, *::before, *::after {
@@ -101,7 +109,7 @@ async function plan(msg: StartCapture): Promise<Plan | null> {
 }
 
 /** The running capture's Stop here / Cancel, for messages from the toolbar panel. */
-let control: { stop: () => void; cancel: () => void } | null = null;
+let control: { stop: () => void; cancel: () => void; sessionId: string } | null = null;
 
 async function run(msg: StartCapture): Promise<void> {
   const log = new MutationLog();
@@ -135,7 +143,7 @@ async function run(msg: StartCapture): Promise<void> {
     log.restore();
   };
   const pill = makePill({ onStop: stop, onCancel: cancel });
-  control = { stop, cancel };
+  control = { stop, cancel, sessionId: msg.sessionId };
   let unguard = () => {};
   // Esc must reach this page even if the user last clicked into an embedded frame.
   const focused = document.activeElement;

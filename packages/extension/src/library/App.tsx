@@ -4,6 +4,7 @@ import { deleteCapture, deleteOlderThan, listCaptures, type StoredCapture } from
 import { loadSettings, saveSettings } from '@/shared/settings';
 import { backupCaptures, restoreCaptures } from '@/shared/backup';
 import { importImage } from '@/shared/import-image';
+import { CompareSheet } from './CompareSheet';
 import { MergeSheet } from './MergeSheet';
 import { t } from '@/shared/i18n';
 
@@ -32,6 +33,7 @@ export function App() {
   const [note, setNote] = useState<string | null>(null);
   /** Captures being merged, in the list's order (oldest first, the usual reading order). */
   const [merging, setMerging] = useState<StoredCapture[] | null>(null);
+  const [comparing, setComparing] = useState<[StoredCapture, StoredCapture] | null>(null);
 
   const refresh = useCallback(async () => {
     setItems(await listCaptures());
@@ -234,6 +236,18 @@ export function App() {
           <>
           <button
             type="button"
+            disabled={selected.size !== 2 || busy}
+            title={t('Compare the text of two captures, e.g. one page captured on two days')}
+            onClick={() => {
+              const two = (items ?? []).filter((c) => selected.has(c.session.id));
+              if (two.length === 2) setComparing([two[0]!, two[1]!]);
+            }}
+            className="flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
+          >
+            {t('Compare')}
+          </button>
+          <button
+            type="button"
             disabled={selected.size < 2 || busy}
             title={t('Save the selected captures as one PDF')}
             onClick={() =>
@@ -268,6 +282,7 @@ export function App() {
       )}
 
       {merging && <MergeSheet captures={merging} onClose={() => setMerging(null)} />}
+      {comparing && <CompareSheet captures={comparing} onClose={() => setComparing(null)} />}
 
       {visible.length > 0 && (
         <div className="mt-3 flex items-center justify-between px-2">

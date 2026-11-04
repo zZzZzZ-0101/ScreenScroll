@@ -521,10 +521,33 @@ export default defineBackground(() => {
   async function running(): Promise<{ sessionId: string; tabId: number } | null> {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab?.id === undefined) return null;
-    const s = (await (await db()).getAll('sessions')).find(
+    const d = await db();
+    const stale = (await d.getAll('sessions')).filter(
       (x) => x.status === 'capturing' && x.tabId === tab.id,
     );
-    return s ? { sessionId: s.id, tabId: tab.id } : null;
+    if (!stale.length) return null;
+    // A record says "capturing", but only the page knows: after a reload, a crash or a
+    // browser restart (tab ids are reused) the record stays behind, and trusting it would
+    // lock the panel's capture buttons on this tab for good.
+    const live = await chrome.tabs
+      .sendMessage(tab.id, { type: 'sp:status' })
+      .then((r: { sessionId?: string | null } | undefined) => r?.sessionId ?? null)
+      .catch(() => null);
+    for (const s of stale) {
+      if (s.id === live) continue;
+      await d.put('sessions', {
+        ...s,
+        status: 'error',
+        warnings: [
+          ...s.warnings,
+          'The capture was interrupted (the page or the extension was reloaded, or the browser closed) and stopped here.',
+        ],
+      });
+      await restoreWindow(s.id);
+    }
+    if (live && stale.some((s) => s.id === live)) return { sessionId: live, tabId: tab.id };
+    await clearCapturing(tab.id);
+    return null;
   }
 
   // A tab closed mid-capture can't report back: put a narrowed window back here.

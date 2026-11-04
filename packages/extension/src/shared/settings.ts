@@ -14,6 +14,7 @@ import {
   type FilterId,
   type PageSettings,
 } from '@screenscroll/core';
+import type { Imposition } from '@screenscroll/core/pdf';
 import type { LangSetting } from './i18n';
 
 /** Where a full-page capture starts: the top of the page, or where you are now. */
@@ -109,6 +110,8 @@ export interface PdfSettings {
   watermark: Watermark;
   /** Page filter (Mark up → Filter), like a scanner app's. */
   filter: FilterId;
+  /** Pages per sheet of paper: one, two side by side, or a folded booklet. */
+  perSheet: Imposition;
 }
 
 export const DEFAULT_PDF_SETTINGS: PdfSettings = {
@@ -119,6 +122,7 @@ export const DEFAULT_PDF_SETTINGS: PdfSettings = {
   footer: DEFAULT_FOOTER,
   watermark: NO_WATERMARK,
   filter: 'original',
+  perSheet: 'single',
 };
 
 /** Header/footer space is reserved only when the band has something to show. */
@@ -214,6 +218,7 @@ export function normalizeSettings(stored: unknown): Settings {
       footer: band(pdf.footer, d.pdf.footer),
       watermark: watermark(pdf.watermark),
       filter: FILTERS.some((f) => f.id === pdf.filter) ? (pdf.filter as FilterId) : 'original',
+      perSheet: pdf.perSheet === '2up' || pdf.perSheet === 'booklet' ? pdf.perSheet : 'single',
     },
   };
 }

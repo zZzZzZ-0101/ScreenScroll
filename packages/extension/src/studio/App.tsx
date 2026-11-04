@@ -43,6 +43,7 @@ import {
   exportLongImage,
   exportLongPagePdf,
   exportPageImagesZip,
+  exportMarkdown,
   exportPdf,
   ext,
   openPdfForPrint,
@@ -432,6 +433,23 @@ export function App() {
             return saved(
               await download(bytes, filename('pdf'), 'application/pdf'),
               filename('pdf'),
+            );
+          }
+          case 'md': {
+            const bytes = await exportMarkdown(
+              session,
+              f,
+              slices,
+              layout,
+              settings.exportPreset,
+              result.sheets,
+              progress,
+              annotations,
+              pageOcr,
+            );
+            return saved(
+              await download(bytes, filename('md'), 'text/markdown'),
+              filename('md'),
             );
           }
           case 'png':

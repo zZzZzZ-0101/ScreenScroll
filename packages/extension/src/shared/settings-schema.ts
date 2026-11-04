@@ -199,6 +199,21 @@ export const SETTINGS: SettingEntry[] = [
     recommended: true,
   },
   {
+    id: 'pdf.perSheet',
+    section: 'Pages and PDF',
+    label: 'Pages per sheet',
+    help: 'Two pages side by side on each sheet, or a booklet: print on both sides (flip on the short edge), fold, and it reads in order. Links and bookmarks are left out of these.',
+    kind: 'choice',
+    choices: [
+      { value: 'single', label: 'One' },
+      { value: '2up', label: 'Two' },
+      { value: 'booklet', label: 'Booklet' },
+    ],
+    get: (s) => s.pdf.perSheet,
+    set: (s, v) => ({ pdf: { ...s.pdf, perSheet: v as Settings['pdf']['perSheet'] } }),
+    recommended: 'single',
+  },
+  {
     id: 'exportPreset',
     section: 'Pages and PDF',
     label: 'PDF quality',
