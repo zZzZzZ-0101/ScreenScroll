@@ -93,6 +93,10 @@ export function collectHints(ctx: CollectContext): DomHints {
     const rects = [...range.getClientRects()].filter((r) => r.width > 0 && r.height > 0);
     const fontSizePx = parseFloat(getComputedStyle(parent).fontSize) || 16;
     const total = rects.reduce((s, r) => s + r.width, 0);
+    // Where each line fragment's text starts: the first character whose box sits on that
+    // line, found by binary search with a one-character range (log₂ n measurements a line).
+    // Splitting by width alone cut words in two ("c" | "apture").
+    const starts = lineStarts(n as Text, text, rects, range);
     let used = 0;
     rects.forEach((r, i) => {
       const prev = rects[i - 1];
@@ -103,10 +107,12 @@ export function collectHints(ctx: CollectContext): DomHints {
       }
       // Distribute the node's text over its fragments by width; exact per-line text
       // would need a Range per character.
-      const chars =
-        i === rects.length - 1 ? text.length - used : Math.round((text.length * r.width) / total);
-      const runText = text.slice(used, used + chars);
-      used += chars;
+      const end =
+        i === rects.length - 1
+          ? text.length
+          : (starts[i + 1] ?? used + Math.round((text.length * r.width) / total));
+      const runText = text.slice(used, end);
+      used = end;
       if (!inBand(r)) return;
       const d = docRect(r);
       if (fresh(`f:line:${k(d.y)}:${k(d.y + d.height)}`)) {
@@ -203,3 +209,44 @@ export function collectHints(ctx: CollectContext): DomHints {
   }
   return out;
 }
+
+/**
+ * Character offsets where each of a text node's line fragments starts, or undefined for a
+ * fragment that isn't a new line below the previous one (bidi, floats): the caller then
+ * falls back to splitting by width.
+ */
+function lineStarts(
+  node: Text,
+  text: string,
+  rects: readonly DOMRect[],
+  range: Range,
+): Array<number | undefined> {
+  const starts: Array<number | undefined> = [0];
+  const top = (i: number) => {
+    range.setStart(node, i);
+    range.setEnd(node, i + 1);
+    const r = range.getBoundingClientRect();
+    return r.height > 0 ? r.top : Number.NEGATIVE_INFINITY;
+  };
+  let from = 0;
+  for (let i = 1; i < rects.length; i++) {
+    const r = rects[i]!;
+    const prev = rects[i - 1]!;
+    if (r.top < prev.bottom - 1) {
+      starts.push(undefined);
+      continue;
+    }
+    let lo = from + 1;
+    let hi = text.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (top(mid) >= r.top - 1) hi = mid;
+      else lo = mid + 1;
+    }
+    starts.push(lo < text.length ? lo : undefined);
+    if (lo < text.length) from = lo;
+  }
+  range.selectNodeContents(node);
+  return starts;
+}
+

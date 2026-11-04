@@ -335,4 +335,12 @@ export const ZH_CN: Record<string, string> = {
   "Legal landscape": "Legal 横版",
   "16:9 slide": "16:9 幻灯片",
   "4:3 slide": "4:3 幻灯片",
+  "PDF as one long page": "PDF（一整页长图）",
+  "Pages as PNG images (zip)": "每页存为 PNG 图片（zip）",
+  "Pages as JPEG images (zip)": "每页存为 JPEG 图片（zip）",
+  "Pages as WebP images (zip)": "每页存为 WebP 图片（zip）",
+  "One long image (PNG)": "一张长图（PNG）",
+  "Text (Markdown)": "文字（Markdown）",
+  "Copy this page": "复制本页",
+  "Print": "打印",
 };

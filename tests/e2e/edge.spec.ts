@@ -769,3 +769,26 @@ test('Pages: the printed text size, and one-click fixes when it is small', async
   await turn.click();
   await expect(card).toHaveText(`Text prints at ${promised.toFixed(1)} pt`);
 });
+
+test('Save → Text (Markdown): headings and paragraphs from the page text', async ({
+  context,
+  serviceWorker,
+}) => {
+  const studio = await capture(context, serviceWorker, 'article.html');
+  const dl = studio.waitForEvent('download');
+  await studio.getByRole('button', { name: 'More ways to save' }).click();
+  await studio.getByRole('menuitem', { name: 'Text (Markdown)' }).click();
+  const file = await (await dl).path();
+  const md = readFileSync(file, 'utf8');
+  writeFileSync('e2e-artifacts/article.md', md);
+  expect(md.startsWith('# Article fixture\n')).toBe(true);
+  // A link and the text around it read as one sentence.
+  expect(md).toContain('See section 4 or the reference.');
+  // No word cut where a line wrapped.
+  expect(md).not.toMatch(/\b(c apture|expor t)\b/);
+  expect(md).toMatch(/\n## Section 1: Scroll break\n/);
+  expect(md).toMatch(/\n\nReader page header margin of column line/);
+  // Paragraphs are whole: no line breaks inside one.
+  const para = md.split('\n\n').find((p) => p.startsWith('Reader page header'))!;
+  expect(para).not.toContain('\n');
+});
