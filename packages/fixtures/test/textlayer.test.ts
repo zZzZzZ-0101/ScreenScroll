@@ -74,7 +74,14 @@ describe('invisible text layer', () => {
     const pageTexts: string[] = [];
     for (let i = 1; i <= pdf.numPages; i++) {
       const tc = await (await pdf.getPage(i)).getTextContent();
-      pageTexts.push(tc.items.map((it) => ('str' in it ? it.str : '')).join(' '));
+      // pdf.js splits a run into words when its stretched spaces are wide (over ~0.6 em, as
+      // with wide fonts) and adds " " items between them; a reader sees the same words.
+      pageTexts.push(
+        tc.items
+          .map((it) => ('str' in it ? it.str : ''))
+          .join(' ')
+          .replace(/\s+/g, ' '),
+      );
     }
     const all = pageTexts.join('\n');
     // Every line drawn by the generator is found, Latin and Chinese alike.

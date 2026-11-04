@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { buildPdf, type PageImage, type TextRenderer } from '@screenscroll/core/pdf';
 import { computeLayout, DEFAULT_PAGE_SETTINGS, paginate, type PageSlice } from '@screenscroll/core';
-import { synthFixtures, type SynthDoc } from '../src/synth.js';
+import { FONTS, synthFixtures, type SynthDoc } from '../src/synth.js';
 
 const OUT = new URL('../out/', import.meta.url);
 const STANDARD_FONTS = new URL('../../../node_modules/pdfjs-dist/standard_fonts/', import.meta.url)
@@ -34,7 +34,7 @@ async function pageImages(d: SynthDoc, slices: PageSlice[]): Promise<PageImage[]
 const renderText: TextRenderer = async (text, sizePt) => {
   const scale = 4;
   const probe = createCanvas(10, 10).getContext('2d');
-  probe.font = `${sizePt * scale}px "WenQuanYi Zen Hei", sans-serif`;
+  probe.font = `${sizePt * scale}px "${FONTS.cjk}", "${FONTS.sans}"`;
   const w = Math.ceil(probe.measureText(text).width) + 2;
   const h = Math.ceil(sizePt * scale * 1.25);
   const c = createCanvas(w, h);
@@ -115,7 +115,11 @@ describe('links, outline, header and footer', () => {
 
     // Header: the Chinese title is rendered visibly (image) and found by text search.
     const p1 = await (await pdf.getPage(1)).getTextContent();
-    const text = p1.items.map((it) => ('str' in it ? it.str : '')).join(' ');
+    // Whitespace collapsed: pdf.js may split a stretched run into words (see textlayer.test).
+    const text = p1.items
+      .map((it) => ('str' in it ? it.str : ''))
+      .join(' ')
+      .replace(/\s+/g, ' ');
     expect(text).toContain(title);
     expect(text).toContain('09:05');
     expect(
