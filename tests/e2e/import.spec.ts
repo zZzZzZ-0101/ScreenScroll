@@ -23,7 +23,7 @@ test('Open an image: a tall screenshot becomes a capture, paginated between its 
   const studioPromise = context.waitForEvent('page', {
     predicate: (p) => p.url().includes('/studio.html'),
   });
-  await lib.getByLabel('Open an image file').setInputFiles(file);
+  await lib.getByLabel('Open image files').setInputFiles(file);
   const studio = await studioPromise;
   await expect(studio.getByRole('heading', { name: 'long-screenshot' })).toBeVisible({
     timeout: 30_000,
@@ -62,8 +62,35 @@ test('Open an image: a file that is not an image says so', async ({ context, ext
   writeFileSync('e2e-artifacts/not-an-image.png', 'just text');
   const lib = await context.newPage();
   await lib.goto(`chrome-extension://${extensionId}/captures.html`);
-  await lib.getByLabel('Open an image file').setInputFiles('e2e-artifacts/not-an-image.png');
+  await lib.getByLabel('Open image files').setInputFiles('e2e-artifacts/not-an-image.png');
   await expect(
     lib.getByText('not-an-image.png is not an image this browser can open.'),
   ).toBeVisible();
+});
+
+test('Open a folder: images in name order, one capture each, straight into one PDF', async ({
+  context,
+  extensionId,
+}) => {
+  const dir = 'e2e-artifacts/folder-import';
+  mkdirSync(dir, { recursive: true });
+  for (const n of [10, 2, 1]) {
+    const c = createCanvas(600, 900);
+    const g = c.getContext('2d');
+    g.fillStyle = '#fff';
+    g.fillRect(0, 0, 600, 900);
+    g.fillStyle = '#222';
+    for (let y = 40; y < 860; y += 30) g.fillRect(40, y, 400 + n * 10, 12);
+    writeFileSync(`${dir}/page ${n}.png`, c.toBuffer('image/png'));
+  }
+  // Not an image: left out without a fuss.
+  writeFileSync(`${dir}/notes.txt`, 'hello');
+
+  const lib = await context.newPage();
+  await lib.goto(`chrome-extension://${extensionId}/captures.html`);
+  await lib.getByLabel('Open a folder of images').setInputFiles(dir);
+  const sheet = lib.getByRole('region', { name: 'Merge into one PDF' });
+  await expect(sheet).toBeVisible({ timeout: 30_000 });
+  await expect(sheet.locator('li span[title]')).toHaveText(['page 1', 'page 2', 'page 10']);
+  await expect(lib.getByText('3 opened, in name order.')).toBeVisible();
 });
