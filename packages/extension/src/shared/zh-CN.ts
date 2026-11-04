@@ -343,4 +343,10 @@ export const ZH_CN: Record<string, string> = {
   "Text (Markdown)": "文字（Markdown）",
   "Copy this page": "复制本页",
   "Print": "打印",
+  "Pages per sheet": "每张纸的页数",
+  "One": "一页",
+  "Two": "两页",
+  "Booklet": "小册子",
+  "Two pages side by side on each sheet, or a booklet: print on both sides (flip on the short edge), fold, and it reads in order. Links and bookmarks are left out of these.":
+    "每张纸并排放两页，或排成小册子：双面打印（短边翻转），对折后按顺序阅读。这两种方式不保留链接和书签。",
 };

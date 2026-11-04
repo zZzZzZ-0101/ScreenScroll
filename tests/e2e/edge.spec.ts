@@ -792,3 +792,31 @@ test('Save → Text (Markdown): headings and paragraphs from the page text', asy
   const para = md.split('\n\n').find((p) => p.startsWith('Reader page header'))!;
   expect(para).not.toContain('\n');
 });
+
+test('Pages per sheet: two to a landscape sheet, text still searchable', async ({
+  context,
+  serviceWorker,
+}) => {
+  const studio = await capture(context, serviceWorker, 'article.html');
+  const n = await slices(studio);
+  await studio.getByRole('button', { name: 'More options' }).click();
+  await studio
+    .getByRole('radiogroup', { name: 'Pages per sheet' })
+    .getByRole('radio', { name: 'Two' })
+    .click();
+  const b64 = (await studio.evaluate(() =>
+    (window as unknown as { __spStudio: { pdfBase64(): Promise<string> } }).__spStudio.pdfBase64(),
+  )) as string;
+  mkdirSync('e2e-artifacts', { recursive: true });
+  writeFileSync('e2e-artifacts/two-up.pdf', Buffer.from(b64, 'base64'));
+  const doc = await PDFDocument.load(Buffer.from(b64, 'base64'));
+  expect(doc.getPageCount()).toBe(Math.ceil(n / 2));
+  const { width, height } = doc.getPage(0).getSize();
+  expect(width).toBeGreaterThan(height);
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const pdf = await pdfjs.getDocument({ data: new Uint8Array(Buffer.from(b64, 'base64')) }).promise;
+  const text = (await (await pdf.getPage(1)).getTextContent()).items
+    .map((it) => ('str' in it ? it.str : ''))
+    .join(' ');
+  expect(text).toContain('Article fixture');
+});

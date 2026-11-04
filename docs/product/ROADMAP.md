@@ -144,7 +144,7 @@ Goal: the most capable screen capture tool available, that still looks simple. A
 - [ ] Recognised text out as Markdown / .docx (scans, PDF previews). (Markdown done 2026-11-04; .docx not yet.)
 - [ ] Capture the same page again later and mark what changed.
 - [ ] Several files from a folder (e.g. paper, insert, answers) captured one by one into one bookmarked PDF.
-- [ ] Two-up and booklet layouts for printing.
+- [x] Two-up and booklet layouts for printing.
 
 ## Always / cross-cutting
 

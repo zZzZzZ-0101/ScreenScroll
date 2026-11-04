@@ -17,6 +17,7 @@ import {
   type PdfContent,
   type PdfMeta,
   type PdfOptions,
+  impose,
 } from '@screenscroll/core/pdf';
 import { ocrRuns, type OcrLine } from '@screenscroll/core/ocr';
 import { zipSync } from 'fflate';
@@ -91,7 +92,7 @@ export function contentOf(s: LoadedSession, annotations: readonly Annotation[]):
 }
 
 /** PDF_OUTPUT §6 default: multi-page PDF, pages composed and encoded one at a time. */
-export function exportPdf(
+export async function exportPdf(
   s: LoadedSession,
   frames: FrameCache,
   slices: PageSlice[],
@@ -102,7 +103,7 @@ export function exportPdf(
   annotations: readonly Annotation[] = [],
   ocr?: PageOcr,
 ): Promise<Uint8Array> {
-  return buildPdf(
+  const bytes = await buildPdf(
     pageImages(s, frames, slices, layout, preset, onProgress, annotations, pdf.filter, ocr),
     slices.length,
     layout,
@@ -110,6 +111,8 @@ export function exportPdf(
     pdfOptions(pdf),
     contentOf(s, annotations),
   );
+  // Two pages a sheet or a booklet: laid out on the finished pages.
+  return impose(bytes, pdf.perSheet);
 }
 
 export function exportLongPagePdf(
