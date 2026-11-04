@@ -349,4 +349,17 @@ export const ZH_CN: Record<string, string> = {
   "Booklet": "小册子",
   "Two pages side by side on each sheet, or a booklet: print on both sides (flip on the short edge), fold, and it reads in order. Links and bookmarks are left out of these.":
     "每张纸并排放两页，或排成小册子：双面打印（短边翻转），对折后按顺序阅读。这两种方式不保留链接和书签。",
+  "Compare": "对比",
+  "Compare captures": "对比截图",
+  "Compare the text of two captures, e.g. one page captured on two days": "对比两个截图的文字，比如同一个页面在两天截的",
+  "What changed": "有哪些变化",
+  "Close": "关闭",
+  "From": "从",
+  "To": "到",
+  "Comparing…": "正在对比…",
+  "unchanged": "未变",
+  "{n} unchanged": "{n} 段未变",
+  "No differences in the text.": "文字没有差别。",
+  "Text only: pictures are not compared.": "只对比文字，不对比图片。",
+  "No capture was running on this tab. You can capture it now.": "这个标签页上没有正在进行的截图，现在可以截图了。",
 };

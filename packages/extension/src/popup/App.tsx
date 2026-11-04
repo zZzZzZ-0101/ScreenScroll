@@ -107,8 +107,15 @@ export function App() {
   }
 
   const control = async (action: 'stop' | 'cancel') => {
-    await chrome.runtime.sendMessage({ type: 'sp:control', action }).catch(() => undefined);
-    window.close();
+    const r = (await chrome.runtime
+      .sendMessage({ type: 'sp:control', action })
+      .catch(() => ({ ok: false }))) as { ok: boolean };
+    if (r.ok) window.close();
+    else {
+      // Nothing was running after all (an interrupted capture's leftover): back to normal.
+      setRunning(false);
+      setError(t('No capture was running on this tab. You can capture it now.'));
+    }
   };
 
   const open = (url: string) => {

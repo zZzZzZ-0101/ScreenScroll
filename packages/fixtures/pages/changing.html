@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Changing page fixture</title>
+<style>body { margin: 0 auto; max-width: 700px; font: 16px/1.6 Arial, sans-serif; padding: 16px; }</style></head>
+<body>
+<h1>Price list</h1>
+<div id="body"></div>
+<script>
+  // ?v=2 is the same page a few days later: one price changed, a note gone, a line added.
+  const v2 = new URLSearchParams(location.search).get('v') === '2';
+  const paras = [
+    'Opening hours are nine to five on weekdays.',
+    v2 ? 'The standard ticket is 12 dollars today.' : 'The standard ticket is 10 dollars today.',
+    ...(v2 ? [] : ['Note: the café is closed for repairs.']),
+    'Children under five go free.',
+    ...(v2 ? ['New: family tickets are on sale.'] : []),
+  ];
+  document.getElementById('body').innerHTML = paras.map((p) => `<p>${p}</p>`).join('');
+</script>
+</body>
+</html>

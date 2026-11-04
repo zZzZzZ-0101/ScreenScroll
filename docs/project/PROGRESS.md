@@ -168,6 +168,8 @@ Suite: `pnpm test` 219, `pnpm e2e` 53 (see the commit), lint and typecheck clean
 - M8 as the original: document pages become the original pages (matched paper, no margins or labels); unit test for paper matching; doc-viewer e2e checks A4, edge to edge, no label.
 - M8 text out: Save → Text (Markdown); 4 unit + 1 e2e test. Text runs now split at real line breaks (no cut words in the PDF text layer).
 - M8 pages per sheet: One / Two / Booklet; 3 unit + 1 e2e test; checked in the rendered 2-up PDF.
+- M8 what changed (text): Saved captures → Compare; 3 unit + 1 e2e test (price edit, removed note, added line).
+- Fixed: a capture interrupted by a reload or crash could lock the panel's capture buttons on that tab; the page is now asked whether a capture really runs. 3 e2e tests for the panel's message path.
 - Not started: PDF import, CDP capture engine, browser-window capture.
 - Import: Saved captures → Open an image (tall PNG/JPEG/WebP) → Studio; 2 e2e tests (breaks fall between lines; a non-image says so). Not done: tall single-page PDF import (pdf.js).
 - Overlay killer: the pop-up note in the Studio has "Hide pop-ups and capture again"; 6 e2e tests (3 kinds of pop-up, 2 look-alikes that must stay, the Studio flow). Needs the user's check on real consent walls and newsletter pop-ups.

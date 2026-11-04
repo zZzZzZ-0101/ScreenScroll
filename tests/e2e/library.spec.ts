@@ -270,3 +270,34 @@ test('back up captures to one file and restore them after deleting', async ({
   await lib.getByLabel('Restore from a backup file').setInputFiles(file);
   await expect(lib.getByText(/0 captures restored; 1 already here/)).toBeVisible();
 });
+
+test('compare two captures of a page: what was added, removed and edited', async ({
+  context,
+  extensionId,
+  serviceWorker,
+}) => {
+  for (const v of ['1', '2']) {
+    const page = await context.newPage();
+    const url = `${FIXTURES}/changing.html?v=${v}`;
+    await page.goto(url);
+    await page.bringToFront();
+    await serviceWorker.evaluate(async (u) => {
+      const [tab] = await chrome.tabs.query({ active: true, url: u });
+      await (globalThis as unknown as { __spTest: Hook }).__spTest.capture(tab!.id!);
+    }, url);
+    await page.close();
+  }
+  const lib = await context.newPage();
+  await lib.goto(`chrome-extension://${extensionId}/captures.html`);
+  await expect(lib.getByText('Changing page fixture')).toHaveCount(2);
+  await lib.getByRole('checkbox', { name: /Select all/ }).check();
+  await lib.getByRole('button', { name: 'Compare' }).click();
+  const sheet = lib.getByRole('dialog', { name: 'Compare captures' });
+  await expect(sheet.getByTestId('compare-summary')).toHaveText(/^\+1 −1 ~1 · \d+ unchanged$/);
+  await expect(sheet.locator('[data-change="del"]')).toContainText('the café is closed');
+  await expect(sheet.locator('[data-change="add"]')).toContainText('family tickets');
+  const edit = sheet.locator('[data-change="edit"]');
+  await expect(edit.locator('.line-through')).toHaveText('10');
+  await expect(edit.locator('.bg-green-200')).toHaveText('12');
+  await sheet.screenshot({ path: 'e2e-artifacts/compare.png' });
+});

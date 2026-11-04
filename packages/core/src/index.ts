@@ -28,3 +28,4 @@ export * from './watermark.js';
 export * from './capture-width.js';
 export * from './sensitive.js';
 export * from './markdown.js';
+export * from './diff.js';
