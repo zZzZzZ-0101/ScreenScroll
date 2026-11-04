@@ -2,7 +2,7 @@ import { ChevronDown, Download } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { t } from '@/shared/i18n';
 
-export type ExportFormat = 'pdf' | 'pdf-long' | 'png' | 'jpeg' | 'webp' | 'long-png' | 'md';
+export type ExportFormat = 'pdf' | 'pdf-long' | 'png' | 'jpeg' | 'webp' | 'long-png' | 'md' | 'docx';
 
 type Item =
   | { kind: 'format'; format: ExportFormat; label: string }
@@ -15,6 +15,7 @@ const ITEMS: Item[] = [
   { kind: 'format', format: 'webp', label: 'Pages as WebP images (zip)' },
   { kind: 'format', format: 'long-png', label: 'One long image (PNG)' },
   { kind: 'format', format: 'md', label: 'Text (Markdown)' },
+  { kind: 'format', format: 'docx', label: 'Text (Word .docx)' },
   { kind: 'action', id: 'copy', label: 'Copy this page', keys: 'Ctrl+Shift+C' },
   { kind: 'action', id: 'print', label: 'Print', keys: 'Ctrl+P' },
 ];

@@ -341,6 +341,7 @@ export const ZH_CN: Record<string, string> = {
   "Pages as WebP images (zip)": "每页存为 WebP 图片（zip）",
   "One long image (PNG)": "一张长图（PNG）",
   "Text (Markdown)": "文字（Markdown）",
+  "Text (Word .docx)": "文字（Word .docx）",
   "Copy this page": "复制本页",
   "Print": "打印",
   "Pages per sheet": "每张纸的页数",

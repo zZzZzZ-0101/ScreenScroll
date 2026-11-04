@@ -8,6 +8,8 @@ import {
   type PageLayout,
   type PageSlice,
   type Rect,
+  blocksToDocx,
+  textBlocks,
   textToMarkdown,
 } from '@screenscroll/core';
 import {
@@ -275,7 +277,7 @@ export function openPdfForPrint(bytes: Uint8Array): void {
  * pages that are pictures (read only when there are such pages and the model is here).
  * Document captures keep their pages, separated by a rule.
  */
-export async function exportMarkdown(
+export async function exportText(
   s: LoadedSession,
   frames: FrameCache,
   slices: PageSlice[],
@@ -285,6 +287,7 @@ export async function exportMarkdown(
   onProgress?: Progress,
   annotations: readonly Annotation[] = [],
   ocr?: PageOcr,
+  as: 'md' | 'docx' = 'md',
 ): Promise<Uint8Array> {
   const y0 = slices[0]?.y0 ?? 0;
   const y1 = slices.at(-1)?.y1 ?? s.height;
@@ -299,8 +302,9 @@ export async function exportMarkdown(
     for await (const page of pageImages(s, frames, slices, layout, preset, onProgress, annotations, 'original', ocr))
       runs.push(...(page.textRuns ?? []).filter(inside));
   }
-  const md = textToMarkdown(runs, s.hints.headings, documentPages ? slices : []);
-  return new TextEncoder().encode(md);
+  const pages = documentPages ? slices : [];
+  if (as === 'docx') return blocksToDocx(textBlocks(runs, s.hints.headings, pages), s.session.title);
+  return new TextEncoder().encode(textToMarkdown(runs, s.hints.headings, pages));
 }
 
 function overlaps(

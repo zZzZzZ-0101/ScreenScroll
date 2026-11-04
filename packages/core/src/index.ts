@@ -29,3 +29,5 @@ export * from './capture-width.js';
 export * from './sensitive.js';
 export * from './markdown.js';
 export * from './diff.js';
+export * from './docx.js';
+export * from './zip.js';

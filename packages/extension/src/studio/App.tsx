@@ -43,7 +43,7 @@ import {
   exportLongImage,
   exportLongPagePdf,
   exportPageImagesZip,
-  exportMarkdown,
+  exportText,
   exportPdf,
   ext,
   openPdfForPrint,
@@ -435,8 +435,9 @@ export function App() {
               filename('pdf'),
             );
           }
-          case 'md': {
-            const bytes = await exportMarkdown(
+          case 'md':
+          case 'docx': {
+            const bytes = await exportText(
               session,
               f,
               slices,
@@ -446,10 +447,17 @@ export function App() {
               progress,
               annotations,
               pageOcr,
+              format,
             );
             return saved(
-              await download(bytes, filename('md'), 'text/markdown'),
-              filename('md'),
+              await download(
+                bytes,
+                filename(format),
+                format === 'md'
+                  ? 'text/markdown'
+                  : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+              ),
+              filename(format),
             );
           }
           case 'png':

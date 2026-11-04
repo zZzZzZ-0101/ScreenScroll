@@ -19,6 +19,9 @@ const FORBIDDEN = [/\bfetch\(/, /XMLHttpRequest/, /WebSocket/, /sendBeacon/, /Ev
 // library error messages.
 const URL_ALLOW = [
   /^http:\/\/www\.w3\.org\//,
+  // Word (.docx) export: OOXML and Dublin Core namespace names written into the file.
+  /^http:\/\/schemas\.openxmlformats\.org\/[\w/.-]+$/,
+  /^http:\/\/purl\.org\/dc\/elements\/1\.1\/$/,
   /^https:\/\/react\.dev\/errors\//,
   /^https:\/\/tailwindcss\.com$/,
   // pdf-lib's default "Producer" metadata string; we overwrite it and never request it.
