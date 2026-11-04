@@ -768,7 +768,10 @@ test('Pages: the printed text size, and one-click fixes when it is small', async
   const promised = Number(/(\d+\.\d) pt/.exec((await turn.textContent()) ?? '')![1]);
   expect(promised).toBeGreaterThan(9);
   await turn.click();
-  await expect(card).toHaveText(`Text prints at ${promised.toFixed(1)} pt`);
+  await expect(card).toHaveText(`Text prints at ${promised.toFixed(1)} ptUndo`);
+  // And back: the fix is never one-way.
+  await card.getByRole('button', { name: 'Undo' }).click();
+  await expect(card.getByRole('button', { name: /Landscape: \d+\.\d pt/ })).toBeVisible();
 });
 
 test('Save → Text (Markdown): headings and paragraphs from the page text', async ({

@@ -104,6 +104,7 @@ pnpm typecheck    # TypeScript, all packages
 3. **Never cut through text**, unless an element is taller than a page; then say so and repeat a small overlap.
 4. **Readable by default**: legible at 100% on A4, with a text layer and links.
 5. **Desktop first.** Mobile is out of scope.
+6. **Every choice can be taken back.** Whatever is automatic (page detection, breaks, fixes a hint offers) can be overridden by hand, and the automatic result is always one click away again. No hint, prompt or automatic step is one-time: turned off, it can be turned back on.
 
 ## Licence
 

@@ -160,15 +160,30 @@ const GRID_FIELDS: [keyof SheetGrid, string, string][] = [
  */
 function SheetsCard(p: SheetsCardProps) {
   const [editing, setEditing] = useState(false);
+  // Choosing pages implies using them; the switch below can still turn them off without
+  // losing the choice.
+  const setGrid = (g: SheetGrid | null) => {
+    if (g && !p.followSheets) p.onFollow(true);
+    p.onGrid(g);
+  };
   const sameGrid = (a: SheetGrid | null, b: SheetGrid | null) =>
     !!a &&
     !!b &&
     (['x0', 'x1', 'top', 'height', 'gap'] as const).every((k) => Math.abs(a[k] - b[k]) < 0.5);
   const chosen = p.grid
     ? (p.readings.find((r) => sameGrid(r.grid, p.grid))?.id ?? 'hand')
-    : p.detected
-      ? 'gaps'
-      : (confidentReading(p.readings)?.id ?? null);
+    : 'auto';
+  // What "Automatic" means right now, so choosing it is never a leap in the dark. The gaps
+  // reading has no grid of its own: it *is* the automatic result, so it isn't listed twice.
+  const autoReading = p.detected
+    ? p.readings.find((r) => !r.grid)
+    : confidentReading(p.readings);
+  const auto = p.detected
+    ? t('found from the gaps')
+    : autoReading
+      ? t(autoReading.label)
+      : t('no document pages');
+  const others = p.readings.filter((r) => r.grid);
   const start = (): SheetGrid =>
     p.grid ??
     (p.detected
@@ -186,7 +201,7 @@ function SheetsCard(p: SheetsCardProps) {
         type="button"
         className={`${button} mb-2 w-full`}
         onClick={() => {
-          p.onGrid(start());
+          setGrid(start());
           setEditing(true);
         }}
       >
@@ -202,15 +217,36 @@ function SheetsCard(p: SheetsCardProps) {
           {p.pages ? t('{n} pages', { n: p.pages }) : t('not used')}
         </span>
       </p>
-      {p.readings.length > 0 && (
+      {(p.readings.length > 0 || p.grid) && (
         <div role="radiogroup" aria-label={t('Ways to read the pages')} className="pt-1">
-          {p.readings.map((r) => (
+          <label className="flex items-center gap-2 py-0.5">
+            <input
+              type="radio"
+              name="reading"
+              checked={chosen === 'auto'}
+              onChange={() => {
+                setGrid(null);
+                setEditing(false);
+              }}
+              className="accent-[#0e7c7b]"
+            />
+            <span className="min-w-0 flex-1 truncate">
+              {t('Automatic')}
+              <span className="text-neutral-500"> · {auto}</span>
+            </span>
+            {autoReading && (
+              <span className="font-mono text-[11px] text-neutral-600 dark:text-neutral-300">
+                {Math.round(autoReading.probability * 100)}%
+              </span>
+            )}
+          </label>
+          {others.map((r) => (
             <label key={r.id} className="flex items-center gap-2 py-0.5" title={`Fit ${r.fit.toFixed(3)}: rows between pages that are background × rows inside pages that are not`}>
               <input
                 type="radio"
                 name="reading"
                 checked={chosen === r.id}
-                onChange={() => p.onGrid(r.grid)}
+                onChange={() => setGrid(r.grid)}
                 className="accent-[#0e7c7b]"
               />
               <span className="min-w-0 flex-1 truncate">
@@ -241,11 +277,8 @@ function SheetsCard(p: SheetsCardProps) {
       <label className="flex items-center gap-2 pt-1 text-neutral-600 dark:text-neutral-300">
         <input
           type="checkbox"
-          checked={p.followSheets || !!p.grid}
-          onChange={(e) => {
-            if (!e.target.checked) p.onGrid(null);
-            p.onFollow(e.target.checked);
-          }}
+          checked={p.followSheets}
+          onChange={(e) => p.onFollow(e.target.checked)}
           className="accent-[#0e7c7b]"
         />
         {t('One PDF page per document page')}
@@ -272,7 +305,7 @@ function SheetsCard(p: SheetsCardProps) {
           type="button"
           className={`${button} mt-1 w-full`}
           onClick={() => {
-            if (!p.grid) p.onGrid(start());
+            if (!p.grid) setGrid(start());
             setEditing(true);
           }}
         >
@@ -292,7 +325,7 @@ function SheetsCard(p: SheetsCardProps) {
                     type="button"
                     aria-label={`${name} −1`}
                     className="h-6 w-6 rounded border border-neutral-300 hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
-                    onClick={() => p.onGrid({ ...g, [k]: Math.max(0, Math.round(g[k]) - 1) })}
+                    onClick={() => setGrid({ ...g, [k]: Math.max(0, Math.round(g[k]) - 1) })}
                   >
                     −
                   </button>
@@ -304,7 +337,7 @@ function SheetsCard(p: SheetsCardProps) {
                     value={Math.round(g[k])}
                     onChange={(e) => {
                       const v = e.target.valueAsNumber;
-                      if (Number.isFinite(v)) p.onGrid({ ...g, [k]: v });
+                      if (Number.isFinite(v)) setGrid({ ...g, [k]: v });
                     }}
                     className={`${control} w-16 py-0.5 text-right font-mono text-[11px]`}
                   />
@@ -312,7 +345,7 @@ function SheetsCard(p: SheetsCardProps) {
                     type="button"
                     aria-label={`${name} +1`}
                     className="h-6 w-6 rounded border border-neutral-300 hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
-                    onClick={() => p.onGrid({ ...g, [k]: Math.round(g[k]) + 1 })}
+                    onClick={() => setGrid({ ...g, [k]: Math.round(g[k]) + 1 })}
                   >
                     +
                   </button>
@@ -323,18 +356,16 @@ function SheetsCard(p: SheetsCardProps) {
               <button type="button" className={button} onClick={() => setEditing(false)}>
                 {t('Done')}
               </button>
-              {(p.detected || p.readings.length > 0) && (
-                <button
-                  type="button"
-                  className={button}
-                  onClick={() => {
-                    p.onGrid(p.detected ? null : (p.readings[0]?.grid ?? null));
-                    setEditing(false);
-                  }}
-                >
-                  {t('Back to the best reading')}
-                </button>
-              )}
+              <button
+                type="button"
+                className={button}
+                onClick={() => {
+                  setGrid(null);
+                  setEditing(false);
+                }}
+              >
+                {t('Back to automatic')}
+              </button>
             </div>
           </div>
         )
@@ -359,11 +390,30 @@ function TextSizeCard(p: {
   const page = p.settings.page;
   const size = printedTextSize(p.fontPx, page, p.contentWidth);
   const pt = (n: number) => `${n.toFixed(1)} pt`;
+  // A fix offered here can be taken back here, even after the card has shrunk to one line.
+  const [undo, setUndo] = useState<Partial<Settings> | null>(null);
+  const apply = (patch: Partial<Settings>, before: Partial<Settings>) => {
+    setUndo(before);
+    p.onSettings(patch);
+  };
+  const undoButton = undo && (
+    <button
+      type="button"
+      className="ml-1 underline decoration-dotted hover:text-accent"
+      onClick={() => {
+        p.onSettings(undo);
+        setUndo(null);
+      }}
+    >
+      {t('Undo')}
+    </button>
+  );
   const how = `${p.fontPx.toFixed(0)} px text × ${(size.pt / p.fontPx).toFixed(2)} (paper width ÷ ${Math.round(p.contentWidth)} px)`;
   if (size.pt >= SMALL_PT)
     return (
       <p className="mb-2 text-[12px] text-neutral-500" title={how} data-testid="text-size">
         {t('Text prints at {pt}', { pt: pt(size.pt) })}
+        {undoButton}
       </p>
     );
   const narrowSet = p.settings.capture.width === 1000;
@@ -387,12 +437,15 @@ function TextSizeCard(p: {
             type="button"
             className={button}
             onClick={() =>
-              p.onSettings({
-                page: {
-                  ...page,
-                  orientation: page.orientation === 'landscape' ? 'portrait' : 'landscape',
+              apply(
+                {
+                  page: {
+                    ...page,
+                    orientation: page.orientation === 'landscape' ? 'portrait' : 'landscape',
+                  },
                 },
-              })
+                { page },
+              )
             }
           >
             {t(page.orientation === 'landscape' ? 'Portrait' : 'Landscape')}: {pt(size.turnedPt)}
@@ -403,11 +456,17 @@ function TextSizeCard(p: {
             type="button"
             className={button}
             title={t('Settings → Page width: the next capture lays the page out 1000 px wide')}
-            onClick={() => p.onSettings({ capture: { ...p.settings.capture, width: 1000 } })}
+            onClick={() =>
+              apply(
+                { capture: { ...p.settings.capture, width: 1000 } },
+                { capture: p.settings.capture },
+              )
+            }
           >
             {t('Page width 1000 px')}: {pt(size.narrowPt)}
           </button>
         )}
+        {undoButton}
       </div>
       {narrowSet && size.narrowPt !== null && (
         <p className="pt-1 text-[12px] text-neutral-600 dark:text-neutral-300">

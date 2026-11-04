@@ -12,7 +12,8 @@ You are building **ScreenScroll**: an offline, ad-free desktop browser extension
 6. **Every page mutation during capture is logged and restored**, including on errors, cancel and tab close.
 7. **Never fail silently.** Truncation, unreadable iframes, forced cuts and blocked pages all produce explicit warnings.
 8. **Licences**: this repo is MIT. Do not copy code from GPL/AGPL projects (e.g. OpenCapture). Study ideas only. Record any third-party code you vendor in `THIRD_PARTY.md`.
-9. **Private fixtures** in `fixtures/private/` are git-ignored. Never commit or print their contents.
+9. **Everything reversible** (user rule, 2026-11-04): every automatic result can be overridden by hand and restored with one click ("Automatic" / "Back to automatic"); every fix a hint applies has an Undo; nothing is shown or offered only once. Turning a feature off must not discard what the user set for it.
+10. **Private fixtures** in `fixtures/private/` are git-ignored. Never commit or print their contents.
 
 ## How to work
 

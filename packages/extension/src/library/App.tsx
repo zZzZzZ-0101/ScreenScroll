@@ -183,7 +183,7 @@ export function App() {
         </label>
       </section>
 
-      <div className="mt-4 flex items-center gap-2">
+      <div className="mt-4 flex flex-wrap items-center gap-2 [&>*]:whitespace-nowrap">
         <label
           className="flex cursor-pointer items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 focus-within:outline-2 focus-within:outline-accent dark:border-neutral-700 dark:hover:bg-neutral-800"
           title={t('Open a long screenshot (PNG, JPEG, WebP) as a capture; pick several to put them in one PDF')}
@@ -271,7 +271,7 @@ export function App() {
             }}
           />
         </label>
-        <label className="flex flex-1 items-center gap-2 rounded-md border border-neutral-300 bg-white px-2 py-1 dark:border-neutral-700 dark:bg-neutral-900">
+        <label className="flex min-w-56 flex-1 items-center gap-2 rounded-md border border-neutral-300 bg-white px-2 py-1 dark:border-neutral-700 dark:bg-neutral-900">
           <Search aria-hidden size={15} className="text-neutral-500" />
           <input
             type="search"

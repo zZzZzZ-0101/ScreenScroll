@@ -135,7 +135,10 @@ export const ZH_CN: Record<string, string> = {
   'Edit pages': '编辑页面',
   'CSS px of the capture. The pages update as you change a number.':
     '单位是截图的 CSS 像素。改动数字时页面会立即更新。',
-  'Back to the best reading': '回到最佳识别结果',
+  'Back to automatic': '恢复自动',
+  Automatic: '自动',
+  'found from the gaps': '按页间空白识别',
+  'no document pages': '不分文档页',
   'A document? Set its pages by hand': '是文档？手动设置页面',
   'Text prints at {pt}': '正文印出来约 {pt}',
   'Text prints at {pt}: small': '正文印出来约 {pt}：偏小',
