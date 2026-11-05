@@ -175,19 +175,19 @@ export const ZH_CN: Record<string, string> = {
     '只保存在本机，从不上传。打开一个即可再次编辑或导出。',
   'Search captures': '搜索截图',
   'Search titles, addresses and page text': '搜索标题、网址和页面文字',
-  'Open image files': '打开图片文件',
-  'Open images': '打开图片',
+  'Open PDF or image files': '打开 PDF 或图片文件',
+  'Open files': '打开文件',
   'Open a folder': '打开文件夹',
   'Open a folder of images': '打开图片文件夹',
-  'Open a long screenshot (PNG, JPEG, WebP) as a capture; pick several to put them in one PDF':
-    '把长截图（PNG、JPEG、WebP）打开为一份截图；选多张可合成一个 PDF',
-  'Open every image in a folder, in name order, to put them in one PDF':
-    '按文件名顺序打开文件夹里的所有图片，合成一个 PDF',
-  'No PNG, JPEG or WebP images there.': '那里没有 PNG、JPEG 或 WebP 图片。',
+  'Open a PDF or a long screenshot (PNG, JPEG, WebP) as a capture; pick several to put them in one PDF':
+    '把 PDF 或长截图（PNG、JPEG、WebP）打开为一份截图；选多个可合成一个 PDF',
+  'Open every PDF and image in a folder, in name order, to put them in one PDF':
+    '按文件名顺序打开文件夹里的所有 PDF 和图片，合成一个 PDF',
+  'No PDFs or PNG, JPEG or WebP images there.': '那里没有 PDF 或 PNG、JPEG、WebP 图片。',
   'Opening {name}…': '正在打开 {name}…',
   'Opening {n} of {total}: {name}…': '正在打开第 {n}/{total} 个：{name}…',
-  '{n} opened; not images this browser can open: {names}.':
-    '已打开 {n} 个；以下文件浏览器无法作为图片打开：{names}。',
+  "{n} opened; files this browser can't open: {names}.":
+    '已打开 {n} 个；以下文件浏览器无法打开：{names}。',
   '{n} opened, in name order.': '已按文件名顺序打开 {n} 个。',
   'Save captures, images included, to one file (the selected ones, or all)':
     '把截图（含图片）保存成一个文件（选中的，或全部）',
@@ -376,6 +376,77 @@ export const ZH_CN: Record<string, string> = {
   "unchanged": "未变",
   "{n} unchanged": "{n} 段未变",
   "No differences in the text.": "文字没有差别。",
-  "Text only: pictures are not compared.": "只对比文字，不对比图片。",
+  Pictures: "图片",
+  "Captured at different widths ({a} and {b} px), so the pictures are not compared row by row.":
+    "两次截图宽度不同（{a} 和 {b} px），无法逐行对比图片。",
+  "No differences in the pictures.": "图片没有差异。",
+  "{n} areas look different.": "{n} 处看起来不同。",
+  "1 area looks different.": "1 处看起来不同。",
+  "The first {n} are shown.": "下面显示前 {n} 处。",
+  Before: "之前",
+  After: "之后",
+  "(nothing before)": "（之前没有）",
+  "(removed)": "（已删除）",
   "No capture was running on this tab. You can capture it now.": "这个标签页上没有正在进行的截图，现在可以截图了。",
+  'Document pages found, suggestion hidden.': '已识别出文档页，提示已隐藏。',
+  Show: '显示',
+  'Document pages found': '识别出文档页',
+  'Hide this suggestion': '隐藏这个提示',
+  'Hide this suggestion (Settings, or the line left here, bring it back)':
+    '隐藏这个提示（可在设置里或这里留下的一行文字中重新打开）',
+  'What to save': '保存哪些内容',
+  'Everything I captured': '我截下的全部内容',
+  'nothing cut': '原样，不做任何裁剪',
+  'Start from the found pages and change any number': '在识别出的页面基础上，修改任意数值',
+  'Adjust pages': '微调页面',
+  'Start from one A4-shaped page at the top and set every number yourself':
+    '从顶部一页 A4 比例的页面开始，所有数值自己设定',
+  'By hand': '纯手动',
+  'Back to found pages': '回到识别出的页面',
+  'Suggest document pages when found': '识别出文档页时给出提示',
+  'In Google Drive, Docs, Office or PDF previews, offer the document’s own pages (one PDF page each). Nothing is cut unless you choose them.':
+    '在 Google Drive、Docs、Office 或 PDF 预览中，提示文档自己的分页（每页一页 PDF）。除非你选择，否则不会裁剪任何内容。',
+  'Use found document pages automatically': '自动使用识别出的文档页',
+  'Off: you get everything you captured, and the found pages are one click away. On: the document’s own pages are used straight away; “Everything I captured” is still one click away.':
+    '关闭：保留你截下的全部内容，识别出的页面一键可用。开启：直接使用文档自己的分页；「我截下的全部内容」仍然一键可回。',
+  Speed: '速度',
+  'Fast: shorter waits between screens. Careful: waits longer for pictures and slow pages.':
+    '快速：每屏之间等待更短。精细：多等图片和慢页面加载。',
+  Sharpness: '清晰度',
+  '2× and 3× render the page at a higher density for crisp print; Chrome shows a “debugging” bar while they capture.':
+    '2× 和 3× 以更高像素密度渲染页面，打印更清晰；截图时 Chrome 会显示"正在调试"提示条。',
+  '1000 px lays wide pages out narrower, so text prints bigger.':
+    '1000 px 让宽页面按较窄的版式排版，打印出的字更大。',
+  'As shown': '原样',
+  'The browser window narrows to {w} px while capturing, then comes back.':
+    '截图时浏览器窗口会临时缩窄到 {w} px，截完自动恢复。',
+  'Could be document pages': '可能是文档页',
+  Scrolling: '滚动方式',
+  'In background: the page stays where you are while it is captured (Chrome shows a “debugging” bar meanwhile).':
+    '后台：截图时页面停在原处、不滚动（期间 Chrome 会显示"正在调试"提示条）。',
+  'On screen': '屏幕上',
+  'In background': '后台',
+  'Capturing in the background · screen {n}': '后台截图中 · 第 {n} 屏',
+  'On screen: the page scrolls while it is captured. In background: the page stays where you are and each screen is taken from the page’s layout (Chrome shows a "debugging" bar meanwhile, and asks for permission once). Scroll areas inside a page are still captured by scrolling.':
+    '屏幕上：截图时页面会滚动。后台：页面停在原处，每一屏直接从页面排版中截取（期间 Chrome 会显示"正在调试"提示条，首次会请求权限）。页面内部的滚动区域仍通过滚动截取。',
+  'Scrolling on screen captures what you see, including pages that size themselves to the window.':
+    '屏幕上滚动截取的就是你看到的内容，包括按窗口大小自适应的页面。',
+  'Capturing in the background needs the permission; it stays on screen.': '后台截图需要该权限；保持在屏幕上截图。',
+  'Capture a window': '截取窗口',
+  'Taking the picture in {n} s…': '{n} 秒后截图…',
+  Window: '窗口',
+  'Nothing was shared, so nothing was captured.': '没有选择共享内容，所以没有截图。',
+  'The picture could not be taken: {why}': '无法截图：{why}',
+  'A browser window, another app, or the whole screen: the browser asks which. One picture is taken, sharing stops at once, and it opens in the Studio.':
+    '浏览器窗口、其他应用或整个屏幕：浏览器会让你选择。只截一张图，随即停止共享，并在编辑器中打开。',
+  'Wait before the picture': '截图前等待',
+  'Choose what to capture': '选择要截取的内容',
+  'A browser window, another app, or the whole screen, as one picture': '把浏览器窗口、其他应用或整个屏幕截成一张图',
+  'Page numbers found: {a}–{b} of {n}': '识别出页码：第 {a}–{b} 页，共 {n} 页',
+  'Page numbers found: {a}–{b}': '识别出页码：第 {a}–{b} 页',
+  'Hide them': '隐藏原页码',
+  'Write each page’s place in this capture instead, in the same words': '改写为每页在本次截图中的序号，措辞保持不变',
+  'Number from 1': '从 1 重新编号',
+  'Repeated on every page: {text}': '每页重复出现：{text}',
+  'Hide headers and footers': '隐藏页眉页脚',
 };

@@ -1,5 +1,6 @@
 import { blockedReason, PAPERS, type PaperId } from '@screenscroll/core';
 import {
+  AppWindow,
   Crosshair,
   Archive,
   Layers,
@@ -269,6 +270,72 @@ export function App() {
         </div>
         {settings && (
           <>
+            <Choice
+              id="speed"
+              label={t('Speed')}
+              title={t('Fast: shorter waits between screens. Careful: waits longer for pictures and slow pages.')}
+              value={settings.capture.speed}
+              options={[
+                ['fast', t('Fast')],
+                ['normal', t('Normal')],
+                ['careful', t('Careful')],
+              ]}
+              onChange={(speed) => update({ capture: { ...settings.capture, speed } })}
+            />
+            <Choice
+              id="scrolling"
+              label={t('Scrolling')}
+              title={t('In background: the page stays where you are while it is captured (Chrome shows a “debugging” bar meanwhile).')}
+              value={settings.capture.quiet ? 'quiet' : 'screen'}
+              options={[
+                ['screen', t('On screen')],
+                ['quiet', t('In background')],
+              ]}
+              onChange={(v) => {
+                void (async () => {
+                  // Asked while the click still counts as a user gesture.
+                  if (v === 'quiet') {
+                    const ok = await chrome.permissions
+                      .request({ permissions: ['debugger'] })
+                      .catch(() => false);
+                    if (!ok) return;
+                  }
+                  update({ capture: { ...settings.capture, quiet: v === 'quiet' } });
+                })();
+              }}
+            />
+            <Choice
+              id="sharp"
+              label={t('Sharpness')}
+              title={t('2× and 3× render the page at a higher density for crisp print; Chrome shows a “debugging” bar while they capture.')}
+              value={settings.capture.resolution}
+              options={[
+                ['standard', '1×'],
+                ['high', '2×'],
+                ['max', '3×'],
+              ]}
+              onChange={(resolution) => update({ capture: { ...settings.capture, resolution } })}
+            />
+            <Choice
+              id="width"
+              label={t('Page width')}
+              title={t('1000 px lays wide pages out narrower, so text prints bigger.')}
+              value={settings.capture.width === 0 ? 'as' : 'narrow'}
+              options={[
+                ['as', t('As shown')],
+                ['narrow', '1000 px'],
+              ]}
+              onChange={(v) =>
+                update({ capture: { ...settings.capture, width: v === 'as' ? 0 : 1000 } })
+              }
+            />
+            {settings.capture.width !== 0 && (
+              <p className="pb-1 text-[11px] text-amber-700 dark:text-amber-300" data-testid="width-note">
+                {t('The browser window narrows to {w} px while capturing, then comes back.', {
+                  w: settings.capture.width,
+                })}
+              </p>
+            )}
             <div className={row}>
               <span id="after" className="text-neutral-600 dark:text-neutral-300">
                 {t('After capture')}
@@ -343,6 +410,16 @@ export function App() {
 
       <button
         type="button"
+        onClick={() => open(chrome.runtime.getURL('/window.html'))}
+        className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left text-neutral-600 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:text-neutral-300 dark:hover:bg-neutral-800"
+        title={t('A browser window, another app, or the whole screen, as one picture')}
+      >
+        <AppWindow aria-hidden size={15} className="shrink-0" />
+        <span className="truncate">{t('Capture a window')}</span>
+      </button>
+
+      <button
+        type="button"
         onClick={() => open(chrome.runtime.getURL('/captures.html'))}
         className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left text-neutral-600 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:text-neutral-300 dark:hover:bg-neutral-800"
         title={t('See, reopen or delete what ScreenScroll keeps on this computer')}
@@ -364,5 +441,45 @@ export function App() {
         </p>
       )}
     </main>
+  );
+}
+
+/** One labelled row of segmented choices, the panel's way to show an option at a glance. */
+function Choice<T extends string>(p: {
+  id: string;
+  label: string;
+  title: string;
+  value: T;
+  options: ReadonlyArray<readonly [T, string]>;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2 py-1" title={p.title}>
+      <span id={p.id} className="text-neutral-600 dark:text-neutral-300">
+        {p.label}
+      </span>
+      <div
+        role="radiogroup"
+        aria-labelledby={p.id}
+        className="flex rounded-md border border-neutral-200 p-0.5 dark:border-neutral-700"
+      >
+        {p.options.map(([v, label]) => (
+          <button
+            key={v}
+            type="button"
+            role="radio"
+            aria-checked={p.value === v}
+            onClick={() => p.onChange(v)}
+            className={`rounded px-2 py-0.5 focus-visible:outline-2 focus-visible:outline-accent ${
+              p.value === v
+                ? 'bg-neutral-200 font-medium dark:bg-neutral-700'
+                : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }

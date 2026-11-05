@@ -43,6 +43,22 @@ export type PageResult =
     };
 
 /**
+ * What a capture's pages are made from when document pages are found:
+ * - original: everything that was captured, nothing cut (the default: detection is a hint);
+ * - auto: the detected document pages;
+ * - grid: document pages set or adjusted by hand.
+ */
+export type PagesMode = 'original' | 'auto' | 'grid';
+
+export function pagesMode(
+  project: { pages?: PagesMode; sheetGrid?: SheetGrid | null },
+  settings: Pick<Settings, 'autoSheets'>,
+): PagesMode {
+  if (project.pages === 'grid' && !project.sheetGrid) return 'auto';
+  return project.pages ?? (project.sheetGrid ? 'grid' : settings.autoSheets ? 'auto' : 'original');
+}
+
+/**
  * The pages of one capture: side crop, page layout and breaks (smart breaks, or a document
  * viewer's own pages). Shared by the Studio and merged exports, so a capture paginates the
  * same wherever it is saved.
@@ -55,15 +71,20 @@ export function planPages(
     crop: Region | null;
     annotations: readonly Annotation[];
     sheetGrid?: SheetGrid | null;
+    pages?: PagesMode;
   },
   edits: Edits = NO_EDITS,
 ): PageResult {
   const { annotations } = project;
-  // A crop drawn in the Annotate view wins over automatic side cropping.
+  const mode = pagesMode(project, settings);
+  // Only a reliable finding counts: weak readings exist on many ordinary pages.
+  const docFound = !!(analysis.sheets || confidentReading(analysis.readings));
+  // A crop drawn in the Annotate view wins over automatic side cropping. "Everything I
+  // captured" on a document capture means exactly that: no side crop either.
   const manual = project.crop;
   const crop = manual
     ? { x0: manual.x0, x1: manual.x1, cropped: true }
-    : settings.crop === 'auto'
+    : settings.crop === 'auto' && !(docFound && mode === 'original')
       ? cropAround(
           contentCrop(session.width, { rows: analysis.rows, hints: session.hints }),
           annotations,
@@ -78,9 +99,13 @@ export function planPages(
   };
   // A document viewer: its own pages decide, one PDF page per sheet (a drawn crop wins).
   // Pages set by hand win over detected ones and apply even when nothing was detected.
-  const grid = project.sheetGrid ? gridSheets(project.sheetGrid, session.height) : null;
-  const sheets = grid ?? analysis.sheets ?? confidentReading(analysis.readings)?.layout ?? null;
-  if (sheets && settings.followSheets && !manual) {
+  const grid =
+    mode === 'grid' && project.sheetGrid ? gridSheets(project.sheetGrid, session.height) : null;
+  const sheets =
+    mode === 'original'
+      ? null
+      : (grid ?? analysis.sheets ?? confidentReading(analysis.readings)?.layout ?? null);
+  if (sheets && !manual) {
     try {
       // As the original: the page's own paper, edge to edge, without our page labels.
       const hs = sheets.sheets.map((s) => s.y1 - s.y0).sort((a, b) => a - b);

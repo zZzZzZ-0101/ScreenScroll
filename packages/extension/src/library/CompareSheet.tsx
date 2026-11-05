@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import type { StoredCapture } from '@/shared/db';
 import { t } from '@/shared/i18n';
 import { loadSession } from '@/studio/engine/session';
+import { comparePictures, type PictureCrop, type PictureDiff } from './picture-diff';
 
 /** Markdown's heading and list markers aren't part of what the page said. */
 const plain = (s: string) => s.replace(/^(#{1,3}|-) /, '');
@@ -24,6 +25,19 @@ export function CompareSheet(p: { captures: [StoredCapture, StoredCapture]; onCl
   ) as [StoredCapture, StoredCapture];
   const [changes, setChanges] = useState<TextChange[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pictures, setPictures] = useState<PictureDiff | null>(null);
+  const [pictureError, setPictureError] = useState<string | null>(null);
+  useEffect(() => {
+    let urls: string[] = [];
+    void comparePictures(older.session.id, newer.session.id).then(
+      (d) => {
+        urls = d.shown.flatMap((s) => [s.before?.url, s.after?.url]).filter((u): u is string => !!u);
+        setPictures(d);
+      },
+      (e: unknown) => setPictureError(e instanceof Error ? e.message : String(e)),
+    );
+    return () => urls.forEach((u) => URL.revokeObjectURL(u));
+  }, [older.session.id, newer.session.id]);
   useEffect(() => {
     void Promise.all([textOf(older.session.id), textOf(newer.session.id)]).then(
       ([a, b]) => setChanges(diffText(a, b)),
@@ -117,12 +131,71 @@ export function CompareSheet(p: { captures: [StoredCapture, StoredCapture]; onCl
                 )}
               </div>
             )}
-            <p className="pt-3 text-[11px] text-neutral-500">
-              {t('Text only: pictures are not compared.')}
-            </p>
           </>
+        )}
+        <h3 className="pt-4 font-semibold">{t('Pictures')}</h3>
+        {pictureError && (
+          <p role="alert" className="pt-1 text-red-700 dark:text-red-300">
+            {pictureError}
+          </p>
+        )}
+        {!pictures && !pictureError && <p className="pt-1 text-neutral-500">{t('Comparing…')}</p>}
+        {pictures && (
+          <div data-testid="picture-summary">
+            {!pictures.changes ? (
+              <p className="pt-1">
+                {t('Captured at different widths ({a} and {b} px), so the pictures are not compared row by row.', {
+                  a: pictures.widths[0],
+                  b: pictures.widths[1],
+                })}
+              </p>
+            ) : pictures.changes.length === 0 ? (
+              <p className="pt-1">{t('No differences in the pictures.')}</p>
+            ) : (
+              <>
+                <p className="pt-1">
+                  {pictures.changes.length === 1
+                    ? t('1 area looks different.')
+                    : t('{n} areas look different.', { n: pictures.changes.length })}
+                  {pictures.changes.length > pictures.shown.length &&
+                    ' ' + t('The first {n} are shown.', { n: pictures.shown.length })}
+                </p>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-neutral-500">
+                  <span>{t('Before')}</span>
+                  <span>{t('After')}</span>
+                  {pictures.shown.map((s, i) => (
+                    <PicturePair key={i} before={s.before} after={s.after} />
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         )}
       </div>
     </div>
+  );
+}
+
+function PicturePair(p: { before: PictureCrop | null; after: PictureCrop | null }) {
+  const cell = (c: PictureCrop | null, kind: 'del' | 'add') =>
+    c ? (
+      <figure data-picture={kind}>
+        <img
+          src={c.url}
+          alt=""
+          className={`w-full rounded border-2 ${kind === 'del' ? 'border-red-400' : 'border-green-500'}`}
+        />
+        <figcaption>
+          {Math.round(c.y0)}–{Math.round(c.y1)} px{c.clipped ? ' …' : ''}
+        </figcaption>
+      </figure>
+    ) : (
+      <p className="self-center text-center">{kind === 'del' ? t('(nothing before)') : t('(removed)')}</p>
+    );
+  return (
+    <>
+      {cell(p.before, 'del')}
+      {cell(p.after, 'add')}
+    </>
   );
 }

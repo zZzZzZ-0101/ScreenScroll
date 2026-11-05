@@ -39,10 +39,14 @@ export function App() {
   const apply = async (patch: Partial<Settings>) => {
     // Sharp capture needs the debugger permission; ask while the click still counts as a
     // user gesture, and keep Standard if it is refused.
-    if (patch.capture && patch.capture.resolution !== 'standard') {
+    if (patch.capture && (patch.capture.resolution !== 'standard' || patch.capture.quiet)) {
       const ok = await chrome.permissions.request({ permissions: ['debugger'] }).catch(() => false);
       if (!ok) {
-        setNote('Sharp capture needs the permission; it stays at Standard.');
+        setNote(
+          patch.capture.quiet
+            ? 'Capturing in the background needs the permission; it stays on screen.'
+            : 'Sharp capture needs the permission; it stays at Standard.',
+        );
         return;
       }
     }

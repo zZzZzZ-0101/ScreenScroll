@@ -846,3 +846,153 @@ test('Pages per sheet: two to a landscape sheet, text still searchable', async (
     .join(' ');
   expect(text).toContain('Article fixture');
 });
+
+test('content loaded above the screen mid-capture: frames are lined up again, nothing doubled', async ({
+  context,
+  serviceWorker,
+}) => {
+  const studio = await capture(context, serviceWorker, 'shifting.html');
+  const b64 = (await studio.evaluate(() =>
+    (window as unknown as { __spStudio: { pdfBase64(): Promise<string> } }).__spStudio.pdfBase64(),
+  )) as string;
+  mkdirSync('e2e-artifacts', { recursive: true });
+  writeFileSync('e2e-artifacts/shifting.pdf', Buffer.from(b64, 'base64'));
+  const got = await serviceWorker.evaluate(async () => {
+    const req = indexedDB.open('scrollpress');
+    const d: IDBDatabase = await new Promise((res) => (req.onsuccess = () => res(req.result)));
+    const get = <T>(store: string): Promise<T[]> =>
+      new Promise((res) => {
+        const q = d.transaction(store).objectStore(store).getAll();
+        q.onsuccess = () => res(q.result as T[]);
+      });
+    const sessions = await get<{
+      id: string;
+      title: string;
+      warnings: string[];
+      docHeight: number;
+    }>('sessions');
+    const s = sessions.find((x) => x.title === 'Shifting page fixture')!;
+    const frames = (
+      await get<{
+        sessionId: string;
+        hints: { textRuns: { text: string; rect: { y: number } }[] };
+      }>('frames')
+    ).filter((f) => f.sessionId === s.id);
+    const rows = new Map<number, number>();
+    for (const f of frames)
+      for (const r of f.hints.textRuns) {
+        const m = /^Row (\d+)$/.exec(r.text.trim());
+        if (m) rows.set(Number(m[1]), r.rect.y);
+      }
+    return { warnings: s.warnings, docHeight: s.docHeight, rows: [...rows.entries()] };
+  });
+  expect(got.warnings.join(' ')).toMatch(/moved by 137 px .* lined up again/);
+  // Every row where it was before anything loaded: 40 px apart, all 150 of them.
+  const rows = new Map(got.rows);
+  expect(rows.size).toBe(150);
+  const y0 = rows.get(0)!;
+  for (const [n, y] of rows) expect(Math.abs(y - (y0 + n * 40))).toBeLessThanOrEqual(1);
+  expect(got.docHeight).toBe(150 * 40);
+});
+
+test('capture in the background: the page never scrolls, and the capture is whole and searchable', async ({
+  context,
+  serviceWorker,
+}) => {
+  await serviceWorker.evaluate(async () => {
+    const { settings } = await chrome.storage.local.get('settings');
+    await chrome.storage.local.set({
+      settings: { ...(settings ?? {}), capture: { ...(settings?.capture ?? {}), quiet: true } },
+    });
+  });
+  const page = await openPage(context, 'shifting.html');
+  await page.evaluate(() => {
+    scrollTo(0, 700);
+    const w = window as unknown as { scrolls: number[] };
+    w.scrolls = [];
+    addEventListener('scroll', () => w.scrolls.push(scrollY));
+  });
+  const studioPromise = studioOpens(context);
+  await serviceWorker.evaluate(async (url) => {
+    const [tab] = await chrome.tabs.query({ active: true, url });
+    await (globalThis as unknown as { __spTest: Hook }).__spTest.capture(tab!.id!);
+  }, `${FIXTURES}/shifting.html`);
+  const studio = await studioPromise;
+  await studio.setViewportSize({ width: 1280, height: 800 });
+  await ready(studio);
+  // Where the user left it, and it never moved (a scroll event may report the same place).
+  const seen = await page.evaluate(() => (window as unknown as { scrolls: number[] }).scrolls);
+  expect(seen.every((y) => y === 700)).toBe(true);
+  expect(await page.evaluate(() => scrollY)).toBe(700);
+  // The whole page, in order, as text and as pixels.
+  const b64 = (await studio.evaluate(() =>
+    (window as unknown as { __spStudio: { pdfBase64(): Promise<string> } }).__spStudio.pdfBase64(),
+  )) as string;
+  const bytes = Buffer.from(b64, 'base64');
+  mkdirSync('e2e-artifacts', { recursive: true });
+  writeFileSync('e2e-artifacts/quiet.pdf', bytes);
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const pdf = await pdfjs.getDocument({ data: new Uint8Array(bytes) }).promise;
+  const rows: number[] = [];
+  for (let i = 1; i <= pdf.numPages; i++)
+    for (const it of (await (await pdf.getPage(i)).getTextContent()).items) {
+      const m = 'str' in it ? /^Row (\d+)$/.exec(it.str.trim()) : null;
+      if (m) rows.push(Number(m[1]));
+    }
+  expect(rows).toEqual(Array.from({ length: 150 }, (_, i) => i));
+  await serviceWorker.evaluate(async () => {
+    const { settings } = await chrome.storage.local.get('settings');
+    await chrome.storage.local.set({
+      settings: { ...settings, capture: { ...settings.capture, quiet: false } },
+    });
+  });
+});
+
+test('in the background, a scroll area inside the page is captured whole without scrolling', async ({
+  context,
+  serviceWorker,
+}) => {
+  await serviceWorker.evaluate(async () => {
+    const { settings } = await chrome.storage.local.get('settings');
+    await chrome.storage.local.set({
+      settings: { ...(settings ?? {}), capture: { ...(settings?.capture ?? {}), quiet: true } },
+    });
+  });
+  // A document viewer that scrolls inside the page, left by the reader at 1500 px.
+  const page = await openPage(context, 'doc-viewer.html');
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.evaluate(() => {
+    const v = document.getElementById('viewer')!;
+    v.scrollTop = 1500;
+    const w = window as unknown as { moves: number[] };
+    w.moves = [];
+    v.addEventListener('scroll', () => w.moves.push(v.scrollTop));
+    addEventListener('scroll', () => w.moves.push(-scrollY));
+  });
+  const studioPromise = studioOpens(context);
+  const run = (await serviceWorker.evaluate(async (url) => {
+    const [tab] = await chrome.tabs.query({ active: true, url });
+    return (globalThis as unknown as { __spTest: Hook }).__spTest.capture(tab!.id!);
+  }, `${FIXTURES}/doc-viewer.html`)) as { done: { warnings: string[] } };
+  expect(run.done.warnings.join(' ')).not.toMatch(/scrolls inside the page/);
+  // Put back as the reader left it; any scroll event reported only that place.
+  expect(await page.evaluate(() => document.getElementById('viewer')!.scrollTop)).toBe(1500);
+  const moves = await page.evaluate(() => (window as unknown as { moves: number[] }).moves);
+  expect(moves.every((m) => m === 1500 || m === 0)).toBe(true);
+  expect(
+    await page.evaluate(() => document.getElementById('viewer')!.getAttribute('style')),
+  ).toBeNull();
+  // The viewer's dark gaps came with it: its six pages are found, as on screen.
+  const studio = await studioPromise;
+  await studio.setViewportSize({ width: 1400, height: 900 });
+  const card = studio.getByTestId('sheets');
+  await expect(card).toContainText('Document pages found', { timeout: 60_000 });
+  await card.getByRole('radio', { name: /Document pages · found from the gaps/ }).check();
+  await expect(card).toContainText('6 pages');
+  await serviceWorker.evaluate(async () => {
+    const { settings } = await chrome.storage.local.get('settings');
+    await chrome.storage.local.set({
+      settings: { ...settings, capture: { ...settings.capture, quiet: false } },
+    });
+  });
+});

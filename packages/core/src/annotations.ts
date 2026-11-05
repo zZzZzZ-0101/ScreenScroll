@@ -44,7 +44,9 @@ export interface Style {
 
 export const DEFAULT_STYLE: Style = { color: '#d93025', width: 3, fontSize: 18 };
 
-export type BoxKind = 'rect' | 'ellipse' | 'blur' | 'pixelate';
+/** `cover` paints a box in its colour over what is under it (a document's own page number,
+ * a running header) and, like blur, keeps the text under it out of the PDF. */
+export type BoxKind = 'rect' | 'ellipse' | 'blur' | 'pixelate' | 'cover';
 
 export type Annotation =
   | { id: string; kind: BoxKind; style: Style; x: Px; y: Px; w: Px; h: Px }
@@ -53,7 +55,8 @@ export type Annotation =
   | { id: string; kind: 'text'; style: Style; x: Px; y: Px; text: string }
   | { id: string; kind: 'step'; style: Style; x: Px; y: Px; n: number };
 
-export const isRedaction = (a: Annotation): boolean => a.kind === 'blur' || a.kind === 'pixelate';
+export const isRedaction = (a: Annotation): boolean =>
+  a.kind === 'blur' || a.kind === 'pixelate' || a.kind === 'cover';
 
 /** Areas whose content must not leak into the PDF's text layer or links. */
 export function redactions(anns: readonly Annotation[]): Rect[] {
@@ -109,6 +112,7 @@ export function bounds(a: Annotation): Rect {
     case 'ellipse':
     case 'blur':
     case 'pixelate':
+    case 'cover':
       return { x: a.x, y: a.y, width: a.w, height: a.h };
     case 'line':
     case 'arrow':
@@ -177,6 +181,7 @@ export function hitTest(a: Annotation, x: Px, y: Px, tol = 6): boolean {
     }
     case 'blur':
     case 'pixelate':
+    case 'cover':
       return x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h;
     case 'ellipse': {
       const rx = a.w / 2 || 1;
@@ -336,6 +341,11 @@ function drawOne(ctx: AnnotationCtx, a: Annotation): void {
       ctx.beginPath();
       ctx.rect(a.x, a.y, a.w, a.h);
       ctx.stroke();
+      break;
+    case 'cover':
+      ctx.beginPath();
+      ctx.rect(a.x, a.y, a.w, a.h);
+      ctx.fill();
       break;
     case 'ellipse':
       ctx.beginPath();

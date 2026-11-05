@@ -30,4 +30,6 @@ export * from './sensitive.js';
 export * from './markdown.js';
 export * from './diff.js';
 export * from './docx.js';
+export * from './picdiff.js';
+export * from './pagenumbers.js';
 export * from './zip.js';

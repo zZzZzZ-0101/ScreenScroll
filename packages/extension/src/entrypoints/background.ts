@@ -4,6 +4,7 @@ import {
   blockedReason,
   narrowWindowTo,
   type CaptureLimits,
+  type Rect,
   type Region,
 } from '@screenscroll/core';
 import { db, deleteCapture, deleteOlderThan } from '@/shared/db';
@@ -27,6 +28,9 @@ export default defineBackground(() => {
   let pacer = new Pacer();
   // Captures rendered at a higher pixel density through the debugger (Settings → Sharpness).
   const sharp = new Map<string, { tabId: number; failed: boolean }>();
+  // Captures taken in the background (Settings → Scrolling: in background): the debugger
+  // pictures each region of the page's layout, so the page itself never scrolls.
+  const quietTabs = new Map<string, { tabId: number; scale: number }>();
   // Window of each running capture. Only a cache: the service worker can be stopped at any
   // time, so the session record in IndexedDB is the source of truth.
   const windowOf = new Map<string, number>();
@@ -68,7 +72,14 @@ export default defineBackground(() => {
     pacer = new Pacer({ ...CAPTURE_PACING, minIntervalMs: timing.intervalMs });
     const warnings: string[] = [];
     const scale = RESOLUTION_SCALE[settings.capture.resolution];
-    if (scale > 1) {
+    let quiet = false;
+    if (settings.capture.quiet && mode === 'full') {
+      const why = await startQuiet(id, tab.id, scale);
+      if (why) warnings.push(why);
+      else quiet = true;
+    }
+    // In the background the debugger renders at the chosen density itself.
+    if (scale > 1 && !quiet) {
       const why = await startSharp(id, tab.id, scale);
       if (why) warnings.push(why);
     }
@@ -98,10 +109,12 @@ export default defineBackground(() => {
         startAt: settings.capture.start,
         timing,
         lang: resolveLang(settings.language),
+        quiet,
         ...opts,
       });
     } catch (e) {
       await restoreWindow(id);
+      await stopQuiet(id);
       throw e;
     }
     return id;
@@ -209,6 +222,60 @@ export default defineBackground(() => {
     }
   }
 
+  async function startQuiet(sessionId: string, tabId: number, scale: number): Promise<string | null> {
+    if (!(await chrome.permissions.contains({ permissions: ['debugger'] })))
+      return 'Capturing in the background needs permission (choose “In background” in the panel again to allow it); captured by scrolling instead.';
+    try {
+      await chrome.debugger.attach({ tabId }, '1.3');
+      quietTabs.set(sessionId, { tabId, scale });
+      return null;
+    } catch (e) {
+      return `Capturing in the background was not possible (${e instanceof Error ? e.message : String(e)}); captured by scrolling instead.`;
+    }
+  }
+
+  async function stopQuiet(sessionId: string): Promise<void> {
+    const q = quietTabs.get(sessionId);
+    if (!q) return;
+    quietTabs.delete(sessionId);
+    await chrome.debugger.detach({ tabId: q.tabId }).catch(() => undefined);
+  }
+
+  /** One region of the page's layout, pictured without scrolling the page. */
+  async function grabQuiet(msg: GrabFrame & { clip: Rect }): Promise<GrabResult> {
+    const q = quietTabs.get(msg.sessionId);
+    if (!q) return { ok: false, error: 'Background capture is not running for this tab.' };
+    try {
+      const r = (await chrome.debugger.sendCommand({ tabId: q.tabId }, 'Page.captureScreenshot', {
+        format: 'png',
+        captureBeyondViewport: true,
+        clip: { ...msg.clip, scale: (msg.dpr ?? 1) * q.scale },
+      })) as { data: string };
+      const blob = dataUrlToBlob(`data:image/png;base64,${r.data}`);
+      const size = await pngSize(blob);
+      await (
+        await db()
+      ).put('frames', {
+        sessionId: msg.sessionId,
+        index: msg.index,
+        docY: msg.docY,
+        crop: { x: 0, y: 0, width: msg.clip.width, height: msg.clip.height },
+        dpr: size.width / msg.clip.width,
+        imageWidth: size.width,
+        imageHeight: size.height,
+        blob,
+        hints: msg.hints,
+        hintsMs: msg.hintsMs,
+      });
+      return { ok: true };
+    } catch (e) {
+      return {
+        ok: false,
+        error: `The background capture stopped (${e instanceof Error ? e.message : String(e)}). If you closed the debugging bar, capture again or choose “On screen”.`,
+      };
+    }
+  }
+
   async function stopSharp(sessionId: string): Promise<void> {
     const s = sharp.get(sessionId);
     if (!s) return;
@@ -249,6 +316,7 @@ export default defineBackground(() => {
   }
 
   async function grab(msg: GrabFrame, tabId?: number): Promise<GrabResult> {
+    if (msg.clip) return grabQuiet(msg as GrabFrame & { clip: Rect });
     let windowId = windowOf.get(msg.sessionId);
     if (windowId === undefined) {
       windowId = (await (await db()).get('sessions', msg.sessionId))?.windowId;
@@ -322,6 +390,7 @@ export default defineBackground(() => {
         'Sharp capture stopped part-way (the debugging bar was closed); the rest is at screen resolution.',
       );
     await stopSharp(msg.sessionId);
+    await stopQuiet(msg.sessionId);
     await restoreWindow(msg.sessionId);
     const d = await db();
     const session = await d.get('sessions', msg.sessionId);

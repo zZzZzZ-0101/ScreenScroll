@@ -299,5 +299,14 @@ test('compare two captures of a page: what was added, removed and edited', async
   const edit = sheet.locator('[data-change="edit"]');
   await expect(edit.locator('.line-through')).toHaveText('10');
   await expect(edit.locator('.bg-green-200')).toHaveText('12');
+  // Pictures: the changed lines are found row by row, shown before and after.
+  const pics = sheet.getByTestId('picture-summary');
+  await expect(pics).toContainText(/\d+ areas? looks? different/, { timeout: 30_000 });
+  await expect(pics.locator('[data-picture="del"] img').first()).toBeVisible();
+  await expect(pics.locator('[data-picture="add"] img').first()).toBeVisible();
+  // The heading and the unchanged first line are not a difference: the first area starts
+  // below them.
+  const first = await pics.locator('figcaption').first().textContent();
+  expect(Number(/^(\d+)/.exec(first ?? '')![1])).toBeGreaterThan(80);
   await sheet.screenshot({ path: 'e2e-artifacts/compare.png' });
 });

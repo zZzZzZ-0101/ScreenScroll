@@ -228,7 +228,18 @@ async function run(msg: StartCapture): Promise<void> {
       );
     }
     eagerLoadImages(log);
-    if (p.kind === 'region' || !p.visibleOnly) {
+    // In the background: only the page itself (the debugger pictures its layout, not the
+    // inside of a scroll area), and without the look-ahead pass, which scrolls.
+    // A scroll area inside the page is drawn in full for the capture (logged, put back
+    // after), so the debugger can picture it from the layout too.
+    const quiet = !!msg.quiet && p.kind === 'scroll' && !p.visibleOnly;
+    if (quiet && target.el && !expandForQuiet(log, target)) {
+      warnings.push(
+        'This part scrolls inside the page and could not be drawn in full, so it was captured by scrolling.',
+      );
+    }
+    const quietNow = quiet && (!target.el || expanded.has(target.el));
+    if (!quietNow && (p.kind === 'region' || !p.visibleOnly)) {
       const from = p.kind === 'region' ? p.region.y0 : 0;
       const to = p.kind === 'region' ? p.region.y1 : Infinity;
       const preload = await preloadPass(
@@ -266,7 +277,9 @@ async function run(msg: StartCapture): Promise<void> {
     const result =
       p.kind === 'region'
         ? await captureRegion(ctx, target, p.region)
-        : await captureScroll(ctx, target, p.visibleOnly);
+        : quietNow
+          ? await captureQuiet(ctx, target)
+          : await captureScroll(ctx, target, p.visibleOnly);
     status = result.status;
     size = result.size;
   } catch (e) {
@@ -386,10 +399,20 @@ async function grabFrame(
     crop: Rect;
     offset: number;
     pill: Extract<NextStep, { kind: 'scroll' }>['pill'];
+    /** How far the page's content has moved down since the capture began (measured after
+     * settling), taken off docY so every frame stays in the first frame's coordinates. */
+    shift?: () => number;
   },
 ): Promise<void> {
-  const { docY, crop, offset } = frame;
+  const { crop, offset } = frame;
   const stillLoading = await settle();
+  const docY = frame.docY - (frame.shift?.() ?? 0);
+  // Scroll anchoring may have moved the page while it settled: back to the planned offset
+  // before reading text positions, so text and pixels come from the same scroll position.
+  if (Math.abs(target.offset - offset) > 0.5) {
+    target.scrollTo(offset);
+    await frames(2);
+  }
   if (stillLoading > 0 && !ctx.warnings.includes(IMAGES_WARNING)) ctx.warnings.push(IMAGES_WARNING);
   // The pill hangs off <html>, outside the walk root, so it never appears in hints.
   ctx.hints.crop = crop;
@@ -459,6 +482,213 @@ function pillReserve(pill: Pill, box: Rect, x0: number, x1: number): PillReserve
 const stoppedWarning = (frames: number) =>
   `You stopped the capture after ${frames} screen${frames === 1 ? '' : 's'}; the rest was not captured.`;
 
+/**
+ * Background capture: the page stays where the user is. Each screen-sized region of the
+ * page's layout is read (text, line boxes) and pictured by the debugger in turn, top to
+ * bottom; nothing scrolls. Pages that size themselves to the window can look different
+ * when pictured this way, so a change in the page's height is reported.
+ */
+async function captureQuiet(ctx: LoopContext, target: Target): Promise<LoopResult> {
+  const el = target.el;
+  // An expanded scroll area: its content starts at its own top, laid out in full.
+  const box = el ? contentBox(el) : target.crop;
+  const height = () => (el ? el.scrollHeight : target.scrollHeight);
+  // Viewport y of content row 0 (the page's own scroll offset for the document).
+  const originY = () => (el ? contentBox(el).y : box.y - target.offset);
+  const limits = ctx.msg.limits ?? DEFAULT_LIMITS;
+  const startHeight = height();
+  let y = 0;
+  let index = 0;
+  for (; ; index++) {
+    if (ctx.cancelled()) throw new Cancelled();
+    if (ctx.stopped()) {
+      if (index === 0) throw new Cancelled();
+      ctx.warnings.push(stoppedWarning(index));
+      break;
+    }
+    const total = height();
+    if (y >= total - 0.5) break;
+    if (index >= limits.maxScreens || y >= limits.maxHeight) {
+      ctx.warnings.push(
+        `The page is longer than ScreenScroll captures at once; it stopped after ${index} screens (${Math.round(y)} px).`,
+      );
+      break;
+    }
+    const h = Math.min(innerHeight, total - y);
+    const stillLoading = await settle();
+    if (stillLoading > 0 && !ctx.warnings.includes(IMAGES_WARNING)) ctx.warnings.push(IMAGES_WARNING);
+    // The region in viewport coordinates (below the screen is fine: layout boxes exist).
+    const crop = { x: box.x, y: originY() + y, width: box.width, height: h };
+    ctx.hints.crop = crop;
+    ctx.hints.offset = y;
+    const t0 = performance.now();
+    const hints = collectHints(ctx.hints);
+    const hintsMs = performance.now() - t0;
+    ctx.pill.set(tr('Capturing in the background · screen {n}', { n: index + 1 }));
+    ctx.pill.canStop(index > 0);
+    // The pill is on the page: it would be pictured where the page is laid out.
+    ctx.pill.hide();
+    await frames(1);
+    const res = (await chrome.runtime.sendMessage({
+      type: 'sp:grab',
+      sessionId: ctx.msg.sessionId,
+      index,
+      docY: y,
+      crop: { x: 0, y: 0, width: box.width, height: h },
+      viewportWidth: box.width,
+      hints,
+      hintsMs,
+      clip: { x: box.x + scrollX, y: originY() + scrollY + y, width: box.width, height: h },
+      dpr: devicePixelRatio,
+    } satisfies GrabFrame)) as GrabResult;
+    ctx.pill.show();
+    if (!res.ok) throw new Error(res.error);
+    y += h;
+  }
+  if (Math.abs(height() - startHeight) > 2)
+    ctx.warnings.push(
+      'The page changed height while it was captured in the background; if something looks stretched or doubled, capture it on screen instead.',
+    );
+  return { status: 'complete', size: { width: box.width, height: y } };
+}
+
+const expanded = new WeakSet<Element>();
+
+/**
+ * Draws a scroll area in full for a background capture: its height becomes its content's,
+ * nothing clips it, and fixed or absolute boxes it sits in may grow downwards. Every change
+ * goes through the log, so the page is put back afterwards, and it is checked: when the
+ * area still scrolls, it is undone and false is returned.
+ */
+function expandForQuiet(log: MutationLog, target: Target): boolean {
+  const el = target.el as HTMLElement | null;
+  if (!el) return true;
+  const full = el.scrollHeight;
+  const before = log.size;
+  const grow = (e: HTMLElement, h: number | null) => {
+    if (h !== null) log.setStyle(e, 'height', `${h}px`);
+    log.setStyle(e, 'max-height', 'none');
+    log.setStyle(e, 'overflow', 'visible');
+    const cs = getComputedStyle(e);
+    if (cs.position === 'fixed' || cs.position === 'absolute') log.setStyle(e, 'bottom', 'auto');
+  };
+  const top = el.scrollTop;
+  log.record(() => {
+    el.scrollTop = top;
+  });
+  grow(el, full + (el.offsetHeight - el.clientHeight));
+  // Ancestors that clip or hold a fixed height would cut it off again.
+  for (let a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) {
+    const cs = getComputedStyle(a);
+    if (cs.overflowY !== 'visible' || cs.maxHeight !== 'none' || a === document.body) grow(a, null);
+    if (cs.height !== 'auto' && a.scrollHeight > a.clientHeight + 1) log.setStyle(a, 'height', 'auto');
+  }
+  log.setStyle(document.documentElement, 'overflow', 'visible');
+  // Fixed backdrops (a viewer's dark shade) only cover the window: below it the area would
+  // show the page behind. Its look on screen, made solid, goes with it instead.
+  const behind = seenBehind(el);
+  if (behind) log.setStyle(el, 'background-color', behind);
+  void el.offsetHeight;
+  const ok = el.scrollHeight <= el.clientHeight + 2;
+  if (!ok) {
+    log.restoreSince(before);
+    return false;
+  }
+  expanded.add(el);
+  return true;
+}
+
+/**
+ * The colour an element's background shows on screen: its own, over whatever is stacked
+ * behind it at its middle (backdrops and the page), composited until opaque.
+ */
+function seenBehind(el: Element): string | null {
+  const r = el.getBoundingClientRect();
+  const stack = document
+    .elementsFromPoint(r.left + Math.min(4, r.width / 2), r.top + Math.min(4, r.height / 2))
+    .filter((e) => e === el || !el.contains(e));
+  const start = stack.indexOf(el);
+  const layers = [el, ...stack.slice(start + 1), document.documentElement];
+  // Front to back: remaining = how much of what is behind still shows through.
+  let [cr, cg, cb, remaining] = [0, 0, 0, 1];
+  for (const e of layers) {
+    const c = parseColor(getComputedStyle(e).backgroundColor);
+    if (!c || c[3] === 0) continue;
+    const a = c[3] * remaining;
+    cr += c[0] * a;
+    cg += c[1] * a;
+    cb += c[2] * a;
+    remaining *= 1 - c[3];
+    if (remaining < 0.01) break;
+  }
+  // The canvas behind everything is white.
+  cr += 255 * remaining;
+  cg += 255 * remaining;
+  cb += 255 * remaining;
+  const own = parseColor(getComputedStyle(el).backgroundColor);
+  if (own && own[3] === 1) return null;
+  return `rgb(${Math.round(cr)}, ${Math.round(cg)}, ${Math.round(cb)})`;
+}
+
+function parseColor(css: string): [number, number, number, number] | null {
+  const m = /rgba?\(([^)]+)\)/.exec(css);
+  if (!m) return null;
+  const p = m[1]!.split(/[\s,/]+/).filter(Boolean).map(Number);
+  return [p[0]!, p[1]!, p[2]!, p[3] ?? 1];
+}
+
+/** The content box of an element, in viewport CSS px (inside borders, no scrollbar). */
+function contentBox(el: Element): Rect {
+  const r = el.getBoundingClientRect();
+  const cs = getComputedStyle(el);
+  const left = parseFloat(cs.borderLeftWidth) || 0;
+  const top = parseFloat(cs.borderTopWidth) || 0;
+  return { x: r.left + left, y: r.top + top, width: el.clientWidth, height: el.clientHeight };
+}
+
+/**
+ * Two elements of the captured scroller, at the bottom edge and halfway up what this frame
+ * kept, that sit in normal flow: not fixed, sticky or absolutely placed, nor transformed
+ * (virtual lists move recycled rows that way), nor inside such. Two, so a shift is believed
+ * only when both moved the same way.
+ */
+function pickAnchors(
+  root: Element | null,
+  box: Rect,
+  top: number,
+  bottom: number,
+  absTop: (el: Element) => number,
+): Array<{ el: Element; y: number }> {
+  const out: Array<{ el: Element; y: number }> = [];
+  for (const y of [box.y + bottom - 3, box.y + (top + bottom) / 2]) {
+    let found: Element | null = null;
+    for (const fx of [0.5, 0.3, 0.7]) {
+      for (const el of document.elementsFromPoint(box.x + box.width * fx, y)) {
+        if (root && !root.contains(el)) continue;
+        if (out.some((a) => a.el === el)) continue;
+        const r = el.getBoundingClientRect();
+        if (r.height < 2 || r.height > box.height * 0.8) continue;
+        if (inFlow(el, root)) {
+          found = el;
+          break;
+        }
+      }
+      if (found) break;
+    }
+    if (found) out.push({ el: found, y: absTop(found) });
+  }
+  return out.length === 2 ? out : [];
+}
+
+function inFlow(el: Element, root: Element | null): boolean {
+  for (let a: Element | null = el; a && a !== root && a !== document.body; a = a.parentElement) {
+    const cs = getComputedStyle(a);
+    if (cs.position !== 'static' && cs.position !== 'relative') return false;
+    if (cs.transform !== 'none') return false;
+  }
+  return true;
+}
+
 /** Full page or visible area of a scroll target (CAPTURE §2, §9). */
 async function captureScroll(
   ctx: LoopContext,
@@ -472,6 +702,22 @@ async function captureScroll(
   const start = visibleOnly ? target.offset : 0;
   let covered: number | null = null;
   let lastOffset: number | null = null;
+  // Seam check: content loaded or resized above the screen (lazy timelines, ads) moves
+  // everything below, and the browser's scroll anchoring follows it, so scroll offsets no
+  // longer match what was captured before. An element at the last frame's bottom edge is
+  // the anchor: how far it moved is how far this frame must be moved back.
+  let shift = 0;
+  let anchors: Array<{ el: Element; y: number }> = [];
+  const absTop = (el: Element) => el.getBoundingClientRect().top - box.y + target.offset;
+  const measureShift = () => {
+    if (anchors.length === 2 && anchors.every((a) => a.el.isConnected)) {
+      const [d1, d2] = anchors.map((a) => absTop(a.el) - a.y) as [number, number];
+      // Both moved, the same way: content above changed size. Anything else (a recycled
+      // row, one element resized) is not a reason to move the frame.
+      if (Math.abs(d1) >= 1 && Math.abs(d1 - d2) <= 1) shift += d1;
+    }
+    return shift;
+  };
   for (let index = 0; ; index++) {
     if (ctx.cancelled()) throw new Cancelled();
     if (ctx.stopped()) {
@@ -512,11 +758,20 @@ async function captureScroll(
       crop: { x: box.x, y: box.y + top, width: box.width, height: bottom - top },
       offset: measured,
       pill: step.pill,
+      shift: visibleOnly ? undefined : measureShift,
     });
     covered = Math.max(covered ?? 0, measured + bottom);
     lastOffset = measured;
+    if (!visibleOnly) anchors = pickAnchors(target.el, box, top, bottom, absTop);
   }
-  return { status: 'complete', size: { width: box.width, height: target.scrollHeight } };
+  if (Math.round(shift) !== 0)
+    ctx.warnings.push(
+      `The page moved by ${Math.round(Math.abs(shift))} px while capturing (something above loaded or changed size); the screens were lined up again at the seams.`,
+    );
+  return {
+    status: 'complete',
+    size: { width: box.width, height: target.scrollHeight - shift },
+  };
 }
 
 /** Selection and element modes: only the region, stitched across as many frames as needed. */

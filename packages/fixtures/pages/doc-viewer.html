@@ -12,7 +12,11 @@
   /* The viewer scrolls; sheets sit left of centre with dark gaps, like the screenshot. */
   #viewer { position: fixed; top: 56px; bottom: 0; left: 0; right: 0; overflow-y: auto; }
   .sheet { background: #fff; width: 760px; height: 1075px; margin: 18px 0 18px 140px; padding: 60px 64px;
-    box-sizing: border-box; overflow: hidden; }
+    box-sizing: border-box; overflow: hidden; position: relative; }
+  /* The document's own page numbers: these six are pages 5–10 of a 12-page file. */
+  /* A running header, the same on every page. */
+  .rh { position: absolute; left: 64px; right: 64px; top: 22px; font-size: 11px; color: #666; }
+  .pn { position: absolute; left: 0; right: 0; bottom: 28px; text-align: center; font-size: 12px; color: #444; }
   .sheet h2 { margin: 0 0 16px; font-size: 18px; text-align: center; }
   .sheet table { border-collapse: collapse; width: 100%; margin-top: 12px; }
   .sheet th { background: #222; color: #fff; padding: 6px; }
@@ -33,11 +37,12 @@
   for (let i = 1; i <= 6; i++) {
     viewer.insertAdjacentHTML(
       'beforeend',
-      `<div class="sheet"><h2>Document page ${i}</h2><p>${para(12)}</p>` +
+      `<div class="sheet"><div class="rh">Answer Scheme · Internal use only</div><h2>Document page ${i}</h2><p>${para(12)}</p>` +
         (i === 3
           ? `<table><tr><th>From the text</th><th>Answer</th></tr><tr><td>${para(4)}</td><td>${para(6)}</td></tr></table>`
           : `<p>${para(18)}</p>`) +
-        `<p style="margin-top:40px">End of document page ${i}.</p></div>`,
+        `<p style="margin-top:40px">End of document page ${i}.</p>` +
+        `<div class="pn">Page ${i + 4} of 12</div></div>`,
     );
   }
 </script>

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Shifting page fixture</title>
+<style>
+  body { margin: 0; font: 16px/20px Arial, sans-serif; }
+  .row { height: 40px; box-sizing: border-box; padding: 10px 24px; border-bottom: 1px solid #ddd; }
+  #late { height: 137px; background: #fde68a; }
+</style></head>
+<body>
+<div id="rows"></div>
+<script>
+  // Like a timeline that loads more above as you read: the second time the page is scrolled
+  // past 1200 px (the first pass is the capture's look-ahead for lazy images), 137 px
+  // appear at the top. Chrome's scroll anchoring then moves the scroll position.
+  document.getElementById('rows').innerHTML = Array.from(
+    { length: 150 },
+    (_, i) => `<div class="row">Row ${i}</div>`,
+  ).join('');
+  let done = false;
+  let passes = 0;
+  let below = true;
+  addEventListener('scroll', () => {
+    if (scrollY < 1200) {
+      below = true;
+      return;
+    }
+    if (below) passes++;
+    below = false;
+    if (done || passes < 2) return;
+    done = true;
+    const late = document.createElement('div');
+    late.id = 'late';
+    late.textContent = 'Loaded late';
+    document.body.prepend(late);
+  });
+</script>
+</body>
+</html>
