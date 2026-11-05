@@ -1,4 +1,4 @@
-import { ArchiveRestore, Download, ExternalLink, Files, ImageUp, Search, Trash2 } from 'lucide-react';
+import { ArchiveRestore, Download, ExternalLink, Files, FolderOpen, ImageUp, Search, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { deleteCapture, deleteOlderThan, listCaptures, type StoredCapture } from '@/shared/db';
 import { loadSettings, saveSettings } from '@/shared/settings';
@@ -40,6 +40,66 @@ export function App() {
     const est = await navigator.storage?.estimate?.();
     if (est) setQuota({ usage: est.usage ?? 0, quota: est.quota ?? 0 });
   }, []);
+
+  /**
+   * One image opens in the Studio. Several (or a folder) become one capture each, in name
+   * order ("2" before "10"), and the Merge sheet opens with them: one PDF, a bookmark per file.
+   */
+  const openFiles = async (all: File[], folder = false) => {
+    const files = all
+      .filter((f) => !folder || /\.(png|jpe?g|webp)$/i.test(f.name))
+      .sort((a, b) =>
+        (a.webkitRelativePath || a.name).localeCompare(b.webkitRelativePath || b.name, undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        }),
+      );
+    if (!files.length) {
+      if (all.length || folder) setNote(t('No PNG, JPEG or WebP images there.'));
+      return;
+    }
+    if (files.length === 1) {
+      setNote(t('Opening {name}…', { name: files[0]!.name }));
+      try {
+        const id = await importImage(files[0]!);
+        setNote(null);
+        void refresh();
+        void chrome.tabs.create({
+          url: chrome.runtime.getURL(`/studio.html?session=${encodeURIComponent(id)}`),
+        });
+      } catch (err) {
+        setNote(err instanceof Error ? err.message : String(err));
+      }
+      return;
+    }
+    setBusy(true);
+    const ids: string[] = [];
+    const failed: string[] = [];
+    for (const [i, f] of files.entries()) {
+      setNote(t('Opening {n} of {total}: {name}…', { n: i + 1, total: files.length, name: f.name }));
+      try {
+        ids.push(await importImage(f));
+      } catch {
+        failed.push(f.name);
+      }
+    }
+    setBusy(false);
+    const list = await listCaptures();
+    setItems(list);
+    const opened = ids
+      .map((id) => list.find((c) => c.session.id === id))
+      .filter((c): c is StoredCapture => !!c);
+    setSelected(new Set(ids));
+    setNote(
+      failed.length
+        ? t('{n} opened; not images this browser can open: {names}.', {
+            n: opened.length,
+            names: failed.join(', '),
+          })
+        : t('{n} opened, in name order.', { n: opened.length }),
+    );
+    if (opened.length > 1) setMerging(opened);
+  };
 
   useEffect(() => {
     document.title = 'Saved captures · ScreenScroll';
@@ -123,32 +183,40 @@ export function App() {
         </label>
       </section>
 
-      <div className="mt-4 flex items-center gap-2">
+      <div className="mt-4 flex flex-wrap items-center gap-2 [&>*]:whitespace-nowrap">
         <label
           className="flex cursor-pointer items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 focus-within:outline-2 focus-within:outline-accent dark:border-neutral-700 dark:hover:bg-neutral-800"
-          title={t('Open a long screenshot (PNG, JPEG, WebP) as a capture')}
+          title={t('Open a long screenshot (PNG, JPEG, WebP) as a capture; pick several to put them in one PDF')}
         >
-          <ImageUp aria-hidden size={15} /> Open an image
+          <ImageUp aria-hidden size={15} /> {t('Open images')}
           <input
             type="file"
+            multiple
             accept="image/png,image/jpeg,image/webp"
-            aria-label={t('Open an image file')}
+            aria-label={t('Open image files')}
             className="sr-only"
             onChange={(e) => {
-              const file = e.target.files?.[0];
+              const files = [...(e.target.files ?? [])];
               e.target.value = '';
-              if (!file) return;
-              setNote(`Opening ${file.name}…`);
-              importImage(file).then(
-                (id) => {
-                  setNote(null);
-                  void refresh();
-                  void chrome.tabs.create({
-                    url: chrome.runtime.getURL(`/studio.html?session=${encodeURIComponent(id)}`),
-                  });
-                },
-                (err: unknown) => setNote(err instanceof Error ? err.message : String(err)),
-              );
+              void openFiles(files);
+            }}
+          />
+        </label>
+        <label
+          className="flex cursor-pointer items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 focus-within:outline-2 focus-within:outline-accent dark:border-neutral-700 dark:hover:bg-neutral-800"
+          title={t('Open every image in a folder, in name order, to put them in one PDF')}
+        >
+          <FolderOpen aria-hidden size={15} /> {t('Open a folder')}
+          <input
+            type="file"
+            // Folder picking is not in React's input typings.
+            {...{ webkitdirectory: '' }}
+            aria-label={t('Open a folder of images')}
+            className="sr-only"
+            onChange={(e) => {
+              const files = [...(e.target.files ?? [])];
+              e.target.value = '';
+              void openFiles(files, true);
             }}
           />
         </label>
@@ -203,7 +271,7 @@ export function App() {
             }}
           />
         </label>
-        <label className="flex flex-1 items-center gap-2 rounded-md border border-neutral-300 bg-white px-2 py-1 dark:border-neutral-700 dark:bg-neutral-900">
+        <label className="flex min-w-56 flex-1 items-center gap-2 rounded-md border border-neutral-300 bg-white px-2 py-1 dark:border-neutral-700 dark:bg-neutral-900">
           <Search aria-hidden size={15} className="text-neutral-500" />
           <input
             type="search"

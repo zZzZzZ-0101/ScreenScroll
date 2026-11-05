@@ -135,7 +135,10 @@ export const ZH_CN: Record<string, string> = {
   'Edit pages': '编辑页面',
   'CSS px of the capture. The pages update as you change a number.':
     '单位是截图的 CSS 像素。改动数字时页面会立即更新。',
-  'Back to the best reading': '回到最佳识别结果',
+  'Back to automatic': '恢复自动',
+  Automatic: '自动',
+  'found from the gaps': '按页间空白识别',
+  'no document pages': '不分文档页',
   'A document? Set its pages by hand': '是文档？手动设置页面',
   'Text prints at {pt}': '正文印出来约 {pt}',
   'Text prints at {pt}: small': '正文印出来约 {pt}：偏小',
@@ -172,8 +175,20 @@ export const ZH_CN: Record<string, string> = {
     '只保存在本机，从不上传。打开一个即可再次编辑或导出。',
   'Search captures': '搜索截图',
   'Search titles, addresses and page text': '搜索标题、网址和页面文字',
-  'Open a long screenshot (PNG, JPEG, WebP) as a capture': '把长截图 (PNG、JPEG、WebP) 作为截图打开',
-  'Open an image file': '打开图片文件',
+  'Open image files': '打开图片文件',
+  'Open images': '打开图片',
+  'Open a folder': '打开文件夹',
+  'Open a folder of images': '打开图片文件夹',
+  'Open a long screenshot (PNG, JPEG, WebP) as a capture; pick several to put them in one PDF':
+    '把长截图（PNG、JPEG、WebP）打开为一份截图；选多张可合成一个 PDF',
+  'Open every image in a folder, in name order, to put them in one PDF':
+    '按文件名顺序打开文件夹里的所有图片，合成一个 PDF',
+  'No PNG, JPEG or WebP images there.': '那里没有 PNG、JPEG 或 WebP 图片。',
+  'Opening {name}…': '正在打开 {name}…',
+  'Opening {n} of {total}: {name}…': '正在打开第 {n}/{total} 个：{name}…',
+  '{n} opened; not images this browser can open: {names}.':
+    '已打开 {n} 个；以下文件浏览器无法作为图片打开：{names}。',
+  '{n} opened, in name order.': '已按文件名顺序打开 {n} 个。',
   'Save captures, images included, to one file (the selected ones, or all)':
     '把截图（含图片）保存成一个文件（选中的，或全部）',
   'Add the captures from a backup file': '从备份文件添加截图',
@@ -341,6 +356,7 @@ export const ZH_CN: Record<string, string> = {
   "Pages as WebP images (zip)": "每页存为 WebP 图片（zip）",
   "One long image (PNG)": "一张长图（PNG）",
   "Text (Markdown)": "文字（Markdown）",
+  "Text (Word .docx)": "文字（Word .docx）",
   "Copy this page": "复制本页",
   "Print": "打印",
   "Pages per sheet": "每张纸的页数",

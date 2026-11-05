@@ -132,7 +132,7 @@ test('a document viewer: one PDF page per document page, cropped to the page', a
   await expect.poll(async () => (await slices(studio)).some((s) => s.x0 < 10)).toBe(true);
 });
 
-test('document pages: ranked readings, then edit by hand with ±1 px steps, back to the best reading', async ({
+test('document pages: ranked readings, edit by hand with ±1 px steps, and back to automatic at any time', async ({
   context,
   serviceWorker,
 }) => {
@@ -152,10 +152,11 @@ test('document pages: ranked readings, then edit by hand with ±1 px steps, back
   const studio = await studioPromise;
   await studio.setViewportSize({ width: 1400, height: 900 });
   await expect(studio.getByTestId('sheets')).toContainText('6 pages', { timeout: 60_000 });
-  // The ways to read the pages, best first with its probability; the gaps reading is chosen.
+  // The ways to read the pages, best first with its probability; Automatic (here: the gaps)
+  // is chosen.
   const doc = studio.getByTestId('sheets');
-  const gaps = doc.getByRole('radio', { name: /Found from the gaps/ });
-  await expect(gaps).toBeChecked();
+  const auto = doc.getByRole('radio', { name: /Automatic · found from the gaps/ });
+  await expect(auto).toBeChecked();
   const pct = Number(/(\d+)%/.exec((await doc.textContent()) ?? '')![1]);
   expect(pct).toBeGreaterThanOrEqual(50);
 
@@ -180,9 +181,24 @@ test('document pages: ranked readings, then edit by hand with ±1 px steps, back
   expect(got.every((s) => s.overlapTop === 0)).toBe(true);
   await doc.screenshot({ path: 'e2e-artifacts/sheet-grid.png' });
 
-  await card.getByRole('button', { name: 'Back to the best reading' }).click();
+  await card.getByRole('button', { name: 'Back to automatic' }).click();
   await expect(studio.getByTestId('sheet-grid')).toHaveCount(0);
-  await expect(gaps).toBeChecked();
+  await expect(auto).toBeChecked();
+  expect(await slices(studio)).toHaveLength(6);
+
+  // Nothing is one-way: hand-set pages, closed editor, and Automatic is still one click away.
+  await doc.getByRole('button', { name: 'Edit pages' }).click();
+  await card.getByRole('spinbutton', { name: 'Page height' }).fill('500');
+  await card.getByRole('button', { name: 'Done' }).click();
+  await expect(doc.getByRole('radio', { name: 'Set by hand' })).toBeChecked();
+  // Turning document pages off keeps the hand-set pages; turning them on brings them back.
+  const follow = doc.getByRole('checkbox', { name: 'One PDF page per document page' });
+  await follow.uncheck();
+  await expect.poll(async () => (await slices(studio)).some((s) => s.x0 < 10)).toBe(true);
+  await follow.check();
+  await expect(doc).toContainText(/1[23] pages/);
+  await auto.check();
+  await expect(doc).toContainText('6 pages');
   expect(await slices(studio)).toHaveLength(6);
 });
 

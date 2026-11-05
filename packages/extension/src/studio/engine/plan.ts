@@ -80,7 +80,7 @@ export function planPages(
   // Pages set by hand win over detected ones and apply even when nothing was detected.
   const grid = project.sheetGrid ? gridSheets(project.sheetGrid, session.height) : null;
   const sheets = grid ?? analysis.sheets ?? confidentReading(analysis.readings)?.layout ?? null;
-  if (sheets && (grid || settings.followSheets) && !manual) {
+  if (sheets && settings.followSheets && !manual) {
     try {
       // As the original: the page's own paper, edge to edge, without our page labels.
       const hs = sheets.sheets.map((s) => s.y1 - s.y0).sort((a, b) => a - b);

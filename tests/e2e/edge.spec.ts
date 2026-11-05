@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import type { BrowserContext, Page, Worker } from '@playwright/test';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { PDFDocument } from 'pdf-lib';
@@ -767,7 +768,10 @@ test('Pages: the printed text size, and one-click fixes when it is small', async
   const promised = Number(/(\d+\.\d) pt/.exec((await turn.textContent()) ?? '')![1]);
   expect(promised).toBeGreaterThan(9);
   await turn.click();
-  await expect(card).toHaveText(`Text prints at ${promised.toFixed(1)} pt`);
+  await expect(card).toHaveText(`Text prints at ${promised.toFixed(1)} ptUndo`);
+  // And back: the fix is never one-way.
+  await card.getByRole('button', { name: 'Undo' }).click();
+  await expect(card.getByRole('button', { name: /Landscape: \d+\.\d pt/ })).toBeVisible();
 });
 
 test('Save → Text (Markdown): headings and paragraphs from the page text', async ({
@@ -791,6 +795,28 @@ test('Save → Text (Markdown): headings and paragraphs from the page text', asy
   // Paragraphs are whole: no line breaks inside one.
   const para = md.split('\n\n').find((p) => p.startsWith('Reader page header'))!;
   expect(para).not.toContain('\n');
+});
+
+test('Save → Text (Word .docx): a package with heading styles', async ({
+  context,
+  serviceWorker,
+}) => {
+  const studio = await capture(context, serviceWorker, 'article.html');
+  const dl = studio.waitForEvent('download');
+  await studio.getByRole('button', { name: 'More ways to save' }).click();
+  await studio.getByRole('menuitem', { name: 'Text (Word .docx)' }).click();
+  const d = await dl;
+  expect(d.suggestedFilename()).toMatch(/\.docx$/);
+  const file = await d.path();
+  mkdirSync('e2e-artifacts', { recursive: true });
+  writeFileSync('e2e-artifacts/article.docx', readFileSync(file));
+  expect(execFileSync('unzip', ['-t', file]).toString()).toMatch(/No errors detected/);
+  const xml = execFileSync('unzip', ['-p', file, 'word/document.xml']).toString();
+  expect(xml).toMatch(
+    /<w:pStyle w:val="Heading1"\/><\/w:pPr><w:r><w:t xml:space="preserve">Article fixture</,
+  );
+  expect(xml).toContain('Section 1: Scroll break');
+  expect(xml).toContain('See section 4 or the reference.');
 });
 
 test('Pages per sheet: two to a landscape sheet, text still searchable', async ({

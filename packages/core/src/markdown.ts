@@ -6,11 +6,32 @@ import type { Heading, TextRun } from './hints.js';
  * gap, the page's h1–h3 become #-headings, bullet characters become list items, and
  * document pages are separated by a rule.
  */
+/** The capture's text as structure, shared by Markdown and Word output. */
+export type TextBlock =
+  | { kind: 'heading'; level: number; text: string }
+  | { kind: 'paragraph'; text: string }
+  | { kind: 'item'; text: string }
+  | { kind: 'pageBreak' };
+
 export function textToMarkdown(
   runs: readonly TextRun[],
   headings: readonly Heading[] = [],
   pages: ReadonlyArray<{ y0: number; y1: number }> = [],
 ): string {
+  const out = textBlocks(runs, headings, pages).map((b) => {
+    if (b.kind === 'heading') return `${'#'.repeat(b.level)} ${escape(b.text)}`;
+    if (b.kind === 'item') return `- ${escape(b.text)}`;
+    if (b.kind === 'pageBreak') return '---';
+    return escape(b.text);
+  });
+  return out.join('\n\n') + '\n';
+}
+
+export function textBlocks(
+  runs: readonly TextRun[],
+  headings: readonly Heading[] = [],
+  pages: ReadonlyArray<{ y0: number; y1: number }> = [],
+): TextBlock[] {
   // Whether the raw text had a space at either end: a run's box includes a trailing space,
   // so geometry alone can't tell "the reference." from "See section".
   const items = runs
@@ -64,17 +85,21 @@ export function textToMarkdown(
   }
 
   const pageOf = (y: number) => pages.findIndex((p) => y >= p.y0 && y < p.y1);
-  const out: string[] = [];
+  const out: TextBlock[] = [];
   let para: string[] = [];
   const flush = () => {
-    if (para.length) out.push(para.join(' ').replace(/ (?=[\u3000-\u9fff\uff00-\uffef])/g, ''));
+    if (para.length)
+      out.push({
+        kind: 'paragraph',
+        text: para.join(' ').replace(/ (?=[\u3000-\u9fff\uff00-\uffef])/g, ''),
+      });
     para = [];
   };
   let prev: Line | null = null;
   for (const l of lines) {
     if (prev && pages.length && pageOf(l.top) !== pageOf(prev.top)) {
       flush();
-      out.push('---');
+      if (out.length && out.at(-1)!.kind !== 'pageBreak') out.push({ kind: 'pageBreak' });
       prev = null;
     }
     const heading = headings.find(
@@ -87,22 +112,22 @@ export function textToMarkdown(
     const size = prev ? Math.abs(l.height - prev.height) / Math.max(l.height, prev.height) : 0;
     if (heading) {
       flush();
-      out.push(`${'#'.repeat(heading.level)} ${escape(l.text)}`);
+      out.push({ kind: 'heading', level: heading.level, text: l.text });
       prev = l;
       continue;
     }
     if (bullet) {
       flush();
-      out.push(`- ${escape(l.text.slice(bullet[0].length))}`);
+      out.push({ kind: 'item', text: l.text.slice(bullet[0].length) });
       prev = l;
       continue;
     }
     if (!prev || gap > 0.6 * l.height || size > 0.2) flush();
-    para.push(escape(l.text));
+    para.push(l.text);
     prev = l;
   }
   flush();
-  return out.join('\n\n').replace(/\n\n---\n\n---/g, '\n\n---') + '\n';
+  return out;
 }
 
 function lineKey(r: TextRun): number {
