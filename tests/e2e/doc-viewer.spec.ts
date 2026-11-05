@@ -163,6 +163,16 @@ test('a document viewer: one PDF page per document page, cropped to the page', a
     await pg.render({ canvas: c as never, viewport: v }).promise;
     writeFileSync('e2e-artifacts/doc-viewer-renumbered-p1.png', c.toBuffer('image/png'));
   }
+  // The running header is found too; hidden, it leaves the PDF's text as well.
+  const running = card.getByTestId('running-lines');
+  await expect(running).toContainText('Answer Scheme · Internal use only');
+  expect(await text1(renumbered)).toContain('Answer Scheme');
+  await running.getByRole('checkbox', { name: 'Hide headers and footers' }).check();
+  const dl3 = studio.waitForEvent('download');
+  await studio.getByRole('button', { name: 'Save PDF' }).click();
+  const noHeader = new Uint8Array(readFileSync(await (await dl3).path()));
+  expect(await text1(noHeader)).not.toContain('Answer Scheme');
+  await running.getByRole('checkbox', { name: 'Hide headers and footers' }).uncheck();
   // And back: unticked, the document's own numbers return.
   await numbers.getByRole('checkbox', { name: 'Number from 1' }).uncheck();
 
