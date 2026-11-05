@@ -147,6 +147,10 @@ export interface SheetsCardProps {
   onOriginal: (on: boolean) => void;
   /** Sets the pages by hand (mode becomes "grid"). */
   onGrid: (g: SheetGrid) => void;
+  /** The document's own page numbers, when found, and what to do with them. */
+  numbers: { first: number; last: number; total: number | null } | null;
+  numberChoice: { hide?: boolean; renumber?: boolean };
+  onNumbers: (c: { hide?: boolean; renumber?: boolean }) => void;
 }
 
 /** Field, short label, full name (accessible name and tooltip). */
@@ -344,6 +348,40 @@ function SheetsCard(props: SheetsCardProps) {
             )}
           </span>
         </label>
+      )}
+      {p.mode !== 'original' && p.numbers && (
+        <div className="pt-1 text-neutral-600 dark:text-neutral-300" data-testid="page-numbers">
+          <p className="text-[12px]">
+            {p.numbers.total
+              ? t('Page numbers found: {a}–{b} of {n}', {
+                  a: p.numbers.first,
+                  b: p.numbers.last,
+                  n: p.numbers.total,
+                })
+              : t('Page numbers found: {a}–{b}', { a: p.numbers.first, b: p.numbers.last })}
+          </p>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={!!p.numberChoice.hide}
+              onChange={(e) => p.onNumbers({ ...p.numberChoice, hide: e.target.checked })}
+              className="accent-[#0e7c7b]"
+            />
+            {t('Hide them')}
+          </label>
+          <label
+            className="flex items-center gap-2"
+            title={t('Write each page’s place in this capture instead, in the same words')}
+          >
+            <input
+              type="checkbox"
+              checked={!!p.numberChoice.renumber}
+              onChange={(e) => p.onNumbers({ ...p.numberChoice, renumber: e.target.checked })}
+              className="accent-[#0e7c7b]"
+            />
+            {t('Number from 1')}
+          </label>
+        </div>
       )}
       {!editing ? (
         <div className="mt-1 flex gap-1">

@@ -2,6 +2,8 @@ import {
   buildFilename,
   commit,
   DEFAULT_STYLE,
+  findPageNumbers,
+  pageNumberAnnotations,
   confidentReading,
   gridOf,
   breaksToCheck,
@@ -198,6 +200,26 @@ export function App() {
     };
   }, [session, project]);
 
+  // The document's own page numbers (document pages only), and what hiding or renumbering
+  // them draws on export: derived, never stored, so either switch turns back exactly.
+  const pageNumbers = useMemo(
+    () =>
+      session && result?.ok && result.sheets
+        ? findPageNumbers(result.debug.slices, session.hints.textRuns)
+        : null,
+    [session, result],
+  );
+  const outAnns = useMemo(
+    () => [
+      ...annotations,
+      ...pageNumberAnnotations(
+        pageNumbers,
+        project.pageNumbers,
+        result?.ok ? result.debug.slices.length : 0,
+      ),
+    ],
+    [annotations, pageNumbers, project.pageNumbers, result],
+  );
   const changeProject = useCallback(
     (patch: Partial<Project>) => setHistory((h) => commit(h, { ...h.present, ...patch })),
     [],
@@ -345,7 +367,7 @@ export function App() {
         const spec = QUALITY[settings.exportPreset];
         const scale = exportScale(session.dpr, result.layout.s, spec);
         const img = await encodePage(
-          await composePage(session, f, slices[i]!, scale, annotations, settings.pdf.filter),
+          await composePage(session, f, slices[i]!, scale, outAnns, settings.pdf.filter),
           slices[i]!,
           spec,
         );
@@ -357,7 +379,7 @@ export function App() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [session, result, settings, slices, annotations]);
+  }, [session, result, settings, slices, outAnns]);
 
   // The UI changes at once; writes are queued so they land in order (fast typing in a text
   // field would otherwise lose characters, or an older write could finish last).
@@ -424,7 +446,7 @@ export function App() {
               settings.exportPreset,
               pdfFor(settings, result),
               progress,
-              annotations,
+              outAnns,
               pageOcr,
             );
             return saved(
@@ -441,7 +463,7 @@ export function App() {
               settings.exportPreset,
               pdfFor(settings, result),
               progress,
-              annotations,
+              outAnns,
               pageOcr,
             );
             return saved(
@@ -459,7 +481,7 @@ export function App() {
               settings.exportPreset,
               result.sheets,
               progress,
-              annotations,
+              outAnns,
               pageOcr,
               format,
             );
@@ -485,7 +507,7 @@ export function App() {
               format,
               base,
               progress,
-              annotations,
+              outAnns,
               settings.pdf.filter,
             );
             return saved(
@@ -500,7 +522,7 @@ export function App() {
               crop,
               'png',
               progress,
-              annotations,
+              outAnns,
               { y0: slices[0]!.y0, y1: slices.at(-1)!.y1 },
               settings.pdf.filter,
             );
@@ -525,7 +547,7 @@ export function App() {
         }
       });
     },
-    [session, result, settings, slices, filename, run, annotations, pageOcr],
+    [session, result, settings, slices, filename, run, outAnns, pageOcr],
   );
 
   const doPrint = useCallback(async () => {
@@ -541,21 +563,21 @@ export function App() {
           settings.exportPreset,
           pdfFor(settings, result),
           progress,
-          annotations,
+          outAnns,
           pageOcr,
         ),
       );
     });
-  }, [session, result, settings, slices, run, annotations, pageOcr]);
+  }, [session, result, settings, slices, run, outAnns, pageOcr]);
 
   const doCopy = useCallback(async () => {
     if (!session || !frames.current || !slices[page]) return;
     const f = frames.current;
     await run('Copying', async () => {
-      await copyPageImage(session, f, slices[page]!, annotations, settings?.pdf.filter);
+      await copyPageImage(session, f, slices[page]!, outAnns, settings?.pdf.filter);
       return `Page ${page + 1} copied as an image`;
     });
-  }, [session, slices, page, run, annotations, settings]);
+  }, [session, slices, page, run, outAnns, settings]);
 
   const doDebug = useCallback(async () => {
     if (!session || !analysis || !result || !result.ok) return;
@@ -591,7 +613,7 @@ export function App() {
         crop,
         'png',
         undefined,
-        annotations,
+        outAnns,
         range,
         settings.pdf.filter,
       );
@@ -601,7 +623,7 @@ export function App() {
       const px = (v: number) => Math.round(v * session.dpr);
       return `Copied as an image · ${px(crop.x1 - crop.x0)} × ${px(range.y1 - range.y0)} px`;
     });
-  }, [session, result, settings, slices, run, annotations]);
+  }, [session, result, settings, slices, run, outAnns]);
 
   // UI §1 fast path (and area mode's PDF and Copy): do it, say so on the captured page, and
   // close this tab. On failure the tab stays open with the reason.
@@ -785,6 +807,11 @@ export function App() {
           original: result.ok ? (result.original ?? null) : null,
           onOriginal: (docOriginal) => updateSettings({ docOriginal }),
           onGrid: (sheetGrid) => changeProject({ sheetGrid, pages: 'grid' }),
+          numbers: pageNumbers
+            ? { first: pageNumbers.first, last: pageNumbers.last, total: pageNumbers.total }
+            : null,
+          numberChoice: project.pageNumbers ?? {},
+          onNumbers: (pn) => changeProject({ pageNumbers: pn }),
         }}
         estimate={estimate}
         ocr={{
@@ -989,7 +1016,7 @@ export function App() {
                 slices={slices}
                 page={page}
                 onSelect={setPage}
-                annotations={annotations}
+                annotations={outAnns}
                 filter={settings.pdf.filter}
               />
             )}
@@ -1015,7 +1042,7 @@ export function App() {
                   layout={result.layout}
                   page={page}
                   onSelect={setPage}
-                  annotations={annotations}
+                  annotations={outAnns}
                   zoom={zoom}
                   onZoom={changeZoom}
                   onEffective={setEffective}

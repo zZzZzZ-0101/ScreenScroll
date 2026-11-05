@@ -524,6 +524,8 @@ function SvgAnnotation({ a }: { a: Annotation }) {
       return (
         <ellipse cx={a.x + a.w / 2} cy={a.y + a.h / 2} rx={a.w / 2} ry={a.h / 2} {...stroke} />
       );
+    case 'cover':
+      return <rect x={a.x} y={a.y} width={a.w} height={a.h} fill={a.style.color} />;
     case 'blur':
     case 'pixelate':
       return (

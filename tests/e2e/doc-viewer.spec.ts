@@ -93,7 +93,7 @@ test('a document viewer: one PDF page per document page, cropped to the page', a
   await studio.getByRole('button', { name: 'Save PDF' }).click();
   const bytes = new Uint8Array(readFileSync(await (await dl).path()));
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  const pdf = await pdfjs.getDocument({ data: bytes, standardFontDataUrl: STANDARD_FONTS }).promise;
+  const pdf = await pdfjs.getDocument({ data: bytes.slice(), standardFontDataUrl: STANDARD_FONTS }).promise;
   expect(pdf.numPages).toBe(6);
   for (let i = 1; i <= 6; i++) {
     const text = (await (await pdf.getPage(i)).getTextContent()).items
@@ -132,6 +132,39 @@ test('a document viewer: one PDF page per document page, cropped to the page', a
   // the 1 px edge columns are not the viewer's dark background.
   for (const x of [1, Math.round(vp.width) - 2]) expect(px(x, mid)[0]).toBeGreaterThan(200);
   writeFileSync('e2e-artifacts/doc-viewer-p3.png', canvas.toBuffer('image/png'));
+
+  // The document's own numbers (pages 5–10 of 12) are found; numbered from 1 instead, the
+  // old numbers leave the PDF's text and the page shows "Page 1 of 6".
+  const numbers = card.getByTestId('page-numbers');
+  await expect(numbers).toContainText('Page numbers found: 5–10 of 12');
+  const text1 = async (b: Uint8Array) =>
+    (
+      await (
+        await (
+          await pdfjs.getDocument({ data: b.slice(), standardFontDataUrl: STANDARD_FONTS }).promise
+        ).getPage(1)
+      ).getTextContent()
+    ).items
+      .map((it) => ('str' in it ? it.str : ''))
+      .join(' ');
+  expect(await text1(bytes)).toContain('Page 5 of 12');
+  await numbers.getByRole('checkbox', { name: 'Number from 1' }).check();
+  const dl2 = studio.waitForEvent('download');
+  await studio.getByRole('button', { name: 'Save PDF' }).click();
+  const renumbered = new Uint8Array(readFileSync(await (await dl2).path()));
+  expect(await text1(renumbered)).not.toContain('Page 5 of 12');
+  {
+    const pg = await (
+      await pdfjs.getDocument({ data: renumbered.slice(), standardFontDataUrl: STANDARD_FONTS })
+        .promise
+    ).getPage(1);
+    const v = pg.getViewport({ scale: 2 });
+    const c = createCanvas(Math.ceil(v.width), Math.ceil(v.height));
+    await pg.render({ canvas: c as never, viewport: v }).promise;
+    writeFileSync('e2e-artifacts/doc-viewer-renumbered-p1.png', c.toBuffer('image/png'));
+  }
+  // And back: unticked, the document's own numbers return.
+  await numbers.getByRole('checkbox', { name: 'Number from 1' }).uncheck();
 
   // Back to everything captured: ordinary smart breaks over the whole width.
   await card.getByRole('radio', { name: /Everything I captured/ }).check();

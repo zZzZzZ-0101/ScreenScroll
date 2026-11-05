@@ -442,4 +442,9 @@ export const ZH_CN: Record<string, string> = {
   'Wait before the picture': '截图前等待',
   'Choose what to capture': '选择要截取的内容',
   'A browser window, another app, or the whole screen, as one picture': '把浏览器窗口、其他应用或整个屏幕截成一张图',
+  'Page numbers found: {a}–{b} of {n}': '识别出页码：第 {a}–{b} 页，共 {n} 页',
+  'Page numbers found: {a}–{b}': '识别出页码：第 {a}–{b} 页',
+  'Hide them': '隐藏原页码',
+  'Write each page’s place in this capture instead, in the same words': '改写为每页在本次截图中的序号，措辞保持不变',
+  'Number from 1': '从 1 重新编号',
 };
