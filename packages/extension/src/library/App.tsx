@@ -4,6 +4,7 @@ import { deleteCapture, deleteOlderThan, listCaptures, type StoredCapture } from
 import { loadSettings, saveSettings } from '@/shared/settings';
 import { backupCaptures, restoreCaptures } from '@/shared/backup';
 import { importImage } from '@/shared/import-image';
+import { importPdf } from '@/shared/import-pdf';
 import { CompareSheet } from './CompareSheet';
 import { MergeSheet } from './MergeSheet';
 import { t } from '@/shared/i18n';
@@ -41,13 +42,16 @@ export function App() {
     if (est) setQuota({ usage: est.usage ?? 0, quota: est.quota ?? 0 });
   }, []);
 
+  const importFile = (f: File) =>
+    f.type === 'application/pdf' || /\.pdf$/i.test(f.name) ? importPdf(f) : importImage(f);
+
   /**
    * One image opens in the Studio. Several (or a folder) become one capture each, in name
    * order ("2" before "10"), and the Merge sheet opens with them: one PDF, a bookmark per file.
    */
   const openFiles = async (all: File[], folder = false) => {
     const files = all
-      .filter((f) => !folder || /\.(png|jpe?g|webp)$/i.test(f.name))
+      .filter((f) => !folder || /\.(png|jpe?g|webp|pdf)$/i.test(f.name))
       .sort((a, b) =>
         (a.webkitRelativePath || a.name).localeCompare(b.webkitRelativePath || b.name, undefined, {
           numeric: true,
@@ -55,13 +59,13 @@ export function App() {
         }),
       );
     if (!files.length) {
-      if (all.length || folder) setNote(t('No PNG, JPEG or WebP images there.'));
+      if (all.length || folder) setNote(t('No PDFs or PNG, JPEG or WebP images there.'));
       return;
     }
     if (files.length === 1) {
       setNote(t('Opening {name}…', { name: files[0]!.name }));
       try {
-        const id = await importImage(files[0]!);
+        const id = await importFile(files[0]!);
         setNote(null);
         void refresh();
         void chrome.tabs.create({
@@ -78,7 +82,7 @@ export function App() {
     for (const [i, f] of files.entries()) {
       setNote(t('Opening {n} of {total}: {name}…', { n: i + 1, total: files.length, name: f.name }));
       try {
-        ids.push(await importImage(f));
+        ids.push(await importFile(f));
       } catch {
         failed.push(f.name);
       }
@@ -92,7 +96,7 @@ export function App() {
     setSelected(new Set(ids));
     setNote(
       failed.length
-        ? t('{n} opened; not images this browser can open: {names}.', {
+        ? t("{n} opened; files this browser can't open: {names}.", {
             n: opened.length,
             names: failed.join(', '),
           })
@@ -186,14 +190,14 @@ export function App() {
       <div className="mt-4 flex flex-wrap items-center gap-2 [&>*]:whitespace-nowrap">
         <label
           className="flex cursor-pointer items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 focus-within:outline-2 focus-within:outline-accent dark:border-neutral-700 dark:hover:bg-neutral-800"
-          title={t('Open a long screenshot (PNG, JPEG, WebP) as a capture; pick several to put them in one PDF')}
+          title={t('Open a PDF or a long screenshot (PNG, JPEG, WebP) as a capture; pick several to put them in one PDF')}
         >
-          <ImageUp aria-hidden size={15} /> {t('Open images')}
+          <ImageUp aria-hidden size={15} /> {t('Open files')}
           <input
             type="file"
             multiple
-            accept="image/png,image/jpeg,image/webp"
-            aria-label={t('Open image files')}
+            accept="application/pdf,image/png,image/jpeg,image/webp"
+            aria-label={t('Open PDF or image files')}
             className="sr-only"
             onChange={(e) => {
               const files = [...(e.target.files ?? [])];
@@ -204,7 +208,7 @@ export function App() {
         </label>
         <label
           className="flex cursor-pointer items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 focus-within:outline-2 focus-within:outline-accent dark:border-neutral-700 dark:hover:bg-neutral-800"
-          title={t('Open every image in a folder, in name order, to put them in one PDF')}
+          title={t('Open every PDF and image in a folder, in name order, to put them in one PDF')}
         >
           <FolderOpen aria-hidden size={15} /> {t('Open a folder')}
           <input

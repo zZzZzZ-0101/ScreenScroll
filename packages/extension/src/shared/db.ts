@@ -38,6 +38,8 @@ export interface Project {
   crop: Region | null;
   /** Document pages set by hand (Pages → document pages), or none to use the detected ones. */
   sheetGrid?: SheetGrid | null;
+  /** What the pages are made from when document pages are found (see plan.ts PagesMode). */
+  pages?: 'original' | 'auto' | 'grid';
 }
 
 export const EMPTY_PROJECT: Project = { annotations: [], crop: null };

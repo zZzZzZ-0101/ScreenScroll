@@ -23,7 +23,7 @@ test('Open an image: a tall screenshot becomes a capture, paginated between its 
   const studioPromise = context.waitForEvent('page', {
     predicate: (p) => p.url().includes('/studio.html'),
   });
-  await lib.getByLabel('Open image files').setInputFiles(file);
+  await lib.getByLabel('Open PDF or image files').setInputFiles(file);
   const studio = await studioPromise;
   await expect(studio.getByRole('heading', { name: 'long-screenshot' })).toBeVisible({
     timeout: 30_000,
@@ -62,7 +62,7 @@ test('Open an image: a file that is not an image says so', async ({ context, ext
   writeFileSync('e2e-artifacts/not-an-image.png', 'just text');
   const lib = await context.newPage();
   await lib.goto(`chrome-extension://${extensionId}/captures.html`);
-  await lib.getByLabel('Open image files').setInputFiles('e2e-artifacts/not-an-image.png');
+  await lib.getByLabel('Open PDF or image files').setInputFiles('e2e-artifacts/not-an-image.png');
   await expect(
     lib.getByText('not-an-image.png is not an image this browser can open.'),
   ).toBeVisible();
@@ -93,4 +93,55 @@ test('Open a folder: images in name order, one capture each, straight into one P
   await expect(sheet).toBeVisible({ timeout: 30_000 });
   await expect(sheet.locator('li span[title]')).toHaveText(['page 1', 'page 2', 'page 10']);
   await expect(lib.getByText('3 opened, in name order.')).toBeVisible();
+});
+
+test('Open a PDF: its pages become document pages, its text stays searchable', async ({
+  context,
+  extensionId,
+}) => {
+  const { PDFDocument, StandardFonts } = await import('pdf-lib');
+  const pdf = await PDFDocument.create();
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  for (let p = 1; p <= 3; p++) {
+    const page = pdf.addPage([595, 842]);
+    page.drawText(`Chapter ${p}`, { x: 60, y: 760, size: 24, font });
+    for (let l = 0; l < 30; l++)
+      page.drawText(`Line ${l + 1} of page ${p}: imported text stays searchable.`, {
+        x: 60,
+        y: 720 - l * 20,
+        size: 11,
+        font,
+      });
+  }
+  mkdirSync('e2e-artifacts', { recursive: true });
+  const file = 'e2e-artifacts/three-pages.pdf';
+  writeFileSync(file, await pdf.save());
+
+  const lib = await context.newPage();
+  await lib.goto(`chrome-extension://${extensionId}/captures.html`);
+  const studioPromise = context.waitForEvent('page', {
+    predicate: (p) => p.url().includes('/studio.html'),
+  });
+  await lib.getByLabel('Open PDF or image files').setInputFiles(file);
+  const studio = await studioPromise;
+  await studio.setViewportSize({ width: 1400, height: 900 });
+  await expect(studio.getByRole('heading', { name: 'three-pages' })).toBeVisible({
+    timeout: 30_000,
+  });
+  // The grey gaps between pages make them document pages again, one PDF page each.
+  await expect(studio.getByTestId('sheets')).toContainText('3 pages', { timeout: 30_000 });
+  const b64 = (await studio.evaluate(() =>
+    (window as unknown as { __spStudio: { pdfBase64(): Promise<string> } }).__spStudio.pdfBase64(),
+  )) as string;
+  const bytes = Buffer.from(b64, 'base64');
+  writeFileSync('e2e-artifacts/three-pages-out.pdf', bytes);
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const out = await pdfjs.getDocument({ data: new Uint8Array(bytes) }).promise;
+  expect(out.numPages).toBe(3);
+  const text = (await (await out.getPage(2)).getTextContent()).items
+    .map((it) => ('str' in it ? it.str : ''))
+    .join(' ')
+    .replace(/\s+/g, ' ');
+  expect(text).toContain('Chapter 2');
+  expect(text).toContain('Line 7 of page 2: imported text stays searchable.');
 });

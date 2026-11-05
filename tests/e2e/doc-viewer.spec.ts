@@ -36,7 +36,13 @@ test('a document viewer: one PDF page per document page, cropped to the page', a
   }, url);
   const studio = await studioPromise;
   await studio.setViewportSize({ width: 1400, height: 900 });
-  await expect(studio.getByTestId('sheets')).toContainText('6 pages', { timeout: 60_000 });
+  // Found pages are offered, not applied: by default everything captured is kept.
+  const card = studio.getByTestId('sheets');
+  await expect(card).toContainText('Document pages found', { timeout: 60_000 });
+  await expect(card.getByRole('radio', { name: /Everything I captured/ })).toBeChecked();
+  await expect.poll(async () => (await slices(studio)).some((s) => s.x0 < 10)).toBe(true);
+  await card.getByRole('radio', { name: /Document pages · found from the gaps/ }).check();
+  await expect(card).toContainText('6 pages');
 
   // Where the sheets are on the page, in the viewer's coordinates.
   const sheets = await page.evaluate(() => {
@@ -127,8 +133,8 @@ test('a document viewer: one PDF page per document page, cropped to the page', a
   for (const x of [1, Math.round(vp.width) - 2]) expect(px(x, mid)[0]).toBeGreaterThan(200);
   writeFileSync('e2e-artifacts/doc-viewer-p3.png', canvas.toBuffer('image/png'));
 
-  // Turned off, ordinary smart breaks come back.
-  await studio.getByRole('checkbox', { name: 'One PDF page per document page' }).uncheck();
+  // Back to everything captured: ordinary smart breaks over the whole width.
+  await card.getByRole('radio', { name: /Everything I captured/ }).check();
   await expect.poll(async () => (await slices(studio)).some((s) => s.x0 < 10)).toBe(true);
 });
 
@@ -151,16 +157,19 @@ test('document pages: ranked readings, edit by hand with ±1 px steps, and back 
   }, url);
   const studio = await studioPromise;
   await studio.setViewportSize({ width: 1400, height: 900 });
-  await expect(studio.getByTestId('sheets')).toContainText('6 pages', { timeout: 60_000 });
-  // The ways to read the pages, best first with its probability; Automatic (here: the gaps)
-  // is chosen.
+  // The ways to read the pages, best first with its probability, offered next to
+  // "everything I captured" (the default).
   const doc = studio.getByTestId('sheets');
-  const auto = doc.getByRole('radio', { name: /Automatic · found from the gaps/ });
-  await expect(auto).toBeChecked();
+  await expect(doc).toContainText('Document pages found', { timeout: 60_000 });
+  const auto = doc.getByRole('radio', { name: /Document pages · found from the gaps/ });
+  const everything = doc.getByRole('radio', { name: /Everything I captured/ });
+  await expect(everything).toBeChecked();
+  await auto.check();
+  await expect(doc).toContainText('6 pages');
   const pct = Number(/(\d+)%/.exec((await doc.textContent()) ?? '')![1]);
   expect(pct).toBeGreaterThanOrEqual(50);
 
-  await doc.getByRole('button', { name: 'Edit pages' }).click();
+  await doc.getByRole('button', { name: 'Adjust pages' }).click();
   const card = studio.getByTestId('sheet-grid');
   await expect(doc).toContainText('6 pages');
   // Prefilled with the detected grid: 1075 px pages, 18 px gaps.
@@ -181,25 +190,38 @@ test('document pages: ranked readings, edit by hand with ±1 px steps, and back 
   expect(got.every((s) => s.overlapTop === 0)).toBe(true);
   await doc.screenshot({ path: 'e2e-artifacts/sheet-grid.png' });
 
-  await card.getByRole('button', { name: 'Back to automatic' }).click();
+  await card.getByRole('button', { name: 'Back to found pages' }).click();
   await expect(studio.getByTestId('sheet-grid')).toHaveCount(0);
   await expect(auto).toBeChecked();
   expect(await slices(studio)).toHaveLength(6);
 
-  // Nothing is one-way: hand-set pages, closed editor, and Automatic is still one click away.
-  await doc.getByRole('button', { name: 'Edit pages' }).click();
+  // Nothing is one-way: hand-set pages, closed editor, and every choice is one click away.
+  await doc.getByRole('button', { name: 'Adjust pages' }).click();
   await card.getByRole('spinbutton', { name: 'Page height' }).fill('500');
   await card.getByRole('button', { name: 'Done' }).click();
-  await expect(doc.getByRole('radio', { name: 'Set by hand' })).toBeChecked();
-  // Turning document pages off keeps the hand-set pages; turning them on brings them back.
-  const follow = doc.getByRole('checkbox', { name: 'One PDF page per document page' });
-  await follow.uncheck();
+  const hand = doc.getByRole('radio', { name: 'Set by hand' });
+  await expect(hand).toBeChecked();
+  // Everything captured keeps the hand-set pages; choosing them again brings them back.
+  await everything.check();
   await expect.poll(async () => (await slices(studio)).some((s) => s.x0 < 10)).toBe(true);
-  await follow.check();
+  await hand.check();
   await expect(doc).toContainText(/1[23] pages/);
   await auto.check();
   await expect(doc).toContainText('6 pages');
   expect(await slices(studio)).toHaveLength(6);
+  // Pure manual, from scratch.
+  await doc.getByRole('button', { name: 'By hand' }).click();
+  await expect(card.getByRole('spinbutton', { name: 'Top' })).toHaveValue('0');
+  await card.getByRole('button', { name: 'Done' }).click();
+
+  // The suggestion can be hidden, and brought back.
+  await everything.check();
+  await doc.getByRole('button', { name: 'Hide this suggestion' }).click();
+  const hidden = studio.getByTestId('sheets-hidden');
+  await expect(hidden).toBeVisible();
+  await expect(studio.getByTestId('sheets')).toHaveCount(0);
+  await hidden.getByRole('button', { name: 'Show' }).click();
+  await expect(studio.getByTestId('sheets')).toContainText('Document pages found');
 });
 
 test('document pages: drag a page edge on the strip and the page grid follows', async ({
@@ -221,7 +243,11 @@ test('document pages: drag a page edge on the strip and the page grid follows', 
   }, url);
   const studio = await studioPromise;
   await studio.setViewportSize({ width: 1400, height: 900 });
-  await expect(studio.getByTestId('sheets')).toContainText('6 pages', { timeout: 60_000 });
+  await studio
+    .getByTestId('sheets')
+    .getByRole('radio', { name: /Document pages · found from the gaps/ })
+    .check({ timeout: 60_000 });
+  await expect(studio.getByTestId('sheets')).toContainText('6 pages');
   await studio.getByRole('tab', { name: 'Breaks' }).click();
   await expect(studio.getByTestId('sheet-outline')).toHaveCount(6);
   await studio.waitForTimeout(500);

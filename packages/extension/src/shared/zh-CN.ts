@@ -175,19 +175,19 @@ export const ZH_CN: Record<string, string> = {
     '只保存在本机，从不上传。打开一个即可再次编辑或导出。',
   'Search captures': '搜索截图',
   'Search titles, addresses and page text': '搜索标题、网址和页面文字',
-  'Open image files': '打开图片文件',
-  'Open images': '打开图片',
+  'Open PDF or image files': '打开 PDF 或图片文件',
+  'Open files': '打开文件',
   'Open a folder': '打开文件夹',
   'Open a folder of images': '打开图片文件夹',
-  'Open a long screenshot (PNG, JPEG, WebP) as a capture; pick several to put them in one PDF':
-    '把长截图（PNG、JPEG、WebP）打开为一份截图；选多张可合成一个 PDF',
-  'Open every image in a folder, in name order, to put them in one PDF':
-    '按文件名顺序打开文件夹里的所有图片，合成一个 PDF',
-  'No PNG, JPEG or WebP images there.': '那里没有 PNG、JPEG 或 WebP 图片。',
+  'Open a PDF or a long screenshot (PNG, JPEG, WebP) as a capture; pick several to put them in one PDF':
+    '把 PDF 或长截图（PNG、JPEG、WebP）打开为一份截图；选多个可合成一个 PDF',
+  'Open every PDF and image in a folder, in name order, to put them in one PDF':
+    '按文件名顺序打开文件夹里的所有 PDF 和图片，合成一个 PDF',
+  'No PDFs or PNG, JPEG or WebP images there.': '那里没有 PDF 或 PNG、JPEG、WebP 图片。',
   'Opening {name}…': '正在打开 {name}…',
   'Opening {n} of {total}: {name}…': '正在打开第 {n}/{total} 个：{name}…',
-  '{n} opened; not images this browser can open: {names}.':
-    '已打开 {n} 个；以下文件浏览器无法作为图片打开：{names}。',
+  "{n} opened; files this browser can't open: {names}.":
+    '已打开 {n} 个；以下文件浏览器无法打开：{names}。',
   '{n} opened, in name order.': '已按文件名顺序打开 {n} 个。',
   'Save captures, images included, to one file (the selected ones, or all)':
     '把截图（含图片）保存成一个文件（选中的，或全部）',
@@ -388,4 +388,25 @@ export const ZH_CN: Record<string, string> = {
   "(nothing before)": "（之前没有）",
   "(removed)": "（已删除）",
   "No capture was running on this tab. You can capture it now.": "这个标签页上没有正在进行的截图，现在可以截图了。",
+  'Document pages found, suggestion hidden.': '已识别出文档页，提示已隐藏。',
+  Show: '显示',
+  'Document pages found': '识别出文档页',
+  'Hide this suggestion': '隐藏这个提示',
+  'Hide this suggestion (Settings, or the line left here, bring it back)':
+    '隐藏这个提示（可在设置里或这里留下的一行文字中重新打开）',
+  'What to save': '保存哪些内容',
+  'Everything I captured': '我截下的全部内容',
+  'nothing cut': '原样，不做任何裁剪',
+  'Start from the found pages and change any number': '在识别出的页面基础上，修改任意数值',
+  'Adjust pages': '微调页面',
+  'Start from one A4-shaped page at the top and set every number yourself':
+    '从顶部一页 A4 比例的页面开始，所有数值自己设定',
+  'By hand': '纯手动',
+  'Back to found pages': '回到识别出的页面',
+  'Suggest document pages when found': '识别出文档页时给出提示',
+  'In Google Drive, Docs, Office or PDF previews, offer the document’s own pages (one PDF page each). Nothing is cut unless you choose them.':
+    '在 Google Drive、Docs、Office 或 PDF 预览中，提示文档自己的分页（每页一页 PDF）。除非你选择，否则不会裁剪任何内容。',
+  'Use found document pages automatically': '自动使用识别出的文档页',
+  'Off: you get everything you captured, and the found pages are one click away. On: the document’s own pages are used straight away; “Everything I captured” is still one click away.':
+    '关闭：保留你截下的全部内容，识别出的页面一键可用。开启：直接使用文档自己的分页；「我截下的全部内容」仍然一键可回。',
 };

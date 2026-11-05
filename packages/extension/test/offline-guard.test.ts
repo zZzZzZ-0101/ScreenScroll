@@ -37,6 +37,18 @@ const URL_ALLOW = [
 // holds is the model's.
 const OCR_WORKER = /[\\/]assets[\\/]ocr-worker-[\w-]+\.js$/;
 const OCR_WORKER_URLS = [/^https:\/\/web\.dev\/cross-origin-isolation-guide\/$/];
+// pdf.js (opening a PDF, DECISIONS 2026-11-05) can load a document, fonts or wasm from a
+// URL, so its code holds fetch and XMLHttpRequest. We only ever pass the file's bytes and
+// set no font or wasm URL (checked below), so they never run. Its only URL literals are
+// XFA/XMP namespace names and base URLs for parsing links in a document.
+const PDFJS = /[\\/](assets[\\/]pdf-worker|chunks[\\/]pdf)-[\w-]+\.js$/;
+const PDFJS_URLS = [
+  /^http:\/\/www\.xfa\.org\/schema\/[\w/.-]*$/,
+  /^http:\/\/ns\.adobe\.com\/(xdp|xdp\/pdf|xfdf|xmpmeta)\/$/,
+  /^http:\/\/\$\{e\}$/,
+  /^http:\/\/example\.com$/,
+  /^https:\/\/foo\.bar$/,
+];
 
 function files(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -60,13 +72,21 @@ describe('offline guard', () => {
     for (const file of files(outDir).filter((f) => /\.(js|html|css|json)$/.test(f))) {
       const text = readFileSync(file, 'utf8');
       const worker = OCR_WORKER.test(file);
+      const pdfjs = PDFJS.test(file);
       for (const re of FORBIDDEN) {
-        if (worker && (re.source === /\bfetch\(/.source || re.source === 'XMLHttpRequest'))
+        if (
+          (worker || pdfjs) &&
+          (re.source === /\bfetch\(/.source || re.source === 'XMLHttpRequest')
+        )
           continue;
         if (re.test(text)) hits.push(`${file}: ${re}`);
       }
       for (const m of text.matchAll(/https?:\/\/[^"'`\s)\\]*/g)) {
-        const allowed = [...URL_ALLOW, ...(worker ? OCR_WORKER_URLS : [])];
+        const allowed = [
+          ...URL_ALLOW,
+          ...(worker ? OCR_WORKER_URLS : []),
+          ...(pdfjs ? PDFJS_URLS : []),
+        ];
         if (!allowed.some((a) => a.test(m[0]))) hits.push(`${file}: ${m[0]}`);
       }
     }
@@ -79,6 +99,15 @@ describe('offline guard', () => {
     const text = readFileSync(worker[0]!, 'utf8');
     const urls = [...text.matchAll(/https?:\/\/[^"'`\s)\\]*/g)].map((m) => m[0]);
     expect(urls.filter((u) => !OCR_WORKER_URLS.some((a) => a.test(u)))).toEqual(MODEL_URLS);
+  });
+
+  it('pdf.js is given bytes, never an address to load from', () => {
+    const src = readFileSync(join(pkg, 'src/shared/import-pdf.ts'), 'utf8');
+    const calls = [...src.matchAll(/getDocument\(([^)]*)\)/g)].map((m) => m[1]!.trim());
+    expect(calls).toEqual(['{ data, useSystemFonts: true }']);
+    expect(src).not.toMatch(/standardFontDataUrl|cMapUrl|wasmUrl|iccUrl/);
+    // The pdf.js files are the only other ones allowed fetch, and they exist.
+    expect(files(outDir).filter((f) => PDFJS.test(f))).toHaveLength(2);
   });
 
   it('manifest requests no broad host permissions', () => {

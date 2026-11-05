@@ -135,13 +135,18 @@ export interface SheetsCardProps {
   pages: number;
   /** Capture width, CSS px. */
   width: number;
-  followSheets: boolean;
-  onFollow: (on: boolean) => void;
+  /** What the pages are made from: everything captured, found pages, or pages by hand. */
+  mode: 'original' | 'auto' | 'grid';
+  onMode: (m: 'original' | 'auto') => void;
+  /** Whether found pages are offered at all (Settings; reversible from the card). */
+  hints: boolean;
+  onHints: (on: boolean) => void;
   /** "As the original": the setting, and the paper it matched (when pages are followed). */
   docOriginal: boolean;
   original: string | null;
   onOriginal: (on: boolean) => void;
-  onGrid: (g: SheetGrid | null) => void;
+  /** Sets the pages by hand (mode becomes "grid"). */
+  onGrid: (g: SheetGrid) => void;
 }
 
 /** Field, short label, full name (accessible name and tooltip). */
@@ -154,54 +159,63 @@ const GRID_FIELDS: [keyof SheetGrid, string, string][] = [
 ];
 
 /**
- * Document pages (a PDF or document viewer): the ways the capture can be read as pages,
- * each with its probability, and an editor to set the pages exactly (CSS px of the
- * capture), prefilled from the chosen reading, with ±1 px steps for fine work.
+ * Document pages (a PDF or document viewer) are a suggestion, never a cut the user didn't
+ * ask for: by default everything captured is kept, and the card offers the found pages
+ * (each reading with its probability), adjusting them, setting pages from scratch, and
+ * hiding the suggestion. Every choice is one click back (and on the undo stack).
  */
-function SheetsCard(p: SheetsCardProps) {
+function SheetsCard(props: SheetsCardProps) {
   const [editing, setEditing] = useState(false);
-  // Choosing pages implies using them; the switch below can still turn them off without
-  // losing the choice.
-  const setGrid = (g: SheetGrid | null) => {
-    if (g && !p.followSheets) p.onFollow(true);
-    p.onGrid(g);
-  };
+  const found = !!props.detected || props.readings.length > 0;
+  // "Found pages" with nothing found is everything captured (what planPages does too).
+  const p = props.mode === 'auto' && !found ? { ...props, mode: 'original' as const } : props;
   const sameGrid = (a: SheetGrid | null, b: SheetGrid | null) =>
     !!a &&
     !!b &&
     (['x0', 'x1', 'top', 'height', 'gap'] as const).every((k) => Math.abs(a[k] - b[k]) < 0.5);
-  const chosen = p.grid
-    ? (p.readings.find((r) => sameGrid(r.grid, p.grid))?.id ?? 'hand')
-    : 'auto';
-  // What "Automatic" means right now, so choosing it is never a leap in the dark. The gaps
-  // reading has no grid of its own: it *is* the automatic result, so it isn't listed twice.
-  const autoReading = p.detected
-    ? p.readings.find((r) => !r.grid)
-    : confidentReading(p.readings);
+  const chosen =
+    p.mode === 'original'
+      ? 'original'
+      : p.mode === 'auto'
+        ? 'auto'
+        : (p.readings.find((r) => sameGrid(r.grid, p.grid))?.id ?? 'hand');
+  // The found pages: the gaps reading has no grid of its own, it *is* the automatic result,
+  // so it isn't listed twice.
+  const autoReading = p.detected ? p.readings.find((r) => !r.grid) : confidentReading(p.readings);
   const auto = p.detected
     ? t('found from the gaps')
     : autoReading
       ? t(autoReading.label)
-      : t('no document pages');
+      : null;
   const others = p.readings.filter((r) => r.grid);
-  const start = (): SheetGrid =>
-    p.grid ??
-    (p.detected
-      ? gridOf(p.detected)
-      : p.readings[0]?.grid ?? {
-          x0: 0,
-          x1: p.width,
-          top: 0,
-          height: Math.round(p.width * Math.SQRT2),
-          gap: 0,
-        });
-  if (!p.readings.length && !p.detected && !p.grid && !editing)
+  // Pages set by hand stay one click away after choosing something else.
+  const handGrid = p.grid && !p.readings.some((r) => sameGrid(r.grid, p.grid)) ? p.grid : null;
+  const fromAuto = (): SheetGrid | null =>
+    p.grid ?? (p.detected ? gridOf(p.detected) : (autoReading?.grid ?? p.readings[0]?.grid ?? null));
+  const fromScratch = (): SheetGrid => ({
+    x0: 0,
+    x1: p.width,
+    top: 0,
+    height: Math.round(p.width * Math.SQRT2),
+    gap: 0,
+  });
+
+  if (!p.hints && p.mode === 'original')
+    return found ? (
+      <p className="mb-2 text-[12px] text-neutral-500" data-testid="sheets-hidden">
+        {t('Document pages found, suggestion hidden.')}{' '}
+        <button type="button" className="underline hover:text-accent" onClick={() => p.onHints(true)}>
+          {t('Show')}
+        </button>
+      </p>
+    ) : null;
+  if (!found && p.mode === 'original' && !editing)
     return (
       <button
         type="button"
         className={`${button} mb-2 w-full`}
         onClick={() => {
-          setGrid(start());
+          p.onGrid(fromScratch());
           setEditing(true);
         }}
       >
@@ -211,27 +225,54 @@ function SheetsCard(p: SheetsCardProps) {
   const g = p.grid;
   return (
     <div className="mb-2 rounded-md border border-accent/40 bg-accent/5 p-2" data-testid="sheets">
-      <p className="flex justify-between font-medium">
-        {t('Document pages')}
-        <span className="font-normal text-neutral-500">
-          {p.pages ? t('{n} pages', { n: p.pages }) : t('not used')}
+      <p className="flex items-center justify-between gap-1 font-medium">
+        <span>{found ? t('Document pages found') : t('Document pages')}</span>
+        <span className="flex items-center gap-1 font-normal text-neutral-500">
+          {p.mode !== 'original' && t('{n} pages', { n: p.pages })}
+          {p.mode === 'original' && (
+            <button
+              type="button"
+              aria-label={t('Hide this suggestion')}
+              title={t('Hide this suggestion (Settings, or the line left here, bring it back)')}
+              className="rounded px-1 hover:bg-neutral-200 dark:hover:bg-neutral-800"
+              onClick={() => p.onHints(false)}
+            >
+              ×
+            </button>
+          )}
         </span>
       </p>
-      {(p.readings.length > 0 || p.grid) && (
-        <div role="radiogroup" aria-label={t('Ways to read the pages')} className="pt-1">
+      <div role="radiogroup" aria-label={t('What to save')} className="pt-1">
+        <label className="flex items-center gap-2 py-0.5">
+          <input
+            type="radio"
+            name="reading"
+            checked={chosen === 'original'}
+            onChange={() => {
+              p.onMode('original');
+              setEditing(false);
+            }}
+            className="accent-[#0e7c7b]"
+          />
+          <span className="min-w-0 flex-1">
+            {t('Everything I captured')}
+            <span className="text-neutral-500"> · {t('nothing cut')}</span>
+          </span>
+        </label>
+        {auto && (
           <label className="flex items-center gap-2 py-0.5">
             <input
               type="radio"
               name="reading"
               checked={chosen === 'auto'}
               onChange={() => {
-                setGrid(null);
+                p.onMode('auto');
                 setEditing(false);
               }}
               className="accent-[#0e7c7b]"
             />
             <span className="min-w-0 flex-1 truncate">
-              {t('Automatic')}
+              {t('Document pages')}
               <span className="text-neutral-500"> · {auto}</span>
             </span>
             {autoReading && (
@@ -240,77 +281,92 @@ function SheetsCard(p: SheetsCardProps) {
               </span>
             )}
           </label>
-          {others.map((r) => (
-            <label key={r.id} className="flex items-center gap-2 py-0.5" title={`Fit ${r.fit.toFixed(3)}: rows between pages that are background × rows inside pages that are not`}>
-              <input
-                type="radio"
-                name="reading"
-                checked={chosen === r.id}
-                onChange={() => setGrid(r.grid)}
-                className="accent-[#0e7c7b]"
-              />
-              <span className="min-w-0 flex-1 truncate">
-                {t(r.label)}
-                <span className="text-neutral-500">
-                  {' '}
-                  · {r.layout.sheets.length} ×{' '}
-                  {Math.round(
-                    r.grid?.height ??
-                      Math.max(...r.layout.sheets.map((s) => s.y1 - s.y0)),
-                  )}{' '}
-                  px
-                </span>
+        )}
+        {others.map((r) => (
+          <label
+            key={r.id}
+            className="flex items-center gap-2 py-0.5"
+            title={`Fit ${r.fit.toFixed(3)}: rows between pages that are background × rows inside pages that are not`}
+          >
+            <input
+              type="radio"
+              name="reading"
+              checked={chosen === r.id}
+              onChange={() => p.onGrid(r.grid!)}
+              className="accent-[#0e7c7b]"
+            />
+            <span className="min-w-0 flex-1 truncate">
+              {t(r.label)}
+              <span className="text-neutral-500">
+                {' '}
+                · {r.layout.sheets.length} × {Math.round(r.grid!.height)} px
               </span>
-              <span className="font-mono text-[11px] text-neutral-600 dark:text-neutral-300">
-                {Math.round(r.probability * 100)}%
-              </span>
-            </label>
-          ))}
-          {chosen === 'hand' && (
-            <label className="flex items-center gap-2 py-0.5">
-              <input type="radio" name="reading" checked readOnly className="accent-[#0e7c7b]" />
-              <span className="flex-1">{t('Set by hand')}</span>
-            </label>
-          )}
-        </div>
-      )}
-      <label className="flex items-center gap-2 pt-1 text-neutral-600 dark:text-neutral-300">
-        <input
-          type="checkbox"
-          checked={p.followSheets}
-          onChange={(e) => p.onFollow(e.target.checked)}
-          className="accent-[#0e7c7b]"
-        />
-        {t('One PDF page per document page')}
-      </label>
-      <label
-        className="flex items-start gap-2 pt-1 text-neutral-600 dark:text-neutral-300"
-        title={t('No margins, no page labels, and the paper that matches the page’s shape.')}
-      >
-        <input
-          type="checkbox"
-          checked={p.docOriginal}
-          onChange={(e) => p.onOriginal(e.target.checked)}
-          className="mt-0.5 accent-[#0e7c7b]"
-        />
-        <span>
-          {t('As the original')}
-          {p.docOriginal && p.original && (
-            <span className="text-neutral-500"> · {t(p.original)}</span>
-          )}
-        </span>
-      </label>
-      {!editing ? (
-        <button
-          type="button"
-          className={`${button} mt-1 w-full`}
-          onClick={() => {
-            if (!p.grid) setGrid(start());
-            setEditing(true);
-          }}
+            </span>
+            <span className="font-mono text-[11px] text-neutral-600 dark:text-neutral-300">
+              {Math.round(r.probability * 100)}%
+            </span>
+          </label>
+        ))}
+        {handGrid && (
+          <label className="flex items-center gap-2 py-0.5">
+            <input
+              type="radio"
+              name="reading"
+              checked={chosen === 'hand'}
+              onChange={() => p.onGrid(handGrid)}
+              className="accent-[#0e7c7b]"
+            />
+            <span className="flex-1">{t('Set by hand')}</span>
+          </label>
+        )}
+      </div>
+      {p.mode !== 'original' && (
+        <label
+          className="flex items-start gap-2 pt-1 text-neutral-600 dark:text-neutral-300"
+          title={t('No margins, no page labels, and the paper that matches the page’s shape.')}
         >
-          {t('Edit pages')}
-        </button>
+          <input
+            type="checkbox"
+            checked={p.docOriginal}
+            onChange={(e) => p.onOriginal(e.target.checked)}
+            className="mt-0.5 accent-[#0e7c7b]"
+          />
+          <span>
+            {t('As the original')}
+            {p.docOriginal && p.original && (
+              <span className="text-neutral-500"> · {t(p.original)}</span>
+            )}
+          </span>
+        </label>
+      )}
+      {!editing ? (
+        <div className="mt-1 flex gap-1">
+          {found && (
+            <button
+              type="button"
+              className={`${button} flex-1`}
+              title={t('Start from the found pages and change any number')}
+              onClick={() => {
+                const start = fromAuto();
+                if (start) p.onGrid(start);
+                setEditing(true);
+              }}
+            >
+              {t('Adjust pages')}
+            </button>
+          )}
+          <button
+            type="button"
+            className={`${button} flex-1`}
+            title={t('Start from one A4-shaped page at the top and set every number yourself')}
+            onClick={() => {
+              p.onGrid(fromScratch());
+              setEditing(true);
+            }}
+          >
+            {t('By hand')}
+          </button>
+        </div>
       ) : (
         g && (
           <div className="mt-1 border-t border-accent/30 pt-1" data-testid="sheet-grid">
@@ -325,7 +381,7 @@ function SheetsCard(p: SheetsCardProps) {
                     type="button"
                     aria-label={`${name} −1`}
                     className="h-6 w-6 rounded border border-neutral-300 hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
-                    onClick={() => setGrid({ ...g, [k]: Math.max(0, Math.round(g[k]) - 1) })}
+                    onClick={() => p.onGrid({ ...g, [k]: Math.max(0, Math.round(g[k]) - 1) })}
                   >
                     −
                   </button>
@@ -337,7 +393,7 @@ function SheetsCard(p: SheetsCardProps) {
                     value={Math.round(g[k])}
                     onChange={(e) => {
                       const v = e.target.valueAsNumber;
-                      if (Number.isFinite(v)) setGrid({ ...g, [k]: v });
+                      if (Number.isFinite(v)) p.onGrid({ ...g, [k]: v });
                     }}
                     className={`${control} w-16 py-0.5 text-right font-mono text-[11px]`}
                   />
@@ -345,26 +401,38 @@ function SheetsCard(p: SheetsCardProps) {
                     type="button"
                     aria-label={`${name} +1`}
                     className="h-6 w-6 rounded border border-neutral-300 hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
-                    onClick={() => setGrid({ ...g, [k]: Math.round(g[k]) + 1 })}
+                    onClick={() => p.onGrid({ ...g, [k]: Math.round(g[k]) + 1 })}
                   >
                     +
                   </button>
                 </span>
               </div>
             ))}
-            <div className="flex gap-1 pt-1">
+            <div className="flex flex-wrap gap-1 pt-1">
               <button type="button" className={button} onClick={() => setEditing(false)}>
                 {t('Done')}
               </button>
+              {auto && (
+                <button
+                  type="button"
+                  className={button}
+                  onClick={() => {
+                    p.onMode('auto');
+                    setEditing(false);
+                  }}
+                >
+                  {t('Back to found pages')}
+                </button>
+              )}
               <button
                 type="button"
                 className={button}
                 onClick={() => {
-                  setGrid(null);
+                  p.onMode('original');
                   setEditing(false);
                 }}
               >
-                {t('Back to automatic')}
+                {t('Everything I captured')}
               </button>
             </div>
           </div>

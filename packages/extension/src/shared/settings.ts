@@ -52,7 +52,11 @@ export interface Settings {
   /** Saved captures older than this many days are deleted; 0 keeps them until deleted. */
   keepDays: number;
   /** In a document viewer (Drive, PDF previews), one PDF page per document page. */
-  followSheets: boolean;
+  /** Use detected document pages without asking (off: everything captured is kept, and
+   * found pages are offered). */
+  autoSheets: boolean;
+  /** Offer found document pages in the Studio (off: no card, a one-line way back). */
+  sheetHints: boolean;
   /** Document pages as the original: no margins or page labels, paper matched to the page. */
   docOriginal: boolean;
   theme: Theme;
@@ -138,7 +142,8 @@ export const DEFAULT_SETTINGS: Settings = {
   afterCapture: 'studio',
   pdf: DEFAULT_PDF_SETTINGS,
   keepDays: 0,
-  followSheets: true,
+  autoSheets: false,
+  sheetHints: true,
   docOriginal: true,
   theme: 'system',
   language: 'auto',
@@ -192,7 +197,9 @@ export function normalizeSettings(stored: unknown): Settings {
     filenameTemplate:
       typeof o.filenameTemplate === 'string' ? o.filenameTemplate : d.filenameTemplate,
     afterCapture: o.afterCapture === 'pdf' ? 'pdf' : 'studio',
-    followSheets: o.followSheets !== false,
+    // A new key on purpose: the old automatic default (followSheets) is not carried over.
+    autoSheets: o.autoSheets === true,
+    sheetHints: o.sheetHints !== false,
     docOriginal: o.docOriginal !== false,
     theme: o.theme === 'light' || o.theme === 'dark' ? o.theme : 'system',
     language: o.language === 'en' || o.language === 'zh-CN' ? o.language : 'auto',

@@ -36,7 +36,7 @@ import { OVERLAY_WARNING } from '@/shared/messages';
 import { RedactCard } from './components/RedactCard';
 import { loadSettings, saveSettings, type Settings } from '@/shared/settings';
 import { analyze, type Analysis } from '@/studio/engine/analysis';
-import { pdfFor, planPages, type Edits, type PageResult } from '@/studio/engine/plan';
+import { pagesMode, pdfFor, planPages, type Edits, type PageResult } from '@/studio/engine/plan';
 import {
   copyPageImage,
   download,
@@ -160,11 +160,25 @@ export function App() {
             session,
             analysis,
             settings,
-            { crop: project.crop, annotations, sheetGrid: project.sheetGrid },
+            {
+              crop: project.crop,
+              annotations,
+              sheetGrid: project.sheetGrid,
+              pages: project.pages,
+            },
             edits,
           )
         : null,
-    [session, analysis, settings, edits, project.crop, annotations, project.sheetGrid],
+    [
+      session,
+      analysis,
+      settings,
+      edits,
+      project.crop,
+      annotations,
+      project.sheetGrid,
+      project.pages,
+    ],
   );
 
   // Projects are saved as they change, so they can be re-edited later (TODO M4).
@@ -232,10 +246,10 @@ export function App() {
   const checks = useMemo(() => breaksToCheck(slices), [slices]);
   // The page grid shown for dragging: the one set by hand, else the detected or best reading.
   const editGrid = useMemo(() => {
-    if (project.sheetGrid) return project.sheetGrid;
+    if (project.sheetGrid && project.pages !== 'auto') return project.sheetGrid;
     const l = analysis?.sheets ?? (analysis ? confidentReading(analysis.readings)?.layout : null);
     return l ? gridOf(l) : null;
-  }, [project.sheetGrid, analysis]);
+  }, [project.sheetGrid, project.pages, analysis]);
   const fontPx = useMemo(
     () => (session ? medianFontPx(session.hints.textRuns.map((t) => t.fontSizePx)) : null),
     [session],
@@ -762,12 +776,15 @@ export function App() {
           grid: project.sheetGrid ?? null,
           pages: result.ok && result.sheets ? result.debug.slices.length : 0,
           width: session.width,
-          followSheets: settings.followSheets,
-          onFollow: (followSheets) => updateSettings({ followSheets }),
+          mode: pagesMode(project, settings),
+          // The grid set by hand is kept when switching away, so switching back restores it.
+          onMode: (pages) => changeProject({ pages }),
+          hints: settings.sheetHints,
+          onHints: (sheetHints) => updateSettings({ sheetHints }),
           docOriginal: settings.docOriginal,
           original: result.ok ? (result.original ?? null) : null,
           onOriginal: (docOriginal) => updateSettings({ docOriginal }),
-          onGrid: (sheetGrid) => changeProject({ sheetGrid }),
+          onGrid: (sheetGrid) => changeProject({ sheetGrid, pages: 'grid' }),
         }}
         estimate={estimate}
         ocr={{
@@ -1043,7 +1060,10 @@ export function App() {
                   checks={checks}
                   sheetGrid={
                     result.sheets && editGrid
-                      ? { grid: editGrid, onGrid: (sheetGrid) => changeProject({ sheetGrid }) }
+                      ? {
+                          grid: editGrid,
+                          onGrid: (sheetGrid) => changeProject({ sheetGrid, pages: 'grid' }),
+                        }
                       : undefined
                   }
                 />

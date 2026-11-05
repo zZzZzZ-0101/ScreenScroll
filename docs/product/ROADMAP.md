@@ -89,7 +89,7 @@ Legend: `[ ]` todo · `(L#)` = lesson from `docs/product/PRIOR_ART.md` §7 · `�
 - [x] **Auto-redact**: detect emails/phones/card numbers in DOM text → checklist → blur.
 - [x] Table header repetition across pages. → PAGINATION §7
 - [x] Watermark. → PDF_OUTPUT §4 (multi-page PDF; Mark up → Page)
-- [ ] **Import** (images done 2026-10-31; PDF not yet): open a tall PNG/JPEG/WebP or a tall single-page PDF (e.g. old FireShot output) in the Studio → pixel-mode pagination → export. Handle image-only PDFs by rendering at native image resolution via pdf.js.
+- [x] **Import** (images 2026-10-31, PDF 2026-11-05): open a tall PNG/JPEG/WebP or a tall single-page PDF (e.g. old FireShot output) in the Studio → pixel-mode pagination → export. Handle image-only PDFs by rendering at native image resolution via pdf.js.
 - [ ] Firefox desktop build (`wxt build -b firefox`), smoke-tested on the fixtures.
 - [ ] Experimental CDP capture engine toggle (`chrome.debugger`), compared against scroll-stitch on the fixtures.
 - [ ] Browser-window capture via `getDisplayMedia`.
