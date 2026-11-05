@@ -111,3 +111,33 @@ test('panel: a capture left "running" by a reload or crash does not lock the but
   ).toEqual({ ok: true });
   await studio;
 });
+
+test('panel: speed, sharpness and page width are one click, and the window narrowing is explained', async ({
+  context,
+  extensionId,
+  serviceWorker,
+}) => {
+  const panel = await context.newPage();
+  await panel.setViewportSize({ width: 360, height: 720 });
+  await panel.goto(`chrome-extension://${extensionId}/popup.html`);
+  const radio = (group: string, name: string) =>
+    panel.getByRole('radiogroup', { name: group }).getByRole('radio', { name });
+  await expect(radio('Speed', 'Normal')).toBeChecked();
+  await expect(radio('Sharpness', '1×')).toBeChecked();
+  await expect(radio('Page width', 'As shown')).toBeChecked();
+  await expect(panel.getByTestId('width-note')).toHaveCount(0);
+
+  await radio('Speed', 'Fast').click();
+  await radio('Page width', '1000 px').click();
+  await expect(panel.getByTestId('width-note')).toHaveText(
+    'The browser window narrows to 1000 px while capturing, then comes back.',
+  );
+  await panel.screenshot({ path: 'e2e-artifacts/panel-options.png' });
+  const stored = await serviceWorker.evaluate(
+    async () => (await chrome.storage.local.get('settings')).settings.capture,
+  );
+  expect(stored).toMatchObject({ speed: 'fast', width: 1000 });
+  // And back.
+  await radio('Page width', 'As shown').click();
+  await expect(panel.getByTestId('width-note')).toHaveCount(0);
+});

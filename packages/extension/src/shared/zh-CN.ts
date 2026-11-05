@@ -409,4 +409,15 @@ export const ZH_CN: Record<string, string> = {
   'Use found document pages automatically': '自动使用识别出的文档页',
   'Off: you get everything you captured, and the found pages are one click away. On: the document’s own pages are used straight away; “Everything I captured” is still one click away.':
     '关闭：保留你截下的全部内容，识别出的页面一键可用。开启：直接使用文档自己的分页；「我截下的全部内容」仍然一键可回。',
+  Speed: '速度',
+  'Fast: shorter waits between screens. Careful: waits longer for pictures and slow pages.':
+    '快速：每屏之间等待更短。精细：多等图片和慢页面加载。',
+  Sharpness: '清晰度',
+  '2× and 3× render the page at a higher density for crisp print; Chrome shows a “debugging” bar while they capture.':
+    '2× 和 3× 以更高像素密度渲染页面，打印更清晰；截图时 Chrome 会显示"正在调试"提示条。',
+  '1000 px lays wide pages out narrower, so text prints bigger.':
+    '1000 px 让宽页面按较窄的版式排版，打印出的字更大。',
+  'As shown': '原样',
+  'The browser window narrows to {w} px while capturing, then comes back.':
+    '截图时浏览器窗口会临时缩窄到 {w} px，截完自动恢复。',
 };
