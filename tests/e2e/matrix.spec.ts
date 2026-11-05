@@ -93,11 +93,21 @@ async function captureOnce(
     predicate: (p) => p.url().includes('/studio.html'),
     timeout: 90_000,
   });
+  // Lower caps than the default 300 screens, so a page that never ends (infinite.html)
+  // reaches its cap, and its warning, within the test.
   const run = (await sw.evaluate(async (url) => {
     const [tab] = await chrome.tabs.query({ active: true, url });
-    return (
-      globalThis as unknown as { __spTest: { capture(id: number): Promise<unknown> } }
-    ).__spTest.capture(tab!.id!);
+    const hook = (
+      globalThis as unknown as {
+        __spTest: {
+          start(id: number, mode: string, opts: object): Promise<string>;
+          wait(id: string): Promise<unknown>;
+        };
+      }
+    ).__spTest;
+    return hook.wait(
+      await hook.start(tab!.id!, 'full', { limits: { maxScreens: 40, maxHeight: 40_000 } }),
+    );
   }, `${FIXTURES}/${path}`)) as Run;
   await (await studio).close();
   await page.waitForTimeout(200);
@@ -114,6 +124,9 @@ function checkRun(path: string, how: string, r: Awaited<ReturnType<typeof captur
   expect(run.frames.length > 0 || run.done.warnings.length > 0, at).toBe(true);
   expect(['complete', 'partial', 'error', 'cancelled'], at).toContain(run.done.status);
   if (run.done.status !== 'complete') expect(run.done.warnings.length, at).toBeGreaterThan(0);
+  // A page that keeps loading as it scrolls says it was cut short.
+  if (path === 'infinite.html' && how === 'on screen')
+    expect(run.done.warnings.join(' '), at).toMatch(/kept loading|longer than/);
   // The page is left as it was.
   expect(r.after, at).toEqual(r.before);
   // No gaps between frames.
