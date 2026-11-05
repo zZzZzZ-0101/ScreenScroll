@@ -846,3 +846,51 @@ test('Pages per sheet: two to a landscape sheet, text still searchable', async (
     .join(' ');
   expect(text).toContain('Article fixture');
 });
+
+test('content loaded above the screen mid-capture: frames are lined up again, nothing doubled', async ({
+  context,
+  serviceWorker,
+}) => {
+  const studio = await capture(context, serviceWorker, 'shifting.html');
+  const b64 = (await studio.evaluate(() =>
+    (window as unknown as { __spStudio: { pdfBase64(): Promise<string> } }).__spStudio.pdfBase64(),
+  )) as string;
+  mkdirSync('e2e-artifacts', { recursive: true });
+  writeFileSync('e2e-artifacts/shifting.pdf', Buffer.from(b64, 'base64'));
+  const got = await serviceWorker.evaluate(async () => {
+    const req = indexedDB.open('scrollpress');
+    const d: IDBDatabase = await new Promise((res) => (req.onsuccess = () => res(req.result)));
+    const get = <T>(store: string): Promise<T[]> =>
+      new Promise((res) => {
+        const q = d.transaction(store).objectStore(store).getAll();
+        q.onsuccess = () => res(q.result as T[]);
+      });
+    const sessions = await get<{
+      id: string;
+      title: string;
+      warnings: string[];
+      docHeight: number;
+    }>('sessions');
+    const s = sessions.find((x) => x.title === 'Shifting page fixture')!;
+    const frames = (
+      await get<{
+        sessionId: string;
+        hints: { textRuns: { text: string; rect: { y: number } }[] };
+      }>('frames')
+    ).filter((f) => f.sessionId === s.id);
+    const rows = new Map<number, number>();
+    for (const f of frames)
+      for (const r of f.hints.textRuns) {
+        const m = /^Row (\d+)$/.exec(r.text.trim());
+        if (m) rows.set(Number(m[1]), r.rect.y);
+      }
+    return { warnings: s.warnings, docHeight: s.docHeight, rows: [...rows.entries()] };
+  });
+  expect(got.warnings.join(' ')).toMatch(/moved by 137 px .* lined up again/);
+  // Every row where it was before anything loaded: 40 px apart, all 150 of them.
+  const rows = new Map(got.rows);
+  expect(rows.size).toBe(150);
+  const y0 = rows.get(0)!;
+  for (const [n, y] of rows) expect(Math.abs(y - (y0 + n * 40))).toBeLessThanOrEqual(1);
+  expect(got.docHeight).toBe(150 * 40);
+});

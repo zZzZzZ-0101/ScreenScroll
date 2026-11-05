@@ -32,7 +32,7 @@ Legend: `[ ]` todo · `(L#)` = lesson from `docs/product/PRIOR_ART.md` §7 · `�
 - [x] In-page progress pill, hidden during each grab; Esc cancels. → UI §2
 - [x] Growth detection + hard cap + loud warnings, never silent truncation (L11).
 - [x] Per-frame DOM hints: line boxes, atomic elements, boundaries, keep-with-next, opaque regions, tables, links, text runs. Deduplicated. ≤50 ms/frame budget. → CAPTURE §11
-- [ ] Seam safety net: image registration when offsets are unreliable. → CAPTURE §9
+- [ ] Seam safety net: image registration when offsets are unreliable. → CAPTURE §9 _(2026-11-05: content that changes size above the screen is caught by two seam anchors and corrected, with a warning; pixel registration for pages without such anchors not yet)_
 - [x] Fixture pages: article, sticky-header, lazy-images, inner-scroll, virtual-list, infinite, modal, animations, huge. E2E passes. → TESTING §2–3
 - [ ] Manual: Wikipedia, Gmail, Notion, Drive preview, MDN. Record in PROGRESS.
 
@@ -113,7 +113,7 @@ Goal: the most capable screen capture tool available, that still looks simple. A
 **Capture scope — any part of the screen**
 - [x] Line to line: click the first line, scroll, click the last line (2026-10-28).
 - [x] Document viewers: one PDF page per document page, cropped to the page (2026-10-28).
-- [ ] **Capture in the background** while the user reads another tab (tabCapture stream instead of captureVisibleTab; the Studio opens without taking focus).
+- [ ] **Capture in the background** (user priority, 2026-11-05: no visible scrolling, keep reading) while the user reads another tab (tabCapture stream instead of captureVisibleTab; the Studio opens without taking focus).
 - [ ] Viewers inside embedded frames (some document previews): find the frame's scroller and capture it.
 - [ ] Several areas in one capture (pick, add another, finish) → one document.
 - [ ] Horizontal and two-way scrolling (wide tables, boards, maps, canvases).

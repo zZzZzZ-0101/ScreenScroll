@@ -420,4 +420,5 @@ export const ZH_CN: Record<string, string> = {
   'As shown': '原样',
   'The browser window narrows to {w} px while capturing, then comes back.':
     '截图时浏览器窗口会临时缩窄到 {w} px，截完自动恢复。',
+  'Could be document pages': '可能是文档页',
 };

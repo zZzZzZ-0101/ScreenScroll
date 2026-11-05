@@ -77,7 +77,8 @@ export function planPages(
 ): PageResult {
   const { annotations } = project;
   const mode = pagesMode(project, settings);
-  const docFound = !!(analysis.sheets || analysis.readings.length);
+  // Only a reliable finding counts: weak readings exist on many ordinary pages.
+  const docFound = !!(analysis.sheets || confidentReading(analysis.readings));
   // A crop drawn in the Annotate view wins over automatic side cropping. "Everything I
   // captured" on a document capture means exactly that: no side crop either.
   const manual = project.crop;

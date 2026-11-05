@@ -226,7 +226,13 @@ function SheetsCard(props: SheetsCardProps) {
   return (
     <div className="mb-2 rounded-md border border-accent/40 bg-accent/5 p-2" data-testid="sheets">
       <p className="flex items-center justify-between gap-1 font-medium">
-        <span>{found ? t('Document pages found') : t('Document pages')}</span>
+        <span>
+          {p.detected || confidentReading(p.readings)
+            ? t('Document pages found')
+            : found
+              ? t('Could be document pages')
+              : t('Document pages')}
+        </span>
         <span className="flex items-center gap-1 font-normal text-neutral-500">
           {p.mode !== 'original' && t('{n} pages', { n: p.pages })}
           {p.mode === 'original' && (

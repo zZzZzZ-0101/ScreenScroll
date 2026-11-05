@@ -386,10 +386,20 @@ async function grabFrame(
     crop: Rect;
     offset: number;
     pill: Extract<NextStep, { kind: 'scroll' }>['pill'];
+    /** How far the page's content has moved down since the capture began (measured after
+     * settling), taken off docY so every frame stays in the first frame's coordinates. */
+    shift?: () => number;
   },
 ): Promise<void> {
-  const { docY, crop, offset } = frame;
+  const { crop, offset } = frame;
   const stillLoading = await settle();
+  const docY = frame.docY - (frame.shift?.() ?? 0);
+  // Scroll anchoring may have moved the page while it settled: back to the planned offset
+  // before reading text positions, so text and pixels come from the same scroll position.
+  if (Math.abs(target.offset - offset) > 0.5) {
+    target.scrollTo(offset);
+    await frames(2);
+  }
   if (stillLoading > 0 && !ctx.warnings.includes(IMAGES_WARNING)) ctx.warnings.push(IMAGES_WARNING);
   // The pill hangs off <html>, outside the walk root, so it never appears in hints.
   ctx.hints.crop = crop;
@@ -459,6 +469,49 @@ function pillReserve(pill: Pill, box: Rect, x0: number, x1: number): PillReserve
 const stoppedWarning = (frames: number) =>
   `You stopped the capture after ${frames} screen${frames === 1 ? '' : 's'}; the rest was not captured.`;
 
+/**
+ * Two elements of the captured scroller, at the bottom edge and halfway up what this frame
+ * kept, that sit in normal flow: not fixed, sticky or absolutely placed, nor transformed
+ * (virtual lists move recycled rows that way), nor inside such. Two, so a shift is believed
+ * only when both moved the same way.
+ */
+function pickAnchors(
+  root: Element | null,
+  box: Rect,
+  top: number,
+  bottom: number,
+  absTop: (el: Element) => number,
+): Array<{ el: Element; y: number }> {
+  const out: Array<{ el: Element; y: number }> = [];
+  for (const y of [box.y + bottom - 3, box.y + (top + bottom) / 2]) {
+    let found: Element | null = null;
+    for (const fx of [0.5, 0.3, 0.7]) {
+      for (const el of document.elementsFromPoint(box.x + box.width * fx, y)) {
+        if (root && !root.contains(el)) continue;
+        if (out.some((a) => a.el === el)) continue;
+        const r = el.getBoundingClientRect();
+        if (r.height < 2 || r.height > box.height * 0.8) continue;
+        if (inFlow(el, root)) {
+          found = el;
+          break;
+        }
+      }
+      if (found) break;
+    }
+    if (found) out.push({ el: found, y: absTop(found) });
+  }
+  return out.length === 2 ? out : [];
+}
+
+function inFlow(el: Element, root: Element | null): boolean {
+  for (let a: Element | null = el; a && a !== root && a !== document.body; a = a.parentElement) {
+    const cs = getComputedStyle(a);
+    if (cs.position !== 'static' && cs.position !== 'relative') return false;
+    if (cs.transform !== 'none') return false;
+  }
+  return true;
+}
+
 /** Full page or visible area of a scroll target (CAPTURE §2, §9). */
 async function captureScroll(
   ctx: LoopContext,
@@ -472,6 +525,22 @@ async function captureScroll(
   const start = visibleOnly ? target.offset : 0;
   let covered: number | null = null;
   let lastOffset: number | null = null;
+  // Seam check: content loaded or resized above the screen (lazy timelines, ads) moves
+  // everything below, and the browser's scroll anchoring follows it, so scroll offsets no
+  // longer match what was captured before. An element at the last frame's bottom edge is
+  // the anchor: how far it moved is how far this frame must be moved back.
+  let shift = 0;
+  let anchors: Array<{ el: Element; y: number }> = [];
+  const absTop = (el: Element) => el.getBoundingClientRect().top - box.y + target.offset;
+  const measureShift = () => {
+    if (anchors.length === 2 && anchors.every((a) => a.el.isConnected)) {
+      const [d1, d2] = anchors.map((a) => absTop(a.el) - a.y) as [number, number];
+      // Both moved, the same way: content above changed size. Anything else (a recycled
+      // row, one element resized) is not a reason to move the frame.
+      if (Math.abs(d1) >= 1 && Math.abs(d1 - d2) <= 1) shift += d1;
+    }
+    return shift;
+  };
   for (let index = 0; ; index++) {
     if (ctx.cancelled()) throw new Cancelled();
     if (ctx.stopped()) {
@@ -512,11 +581,20 @@ async function captureScroll(
       crop: { x: box.x, y: box.y + top, width: box.width, height: bottom - top },
       offset: measured,
       pill: step.pill,
+      shift: visibleOnly ? undefined : measureShift,
     });
     covered = Math.max(covered ?? 0, measured + bottom);
     lastOffset = measured;
+    if (!visibleOnly) anchors = pickAnchors(target.el, box, top, bottom, absTop);
   }
-  return { status: 'complete', size: { width: box.width, height: target.scrollHeight } };
+  if (Math.round(shift) !== 0)
+    ctx.warnings.push(
+      `The page moved by ${Math.round(Math.abs(shift))} px while capturing (something above loaded or changed size); the screens were lined up again at the seams.`,
+    );
+  return {
+    status: 'complete',
+    size: { width: box.width, height: target.scrollHeight - shift },
+  };
 }
 
 /** Selection and element modes: only the region, stitched across as many frames as needed. */
