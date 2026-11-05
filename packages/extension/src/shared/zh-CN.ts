@@ -376,6 +376,16 @@ export const ZH_CN: Record<string, string> = {
   "unchanged": "未变",
   "{n} unchanged": "{n} 段未变",
   "No differences in the text.": "文字没有差别。",
-  "Text only: pictures are not compared.": "只对比文字，不对比图片。",
+  Pictures: "图片",
+  "Captured at different widths ({a} and {b} px), so the pictures are not compared row by row.":
+    "两次截图宽度不同（{a} 和 {b} px），无法逐行对比图片。",
+  "No differences in the pictures.": "图片没有差异。",
+  "{n} areas look different.": "{n} 处看起来不同。",
+  "1 area looks different.": "1 处看起来不同。",
+  "The first {n} are shown.": "下面显示前 {n} 处。",
+  Before: "之前",
+  After: "之后",
+  "(nothing before)": "（之前没有）",
+  "(removed)": "（已删除）",
   "No capture was running on this tab. You can capture it now.": "这个标签页上没有正在进行的截图，现在可以截图了。",
 };
