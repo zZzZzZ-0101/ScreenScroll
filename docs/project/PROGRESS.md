@@ -171,7 +171,8 @@ Suite: `pnpm test` 219, `pnpm e2e` 53 (see the commit), lint and typecheck clean
 - M8 what changed (text): Saved captures → Compare; 3 unit + 1 e2e test (price edit, removed note, added line).
 - Fixed: a capture interrupted by a reload or crash could lock the panel's capture buttons on that tab; the page is now asked whether a capture really runs. 3 e2e tests for the panel's message path.
 - 2026-11-05: Compare also compares pictures (block alignment, 5 unit tests, e2e; a single changed digit is found). Open a PDF (pdf.js; e2e: 3 pages back as 3 A4 pages, text searchable). Document pages are a suggestion (everything captured is the default; found pages, adjust, by hand, hide/show; doc-viewer e2e rewritten). Panel: Speed, Sharpness, Page width (with the window-narrowing note), Scrolling. Seam check against content loading above the screen (GitHub sample; e2e `shifting.html`). Capture in the background (no visible scrolling; e2e). Edge matrix: every fixture captured on screen and in the background (`tests/e2e/matrix.spec.ts`).
-- Not started: browser-window capture; background capture of inner scroll areas.
+- 2026-11-05 (later): Capture a window (getDisplayMedia; 2 e2e). Page numbers found on document pages, hidden or numbered from 1 (6 unit + e2e, rendered page checked). Background capture of scroll areas inside the page (e2e; matrix).
+- Not started: running headers/footers detection; recognition at analysis time for picture-only pages.
 - Import: Saved captures → Open an image (tall PNG/JPEG/WebP) → Studio; 2 e2e tests (breaks fall between lines; a non-image says so). Not done: tall single-page PDF import (pdf.js).
 - Overlay killer: the pop-up note in the Studio has "Hide pop-ups and capture again"; 6 e2e tests (3 kinds of pop-up, 2 look-alikes that must stay, the Studio flow). Needs the user's check on real consent walls and newsletter pop-ups.
 

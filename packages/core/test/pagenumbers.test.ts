@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { findPageNumbers, pageNumberAnnotations, type TextRun } from '../src/index.js';
+import {
+  findPageNumbers,
+  findRunningLines,
+  pageNumberAnnotations,
+  runningLineAnnotations,
+  type TextRun,
+} from '../src/index.js';
 
 const sheets = Array.from({ length: 6 }, (_, i) => ({
   x0: 100,
@@ -72,5 +78,28 @@ describe('pageNumberAnnotations', () => {
       'Page 5 of 6',
       'Page 6 of 6',
     ]);
+  });
+});
+
+describe('findRunningLines', () => {
+  it('finds a header repeated on most pages, not page titles or numbers', () => {
+    const runs = [
+      ...body,
+      ...sheets.slice(0, 5).map((s) => run('Answer Scheme · Internal', s.y0 + 20)),
+      ...sheets.map((s, i) => run(`Page ${i + 1} of 6`, s.y1 - 40)),
+    ];
+    const lines = findRunningLines(sheets, runs);
+    expect(lines.map((l) => [l.text, l.band, l.marks.length])).toEqual([
+      ['Answer Scheme · Internal', 'top', 5],
+    ]);
+    expect(runningLineAnnotations(lines, true)).toHaveLength(5);
+    expect(runningLineAnnotations(lines, false)).toEqual([]);
+  });
+
+  it('needs most pages and about the same place', () => {
+    const few = [...body, ...sheets.slice(0, 2).map((s) => run('Draft', s.y0 + 20))];
+    expect(findRunningLines(sheets, few)).toEqual([]);
+    const moving = [...body, ...sheets.map((s, i) => run('Draft copy', s.y0 + 10 + i * 15))];
+    expect(findRunningLines(sheets, moving)).toEqual([]);
   });
 });

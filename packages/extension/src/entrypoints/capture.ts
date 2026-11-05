@@ -230,12 +230,16 @@ async function run(msg: StartCapture): Promise<void> {
     eagerLoadImages(log);
     // In the background: only the page itself (the debugger pictures its layout, not the
     // inside of a scroll area), and without the look-ahead pass, which scrolls.
-    const quiet = !!msg.quiet && p.kind === 'scroll' && !p.visibleOnly && !target.el;
-    if (msg.quiet && !quiet)
+    // A scroll area inside the page is drawn in full for the capture (logged, put back
+    // after), so the debugger can picture it from the layout too.
+    const quiet = !!msg.quiet && p.kind === 'scroll' && !p.visibleOnly;
+    if (quiet && target.el && !expandForQuiet(log, target)) {
       warnings.push(
-        'This part scrolls inside the page, which can’t be captured in the background yet, so it was captured by scrolling.',
+        'This part scrolls inside the page and could not be drawn in full, so it was captured by scrolling.',
       );
-    if (!quiet && (p.kind === 'region' || !p.visibleOnly)) {
+    }
+    const quietNow = quiet && (!target.el || expanded.has(target.el));
+    if (!quietNow && (p.kind === 'region' || !p.visibleOnly)) {
       const from = p.kind === 'region' ? p.region.y0 : 0;
       const to = p.kind === 'region' ? p.region.y1 : Infinity;
       const preload = await preloadPass(
@@ -273,7 +277,7 @@ async function run(msg: StartCapture): Promise<void> {
     const result =
       p.kind === 'region'
         ? await captureRegion(ctx, target, p.region)
-        : quiet
+        : quietNow
           ? await captureQuiet(ctx, target)
           : await captureScroll(ctx, target, p.visibleOnly);
     status = result.status;
@@ -485,9 +489,14 @@ const stoppedWarning = (frames: number) =>
  * when pictured this way, so a change in the page's height is reported.
  */
 async function captureQuiet(ctx: LoopContext, target: Target): Promise<LoopResult> {
-  const box = target.crop;
+  const el = target.el;
+  // An expanded scroll area: its content starts at its own top, laid out in full.
+  const box = el ? contentBox(el) : target.crop;
+  const height = () => (el ? el.scrollHeight : target.scrollHeight);
+  // Viewport y of content row 0 (the page's own scroll offset for the document).
+  const originY = () => (el ? contentBox(el).y : box.y - target.offset);
   const limits = ctx.msg.limits ?? DEFAULT_LIMITS;
-  const startHeight = target.scrollHeight;
+  const startHeight = height();
   let y = 0;
   let index = 0;
   for (; ; index++) {
@@ -497,7 +506,7 @@ async function captureQuiet(ctx: LoopContext, target: Target): Promise<LoopResul
       ctx.warnings.push(stoppedWarning(index));
       break;
     }
-    const total = target.scrollHeight;
+    const total = height();
     if (y >= total - 0.5) break;
     if (index >= limits.maxScreens || y >= limits.maxHeight) {
       ctx.warnings.push(
@@ -505,11 +514,11 @@ async function captureQuiet(ctx: LoopContext, target: Target): Promise<LoopResul
       );
       break;
     }
-    const h = Math.min(box.height, total - y);
+    const h = Math.min(innerHeight, total - y);
     const stillLoading = await settle();
     if (stillLoading > 0 && !ctx.warnings.includes(IMAGES_WARNING)) ctx.warnings.push(IMAGES_WARNING);
     // The region in viewport coordinates (below the screen is fine: layout boxes exist).
-    const crop = { x: box.x, y: box.y + y - target.offset, width: box.width, height: h };
+    const crop = { x: box.x, y: originY() + y, width: box.width, height: h };
     ctx.hints.crop = crop;
     ctx.hints.offset = y;
     const t0 = performance.now();
@@ -529,18 +538,112 @@ async function captureQuiet(ctx: LoopContext, target: Target): Promise<LoopResul
       viewportWidth: box.width,
       hints,
       hintsMs,
-      clip: { x: box.x + scrollX, y, width: box.width, height: h },
+      clip: { x: box.x + scrollX, y: originY() + scrollY + y, width: box.width, height: h },
       dpr: devicePixelRatio,
     } satisfies GrabFrame)) as GrabResult;
     ctx.pill.show();
     if (!res.ok) throw new Error(res.error);
     y += h;
   }
-  if (Math.abs(target.scrollHeight - startHeight) > 2)
+  if (Math.abs(height() - startHeight) > 2)
     ctx.warnings.push(
       'The page changed height while it was captured in the background; if something looks stretched or doubled, capture it on screen instead.',
     );
   return { status: 'complete', size: { width: box.width, height: y } };
+}
+
+const expanded = new WeakSet<Element>();
+
+/**
+ * Draws a scroll area in full for a background capture: its height becomes its content's,
+ * nothing clips it, and fixed or absolute boxes it sits in may grow downwards. Every change
+ * goes through the log, so the page is put back afterwards, and it is checked: when the
+ * area still scrolls, it is undone and false is returned.
+ */
+function expandForQuiet(log: MutationLog, target: Target): boolean {
+  const el = target.el as HTMLElement | null;
+  if (!el) return true;
+  const full = el.scrollHeight;
+  const before = log.size;
+  const grow = (e: HTMLElement, h: number | null) => {
+    if (h !== null) log.setStyle(e, 'height', `${h}px`);
+    log.setStyle(e, 'max-height', 'none');
+    log.setStyle(e, 'overflow', 'visible');
+    const cs = getComputedStyle(e);
+    if (cs.position === 'fixed' || cs.position === 'absolute') log.setStyle(e, 'bottom', 'auto');
+  };
+  const top = el.scrollTop;
+  log.record(() => {
+    el.scrollTop = top;
+  });
+  grow(el, full + (el.offsetHeight - el.clientHeight));
+  // Ancestors that clip or hold a fixed height would cut it off again.
+  for (let a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) {
+    const cs = getComputedStyle(a);
+    if (cs.overflowY !== 'visible' || cs.maxHeight !== 'none' || a === document.body) grow(a, null);
+    if (cs.height !== 'auto' && a.scrollHeight > a.clientHeight + 1) log.setStyle(a, 'height', 'auto');
+  }
+  log.setStyle(document.documentElement, 'overflow', 'visible');
+  // Fixed backdrops (a viewer's dark shade) only cover the window: below it the area would
+  // show the page behind. Its look on screen, made solid, goes with it instead.
+  const behind = seenBehind(el);
+  if (behind) log.setStyle(el, 'background-color', behind);
+  void el.offsetHeight;
+  const ok = el.scrollHeight <= el.clientHeight + 2;
+  if (!ok) {
+    log.restoreSince(before);
+    return false;
+  }
+  expanded.add(el);
+  return true;
+}
+
+/**
+ * The colour an element's background shows on screen: its own, over whatever is stacked
+ * behind it at its middle (backdrops and the page), composited until opaque.
+ */
+function seenBehind(el: Element): string | null {
+  const r = el.getBoundingClientRect();
+  const stack = document
+    .elementsFromPoint(r.left + Math.min(4, r.width / 2), r.top + Math.min(4, r.height / 2))
+    .filter((e) => e === el || !el.contains(e));
+  const start = stack.indexOf(el);
+  const layers = [el, ...stack.slice(start + 1), document.documentElement];
+  // Front to back: remaining = how much of what is behind still shows through.
+  let [cr, cg, cb, remaining] = [0, 0, 0, 1];
+  for (const e of layers) {
+    const c = parseColor(getComputedStyle(e).backgroundColor);
+    if (!c || c[3] === 0) continue;
+    const a = c[3] * remaining;
+    cr += c[0] * a;
+    cg += c[1] * a;
+    cb += c[2] * a;
+    remaining *= 1 - c[3];
+    if (remaining < 0.01) break;
+  }
+  // The canvas behind everything is white.
+  cr += 255 * remaining;
+  cg += 255 * remaining;
+  cb += 255 * remaining;
+  const own = parseColor(getComputedStyle(el).backgroundColor);
+  if (own && own[3] === 1) return null;
+  return `rgb(${Math.round(cr)}, ${Math.round(cg)}, ${Math.round(cb)})`;
+}
+
+function parseColor(css: string): [number, number, number, number] | null {
+  const m = /rgba?\(([^)]+)\)/.exec(css);
+  if (!m) return null;
+  const p = m[1]!.split(/[\s,/]+/).filter(Boolean).map(Number);
+  return [p[0]!, p[1]!, p[2]!, p[3] ?? 1];
+}
+
+/** The content box of an element, in viewport CSS px (inside borders, no scrollbar). */
+function contentBox(el: Element): Rect {
+  const r = el.getBoundingClientRect();
+  const cs = getComputedStyle(el);
+  const left = parseFloat(cs.borderLeftWidth) || 0;
+  const top = parseFloat(cs.borderTopWidth) || 0;
+  return { x: r.left + left, y: r.top + top, width: el.clientWidth, height: el.clientHeight };
 }
 
 /**

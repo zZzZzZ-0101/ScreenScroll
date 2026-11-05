@@ -447,4 +447,6 @@ export const ZH_CN: Record<string, string> = {
   'Hide them': '隐藏原页码',
   'Write each page’s place in this capture instead, in the same words': '改写为每页在本次截图中的序号，措辞保持不变',
   'Number from 1': '从 1 重新编号',
+  'Repeated on every page: {text}': '每页重复出现：{text}',
+  'Hide headers and footers': '隐藏页眉页脚',
 };

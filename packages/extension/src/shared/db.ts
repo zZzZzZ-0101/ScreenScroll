@@ -40,8 +40,9 @@ export interface Project {
   sheetGrid?: SheetGrid | null;
   /** What the pages are made from when document pages are found (see plan.ts PagesMode). */
   pages?: 'original' | 'auto' | 'grid';
-  /** The document's own page numbers: hide them, or number the pages from 1. */
-  pageNumbers?: { hide?: boolean; renumber?: boolean };
+  /** The document's own page numbers: hide them, or number the pages from 1; and its
+   * running headers and footers: hide them. */
+  pageNumbers?: { hide?: boolean; renumber?: boolean; hideRunning?: boolean };
 }
 
 export const EMPTY_PROJECT: Project = { annotations: [], crop: null };

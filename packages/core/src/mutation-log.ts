@@ -49,6 +49,24 @@ export class MutationLog {
     this.undos.push(undo);
   }
 
+  /**
+   * Undoes the steps logged since `size` was `mark`, newest first, keeping the earlier ones
+   * (an attempt that didn't work out). Elements left with an empty `style` are still
+   * cleaned up by the final restore.
+   */
+  restoreSince(mark: number): unknown[] {
+    const errors: unknown[] = [];
+    const later = this.undos.splice(mark);
+    for (let i = later.length - 1; i >= 0; i--) {
+      try {
+        later[i]!();
+      } catch (e) {
+        errors.push(e);
+      }
+    }
+    return errors;
+  }
+
   /** Undoes everything, newest first. Returns the errors it swallowed so callers can warn. */
   restore(): unknown[] {
     const errors: unknown[] = [];

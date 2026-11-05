@@ -149,8 +149,10 @@ export interface SheetsCardProps {
   onGrid: (g: SheetGrid) => void;
   /** The document's own page numbers, when found, and what to do with them. */
   numbers: { first: number; last: number; total: number | null } | null;
-  numberChoice: { hide?: boolean; renumber?: boolean };
-  onNumbers: (c: { hide?: boolean; renumber?: boolean }) => void;
+  /** Running headers and footers found (their text). */
+  running: string[];
+  numberChoice: { hide?: boolean; renumber?: boolean; hideRunning?: boolean };
+  onNumbers: (c: { hide?: boolean; renumber?: boolean; hideRunning?: boolean }) => void;
 }
 
 /** Field, short label, full name (accessible name and tooltip). */
@@ -380,6 +382,22 @@ function SheetsCard(props: SheetsCardProps) {
               className="accent-[#0e7c7b]"
             />
             {t('Number from 1')}
+          </label>
+        </div>
+      )}
+      {p.mode !== 'original' && p.running.length > 0 && (
+        <div className="pt-1 text-neutral-600 dark:text-neutral-300" data-testid="running-lines">
+          <p className="truncate text-[12px]" title={p.running.join('\n')}>
+            {t('Repeated on every page: {text}', { text: p.running.map((r) => `“${r}”`).join(', ') })}
+          </p>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={!!p.numberChoice.hideRunning}
+              onChange={(e) => p.onNumbers({ ...p.numberChoice, hideRunning: e.target.checked })}
+              className="accent-[#0e7c7b]"
+            />
+            {t('Hide headers and footers')}
           </label>
         </div>
       )}

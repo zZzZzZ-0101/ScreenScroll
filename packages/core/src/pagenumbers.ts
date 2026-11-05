@@ -133,3 +133,66 @@ export function pageNumberAnnotations(
   }
   return out;
 }
+
+/** A running header or footer: the same line in the same place on most pages. */
+export interface RunningLine {
+  text: string;
+  band: 'top' | 'bottom';
+  /** One box per page it is on (capture CSS px). */
+  marks: Array<{ sheet: number; rect: Rect }>;
+}
+
+/**
+ * Lines repeated word for word in the top or bottom band of at least 60 % of the pages
+ * (and two), at about the same height within the page. Page numbers are found separately;
+ * titles that only differ by a number ("Chapter 3") are not running lines.
+ */
+export function findRunningLines(
+  sheets: ReadonlyArray<{ x0: number; x1: number; y0: number; y1: number }>,
+  runs: readonly TextRun[],
+): RunningLine[] {
+  if (sheets.length < 2) return [];
+  const groups = new Map<string, RunningLine & { at: number[] }>();
+  sheets.forEach((s, i) => {
+    const h = s.y1 - s.y0;
+    for (const r of runs) {
+      const cy = r.rect.y + r.rect.height / 2;
+      const cx = r.rect.x + r.rect.width / 2;
+      if (cx < s.x0 || cx > s.x1 || cy < s.y0 || cy > s.y1) continue;
+      const band = cy <= s.y0 + BAND * h ? 'top' : cy >= s.y1 - BAND * h ? 'bottom' : null;
+      if (!band) continue;
+      const text = r.text.replace(/\s+/g, ' ').trim();
+      if (text.length < 3 || PATTERNS.some(([re]) => re.test(text))) continue;
+      const key = `${band}\u0000${text}`;
+      const g = groups.get(key) ?? { text, band, marks: [], at: [] };
+      if (g.marks.some((m) => m.sheet === i)) continue;
+      g.marks.push({ sheet: i, rect: r.rect });
+      g.at.push(cy - s.y0);
+      groups.set(key, g);
+    }
+  });
+  const need = Math.max(2, Math.ceil(sheets.length * 0.6));
+  return [...groups.values()]
+    .filter((g) => g.marks.length >= need && Math.max(...g.at) - Math.min(...g.at) <= 8)
+    .map(({ at: _at, ...line }) => line);
+}
+
+/** Paper-coloured covers over running lines, drawn on export when the user hides them. */
+export function runningLineAnnotations(
+  lines: readonly RunningLine[],
+  hide: boolean | undefined,
+  paper = '#ffffff',
+): Annotation[] {
+  if (!hide) return [];
+  return lines.flatMap((l, k) =>
+    l.marks.map((m): Annotation => ({
+      id: `rl-${k}-${m.sheet}`,
+      kind: 'cover',
+      style: { ...DEFAULT_STYLE, color: paper },
+      x: m.rect.x - 2,
+      y: m.rect.y - 2,
+      w: m.rect.width + 4,
+      h: m.rect.height + 4,
+    })),
+  );
+}

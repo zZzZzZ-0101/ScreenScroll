@@ -3,6 +3,8 @@ import {
   commit,
   DEFAULT_STYLE,
   findPageNumbers,
+  findRunningLines,
+  runningLineAnnotations,
   pageNumberAnnotations,
   confidentReading,
   gridOf,
@@ -209,6 +211,13 @@ export function App() {
         : null,
     [session, result],
   );
+  const runningLines = useMemo(
+    () =>
+      session && result?.ok && result.sheets
+        ? findRunningLines(result.debug.slices, session.hints.textRuns)
+        : [],
+    [session, result],
+  );
   const outAnns = useMemo(
     () => [
       ...annotations,
@@ -217,8 +226,9 @@ export function App() {
         project.pageNumbers,
         result?.ok ? result.debug.slices.length : 0,
       ),
+      ...runningLineAnnotations(runningLines, project.pageNumbers?.hideRunning),
     ],
-    [annotations, pageNumbers, project.pageNumbers, result],
+    [annotations, pageNumbers, runningLines, project.pageNumbers, result],
   );
   const changeProject = useCallback(
     (patch: Partial<Project>) => setHistory((h) => commit(h, { ...h.present, ...patch })),
@@ -810,6 +820,7 @@ export function App() {
           numbers: pageNumbers
             ? { first: pageNumbers.first, last: pageNumbers.last, total: pageNumbers.total }
             : null,
+          running: runningLines.map((l) => l.text),
           numberChoice: project.pageNumbers ?? {},
           onNumbers: (pn) => changeProject({ pageNumbers: pn }),
         }}

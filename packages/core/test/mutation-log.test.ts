@@ -41,6 +41,20 @@ describe('MutationLog', () => {
     expect(el.style.dump()).toEqual({ visibility: 'visible' });
   });
 
+  it('undoes only the steps since a mark, keeping the earlier ones', () => {
+    const el = { style: fakeStyle({ height: ['10px'] }) };
+    const log = new MutationLog();
+    log.setStyle(el, 'display', 'block');
+    const mark = log.size;
+    log.setStyle(el, 'height', '900px');
+    log.setStyle(el, 'overflow', 'visible');
+    log.restoreSince(mark);
+    expect(el.style.dump()).toEqual({ height: '10px', display: 'block !important' });
+    expect(log.size).toBe(mark);
+    log.restore();
+    expect(el.style.dump()).toEqual({ height: '10px' });
+  });
+
   it('is idempotent', () => {
     const el = { style: fakeStyle() };
     const log = new MutationLog();

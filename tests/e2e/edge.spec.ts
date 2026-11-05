@@ -947,3 +947,52 @@ test('capture in the background: the page never scrolls, and the capture is whol
     });
   });
 });
+
+test('in the background, a scroll area inside the page is captured whole without scrolling', async ({
+  context,
+  serviceWorker,
+}) => {
+  await serviceWorker.evaluate(async () => {
+    const { settings } = await chrome.storage.local.get('settings');
+    await chrome.storage.local.set({
+      settings: { ...(settings ?? {}), capture: { ...(settings?.capture ?? {}), quiet: true } },
+    });
+  });
+  // A document viewer that scrolls inside the page, left by the reader at 1500 px.
+  const page = await openPage(context, 'doc-viewer.html');
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.evaluate(() => {
+    const v = document.getElementById('viewer')!;
+    v.scrollTop = 1500;
+    const w = window as unknown as { moves: number[] };
+    w.moves = [];
+    v.addEventListener('scroll', () => w.moves.push(v.scrollTop));
+    addEventListener('scroll', () => w.moves.push(-scrollY));
+  });
+  const studioPromise = studioOpens(context);
+  const run = (await serviceWorker.evaluate(async (url) => {
+    const [tab] = await chrome.tabs.query({ active: true, url });
+    return (globalThis as unknown as { __spTest: Hook }).__spTest.capture(tab!.id!);
+  }, `${FIXTURES}/doc-viewer.html`)) as { done: { warnings: string[] } };
+  expect(run.done.warnings.join(' ')).not.toMatch(/scrolls inside the page/);
+  // Put back as the reader left it; any scroll event reported only that place.
+  expect(await page.evaluate(() => document.getElementById('viewer')!.scrollTop)).toBe(1500);
+  const moves = await page.evaluate(() => (window as unknown as { moves: number[] }).moves);
+  expect(moves.every((m) => m === 1500 || m === 0)).toBe(true);
+  expect(
+    await page.evaluate(() => document.getElementById('viewer')!.getAttribute('style')),
+  ).toBeNull();
+  // The viewer's dark gaps came with it: its six pages are found, as on screen.
+  const studio = await studioPromise;
+  await studio.setViewportSize({ width: 1400, height: 900 });
+  const card = studio.getByTestId('sheets');
+  await expect(card).toContainText('Document pages found', { timeout: 60_000 });
+  await card.getByRole('radio', { name: /Document pages · found from the gaps/ }).check();
+  await expect(card).toContainText('6 pages');
+  await serviceWorker.evaluate(async () => {
+    const { settings } = await chrome.storage.local.get('settings');
+    await chrome.storage.local.set({
+      settings: { ...settings, capture: { ...settings.capture, quiet: false } },
+    });
+  });
+});
