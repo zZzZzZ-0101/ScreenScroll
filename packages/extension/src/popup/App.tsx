@@ -1,5 +1,6 @@
 import { blockedReason, PAPERS, type PaperId } from '@screenscroll/core';
 import {
+  AppWindow,
   Crosshair,
   Archive,
   Layers,
@@ -405,6 +406,16 @@ export function App() {
       >
         <Layers aria-hidden size={15} className="shrink-0" />
         <span className="truncate">{t('Capture several pages')}</span>
+      </button>
+
+      <button
+        type="button"
+        onClick={() => open(chrome.runtime.getURL('/window.html'))}
+        className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left text-neutral-600 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:text-neutral-300 dark:hover:bg-neutral-800"
+        title={t('A browser window, another app, or the whole screen, as one picture')}
+      >
+        <AppWindow aria-hidden size={15} className="shrink-0" />
+        <span className="truncate">{t('Capture a window')}</span>
       </button>
 
       <button

@@ -432,4 +432,14 @@ export const ZH_CN: Record<string, string> = {
   'Scrolling on screen captures what you see, including pages that size themselves to the window.':
     '屏幕上滚动截取的就是你看到的内容，包括按窗口大小自适应的页面。',
   'Capturing in the background needs the permission; it stays on screen.': '后台截图需要该权限；保持在屏幕上截图。',
+  'Capture a window': '截取窗口',
+  'Taking the picture in {n} s…': '{n} 秒后截图…',
+  Window: '窗口',
+  'Nothing was shared, so nothing was captured.': '没有选择共享内容，所以没有截图。',
+  'The picture could not be taken: {why}': '无法截图：{why}',
+  'A browser window, another app, or the whole screen: the browser asks which. One picture is taken, sharing stops at once, and it opens in the Studio.':
+    '浏览器窗口、其他应用或整个屏幕：浏览器会让你选择。只截一张图，随即停止共享，并在编辑器中打开。',
+  'Wait before the picture': '截图前等待',
+  'Choose what to capture': '选择要截取的内容',
+  'A browser window, another app, or the whole screen, as one picture': '把浏览器窗口、其他应用或整个屏幕截成一张图',
 };
