@@ -421,4 +421,15 @@ export const ZH_CN: Record<string, string> = {
   'The browser window narrows to {w} px while capturing, then comes back.':
     '截图时浏览器窗口会临时缩窄到 {w} px，截完自动恢复。',
   'Could be document pages': '可能是文档页',
+  Scrolling: '滚动方式',
+  'In background: the page stays where you are while it is captured (Chrome shows a “debugging” bar meanwhile).':
+    '后台：截图时页面停在原处、不滚动（期间 Chrome 会显示"正在调试"提示条）。',
+  'On screen': '屏幕上',
+  'In background': '后台',
+  'Capturing in the background · screen {n}': '后台截图中 · 第 {n} 屏',
+  'On screen: the page scrolls while it is captured. In background: the page stays where you are and each screen is taken from the page’s layout (Chrome shows a "debugging" bar meanwhile, and asks for permission once). Scroll areas inside a page are still captured by scrolling.':
+    '屏幕上：截图时页面会滚动。后台：页面停在原处，每一屏直接从页面排版中截取（期间 Chrome 会显示"正在调试"提示条，首次会请求权限）。页面内部的滚动区域仍通过滚动截取。',
+  'Scrolling on screen captures what you see, including pages that size themselves to the window.':
+    '屏幕上滚动截取的就是你看到的内容，包括按窗口大小自适应的页面。',
+  'Capturing in the background needs the permission; it stays on screen.': '后台截图需要该权限；保持在屏幕上截图。',
 };

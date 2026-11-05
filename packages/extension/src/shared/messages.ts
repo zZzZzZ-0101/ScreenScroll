@@ -23,6 +23,9 @@ export interface StartCapture {
   hideOverlays?: boolean;
   /** Interface language for the hints shown on the page. */
   lang?: Lang;
+  /** Capture in the background: the page is not scrolled; each screen is taken from the
+   * page's layout through the debugger (the background has attached it). */
+  quiet?: boolean;
 }
 
 /** Content script → background: grab the visible tab for this frame. */
@@ -40,6 +43,10 @@ export interface GrabFrame {
   hints: DomHints;
   /** Time spent collecting them, for the 50 ms budget. */
   hintsMs: number;
+  /** Background capture: the document region to picture (CSS px), instead of the screen,
+   * and the page's device pixels per CSS px. */
+  clip?: Rect;
+  dpr?: number;
 }
 
 /** Content script → background: capture finished (or failed / was cancelled). */

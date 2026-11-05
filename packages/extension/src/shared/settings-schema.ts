@@ -71,6 +71,21 @@ export const SETTINGS: SettingEntry[] = [
     why: 'Fast enough for long pages, patient enough for lazy-loading images.',
   },
   {
+    id: 'capture.quiet',
+    section: 'Capture',
+    label: 'Scrolling',
+    help: 'On screen: the page scrolls while it is captured. In background: the page stays where you are and each screen is taken from the page’s layout (Chrome shows a "debugging" bar meanwhile, and asks for permission once). Scroll areas inside a page are still captured by scrolling.',
+    kind: 'choice',
+    choices: [
+      { value: 'screen', label: 'On screen' },
+      { value: 'quiet', label: 'In background' },
+    ],
+    get: (s) => (s.capture.quiet ? 'quiet' : 'screen'),
+    set: (s, v) => ({ capture: { ...s.capture, quiet: v === 'quiet' } }),
+    recommended: 'screen',
+    why: 'Scrolling on screen captures what you see, including pages that size themselves to the window.',
+  },
+  {
     id: 'capture.resolution',
     section: 'Capture',
     label: 'Sharpness (resolution)',

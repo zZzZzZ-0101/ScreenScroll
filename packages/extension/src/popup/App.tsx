@@ -282,6 +282,28 @@ export function App() {
               onChange={(speed) => update({ capture: { ...settings.capture, speed } })}
             />
             <Choice
+              id="scrolling"
+              label={t('Scrolling')}
+              title={t('In background: the page stays where you are while it is captured (Chrome shows a “debugging” bar meanwhile).')}
+              value={settings.capture.quiet ? 'quiet' : 'screen'}
+              options={[
+                ['screen', t('On screen')],
+                ['quiet', t('In background')],
+              ]}
+              onChange={(v) => {
+                void (async () => {
+                  // Asked while the click still counts as a user gesture.
+                  if (v === 'quiet') {
+                    const ok = await chrome.permissions
+                      .request({ permissions: ['debugger'] })
+                      .catch(() => false);
+                    if (!ok) return;
+                  }
+                  update({ capture: { ...settings.capture, quiet: v === 'quiet' } });
+                })();
+              }}
+            />
+            <Choice
               id="sharp"
               label={t('Sharpness')}
               title={t('2× and 3× render the page at a higher density for crisp print; Chrome shows a “debugging” bar while they capture.')}

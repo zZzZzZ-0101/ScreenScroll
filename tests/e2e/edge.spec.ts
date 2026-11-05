@@ -894,3 +894,56 @@ test('content loaded above the screen mid-capture: frames are lined up again, no
   for (const [n, y] of rows) expect(Math.abs(y - (y0 + n * 40))).toBeLessThanOrEqual(1);
   expect(got.docHeight).toBe(150 * 40);
 });
+
+test('capture in the background: the page never scrolls, and the capture is whole and searchable', async ({
+  context,
+  serviceWorker,
+}) => {
+  await serviceWorker.evaluate(async () => {
+    const { settings } = await chrome.storage.local.get('settings');
+    await chrome.storage.local.set({
+      settings: { ...(settings ?? {}), capture: { ...(settings?.capture ?? {}), quiet: true } },
+    });
+  });
+  const page = await openPage(context, 'shifting.html');
+  await page.evaluate(() => {
+    scrollTo(0, 700);
+    const w = window as unknown as { scrolls: number[] };
+    w.scrolls = [];
+    addEventListener('scroll', () => w.scrolls.push(scrollY));
+  });
+  const studioPromise = studioOpens(context);
+  await serviceWorker.evaluate(async (url) => {
+    const [tab] = await chrome.tabs.query({ active: true, url });
+    await (globalThis as unknown as { __spTest: Hook }).__spTest.capture(tab!.id!);
+  }, `${FIXTURES}/shifting.html`);
+  const studio = await studioPromise;
+  await studio.setViewportSize({ width: 1280, height: 800 });
+  await ready(studio);
+  // Where the user left it, and it never moved (a scroll event may report the same place).
+  const seen = await page.evaluate(() => (window as unknown as { scrolls: number[] }).scrolls);
+  expect(seen.every((y) => y === 700)).toBe(true);
+  expect(await page.evaluate(() => scrollY)).toBe(700);
+  // The whole page, in order, as text and as pixels.
+  const b64 = (await studio.evaluate(() =>
+    (window as unknown as { __spStudio: { pdfBase64(): Promise<string> } }).__spStudio.pdfBase64(),
+  )) as string;
+  const bytes = Buffer.from(b64, 'base64');
+  mkdirSync('e2e-artifacts', { recursive: true });
+  writeFileSync('e2e-artifacts/quiet.pdf', bytes);
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const pdf = await pdfjs.getDocument({ data: new Uint8Array(bytes) }).promise;
+  const rows: number[] = [];
+  for (let i = 1; i <= pdf.numPages; i++)
+    for (const it of (await (await pdf.getPage(i)).getTextContent()).items) {
+      const m = 'str' in it ? /^Row (\d+)$/.exec(it.str.trim()) : null;
+      if (m) rows.push(Number(m[1]));
+    }
+  expect(rows).toEqual(Array.from({ length: 150 }, (_, i) => i));
+  await serviceWorker.evaluate(async () => {
+    const { settings } = await chrome.storage.local.get('settings');
+    await chrome.storage.local.set({
+      settings: { ...settings, capture: { ...settings.capture, quiet: false } },
+    });
+  });
+});

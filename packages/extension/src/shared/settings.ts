@@ -33,6 +33,8 @@ export interface CaptureSettings {
   resolution: Resolution;
   /** Lay the page out at most this wide (CSS px) for whole-page captures; 0 = as it is. */
   width: CaptureWidth;
+  /** Capture in the background: the page isn't scrolled (screens come from the debugger). */
+  quiet: boolean;
 }
 
 /** Light, dark, or whatever the system uses. */
@@ -147,7 +149,7 @@ export const DEFAULT_SETTINGS: Settings = {
   docOriginal: true,
   theme: 'system',
   language: 'auto',
-  capture: { start: 'top', speed: 'normal', resolution: 'standard', width: 0 },
+  capture: { start: 'top', speed: 'normal', resolution: 'standard', width: 0, quiet: false },
   ocr: 'auto',
   exportPreset: 'balanced',
   presets: DEFAULT_PRESETS,
@@ -209,6 +211,7 @@ export function normalizeSettings(stored: unknown): Settings {
       resolution:
         cap.resolution === 'high' || cap.resolution === 'max' ? cap.resolution : 'standard',
       width: CAPTURE_WIDTHS.find((w) => w === cap.width) ?? 0,
+      quiet: cap.quiet === true,
     },
     ocr: o.ocr === 'always' || o.ocr === 'off' ? o.ocr : 'auto',
     exportPreset:

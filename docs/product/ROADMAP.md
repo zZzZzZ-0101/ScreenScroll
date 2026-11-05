@@ -113,7 +113,7 @@ Goal: the most capable screen capture tool available, that still looks simple. A
 **Capture scope — any part of the screen**
 - [x] Line to line: click the first line, scroll, click the last line (2026-10-28).
 - [x] Document viewers: one PDF page per document page, cropped to the page (2026-10-28).
-- [ ] **Capture in the background** (user priority, 2026-11-05: no visible scrolling, keep reading) while the user reads another tab (tabCapture stream instead of captureVisibleTab; the Studio opens without taking focus).
+- [ ] **Capture in the background** (2026-11-05: done for the page's own scroller, panel → Scrolling: In background, no visible scrolling; inner scroll areas and other tabs not yet) while the user reads another tab (tabCapture stream instead of captureVisibleTab; the Studio opens without taking focus).
 - [ ] Viewers inside embedded frames (some document previews): find the frame's scroller and capture it.
 - [ ] Several areas in one capture (pick, add another, finish) → one document.
 - [ ] Horizontal and two-way scrolling (wide tables, boards, maps, canvases).

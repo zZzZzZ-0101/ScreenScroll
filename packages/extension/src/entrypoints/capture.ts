@@ -228,7 +228,14 @@ async function run(msg: StartCapture): Promise<void> {
       );
     }
     eagerLoadImages(log);
-    if (p.kind === 'region' || !p.visibleOnly) {
+    // In the background: only the page itself (the debugger pictures its layout, not the
+    // inside of a scroll area), and without the look-ahead pass, which scrolls.
+    const quiet = !!msg.quiet && p.kind === 'scroll' && !p.visibleOnly && !target.el;
+    if (msg.quiet && !quiet)
+      warnings.push(
+        'This part scrolls inside the page, which can’t be captured in the background yet, so it was captured by scrolling.',
+      );
+    if (!quiet && (p.kind === 'region' || !p.visibleOnly)) {
       const from = p.kind === 'region' ? p.region.y0 : 0;
       const to = p.kind === 'region' ? p.region.y1 : Infinity;
       const preload = await preloadPass(
@@ -266,7 +273,9 @@ async function run(msg: StartCapture): Promise<void> {
     const result =
       p.kind === 'region'
         ? await captureRegion(ctx, target, p.region)
-        : await captureScroll(ctx, target, p.visibleOnly);
+        : quiet
+          ? await captureQuiet(ctx, target)
+          : await captureScroll(ctx, target, p.visibleOnly);
     status = result.status;
     size = result.size;
   } catch (e) {
@@ -468,6 +477,71 @@ function pillReserve(pill: Pill, box: Rect, x0: number, x1: number): PillReserve
 
 const stoppedWarning = (frames: number) =>
   `You stopped the capture after ${frames} screen${frames === 1 ? '' : 's'}; the rest was not captured.`;
+
+/**
+ * Background capture: the page stays where the user is. Each screen-sized region of the
+ * page's layout is read (text, line boxes) and pictured by the debugger in turn, top to
+ * bottom; nothing scrolls. Pages that size themselves to the window can look different
+ * when pictured this way, so a change in the page's height is reported.
+ */
+async function captureQuiet(ctx: LoopContext, target: Target): Promise<LoopResult> {
+  const box = target.crop;
+  const limits = ctx.msg.limits ?? DEFAULT_LIMITS;
+  const startHeight = target.scrollHeight;
+  let y = 0;
+  let index = 0;
+  for (; ; index++) {
+    if (ctx.cancelled()) throw new Cancelled();
+    if (ctx.stopped()) {
+      if (index === 0) throw new Cancelled();
+      ctx.warnings.push(stoppedWarning(index));
+      break;
+    }
+    const total = target.scrollHeight;
+    if (y >= total - 0.5) break;
+    if (index >= limits.maxScreens || y >= limits.maxHeight) {
+      ctx.warnings.push(
+        `The page is longer than ScreenScroll captures at once; it stopped after ${index} screens (${Math.round(y)} px).`,
+      );
+      break;
+    }
+    const h = Math.min(box.height, total - y);
+    const stillLoading = await settle();
+    if (stillLoading > 0 && !ctx.warnings.includes(IMAGES_WARNING)) ctx.warnings.push(IMAGES_WARNING);
+    // The region in viewport coordinates (below the screen is fine: layout boxes exist).
+    const crop = { x: box.x, y: box.y + y - target.offset, width: box.width, height: h };
+    ctx.hints.crop = crop;
+    ctx.hints.offset = y;
+    const t0 = performance.now();
+    const hints = collectHints(ctx.hints);
+    const hintsMs = performance.now() - t0;
+    ctx.pill.set(tr('Capturing in the background · screen {n}', { n: index + 1 }));
+    ctx.pill.canStop(index > 0);
+    // The pill is on the page: it would be pictured where the page is laid out.
+    ctx.pill.hide();
+    await frames(1);
+    const res = (await chrome.runtime.sendMessage({
+      type: 'sp:grab',
+      sessionId: ctx.msg.sessionId,
+      index,
+      docY: y,
+      crop: { x: 0, y: 0, width: box.width, height: h },
+      viewportWidth: box.width,
+      hints,
+      hintsMs,
+      clip: { x: box.x + scrollX, y, width: box.width, height: h },
+      dpr: devicePixelRatio,
+    } satisfies GrabFrame)) as GrabResult;
+    ctx.pill.show();
+    if (!res.ok) throw new Error(res.error);
+    y += h;
+  }
+  if (Math.abs(target.scrollHeight - startHeight) > 2)
+    ctx.warnings.push(
+      'The page changed height while it was captured in the background; if something looks stretched or doubled, capture it on screen instead.',
+    );
+  return { status: 'complete', size: { width: box.width, height: y } };
+}
 
 /**
  * Two elements of the captured scroller, at the bottom edge and halfway up what this frame
