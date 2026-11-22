@@ -441,15 +441,11 @@ const SHAPES: Array<[string, string, number]> = [
 ];
 
 /**
- * How well a layout explains the evidence, 0…1: rows between its pages should be
+ * How well a layout explains the evidence, as parts for Details:
+ * fit = gapFit × pageFit × e^−(unexplained ÷ pages), 0…1. Rows between pages should be
  * background, rows inside them should not, and no long background run should sit inside a
  * page unexplained.
  */
-export function layoutFit(ev: SheetEvidence, l: SheetLayout): number {
-  return layoutFitParts(ev, l).fit;
-}
-
-/** The parts of a fit, for Details: fit = gapFit × pageFit × e^−(unexplained ÷ pages). */
 export interface FitParts {
   gapFit: number;
   pageFit: number;

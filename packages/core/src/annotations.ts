@@ -3,7 +3,7 @@ import type { Forbidden } from './hints.js';
 
 /**
  * Annotations (UI §3 Annotate tab) live in document coordinates, so they survive
- * re-pagination and are drawn into each page image at export (TODO M4).
+ * re-pagination and are drawn into each page image at export.
  */
 export type Tool =
   | 'select'

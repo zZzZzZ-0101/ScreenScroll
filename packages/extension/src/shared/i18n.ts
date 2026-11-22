@@ -20,10 +20,6 @@ export function setLang(l: Lang): void {
   if (typeof document !== 'undefined') document.documentElement.lang = l === 'zh-CN' ? 'zh-CN' : 'en';
 }
 
-export function currentLang(): Lang {
-  return lang;
-}
-
 /** The text in the current language, with `{name}` filled from `vars`. */
 export function t(text: string, vars?: Record<string, string | number>): string {
   let out = lang === 'zh-CN' ? (ZH_CN[text] ?? text) : text;

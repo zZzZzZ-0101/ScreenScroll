@@ -399,7 +399,7 @@ export function pickElement(): Promise<Element | null> {
   );
 }
 
-/** "Pick scroll area" (TODO M4, lesson L9): only elements that really scroll are offered. */
+/** "Pick scroll area" (lesson L9): only elements that really scroll are offered. */
 export function pickScrollArea(): Promise<Element | null> {
   return pickWith('Click the area that scrolls · Press Esc to cancel', (el) =>
     isScroller(el) ? el : nearestScroller(el),

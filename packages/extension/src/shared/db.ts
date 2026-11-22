@@ -19,7 +19,7 @@ export interface SessionRecord {
   window?: SavedWindow;
   /** How it was captured, so it can be captured again the same way. */
   mode?: CaptureMode;
-  /** The Studio's edits (TODO M4: projects are re-editable later). */
+  /** The Studio's edits, saved as they change so the capture can be re-edited later. */
   project?: Project;
 }
 
