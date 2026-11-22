@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react';
 import type { Analysis } from '@/studio/engine/analysis';
 import { filterCanvas, paintAnnotations } from '@/studio/engine/compose';
 import { drawFromStrip } from '../strip';
+import { t } from '@/shared/i18n';
 
 const W = 72;
 
@@ -17,7 +18,7 @@ export function Thumbnails(p: {
 }) {
   return (
     <nav
-      aria-label="Pages"
+      aria-label={t('Pages')}
       className="w-28 shrink-0 overflow-y-auto border-r border-neutral-200 bg-white p-2 dark:border-neutral-800 dark:bg-neutral-900"
     >
       <ol className="space-y-2">

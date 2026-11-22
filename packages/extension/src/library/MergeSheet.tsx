@@ -53,9 +53,9 @@ export function MergeSheet(p: { captures: StoredCapture[]; onClose: () => void }
         'pdf',
       );
       const saved = await download(out.bytes, name, 'application/pdf');
-      setNote(`Saved ${out.pages} pages as ${saved}`);
+      setNote(t('Saved {n} pages as {name}', { n: out.pages, name: saved }));
     } catch (e) {
-      setNote(`Could not merge: ${e instanceof Error ? e.message : String(e)}`);
+      setNote(t('Could not merge: {why}', { why: e instanceof Error ? e.message : String(e) }));
     } finally {
       setBusy(null);
     }
@@ -67,7 +67,7 @@ export function MergeSheet(p: { captures: StoredCapture[]; onClose: () => void }
       className="mt-3 rounded-lg border border-accent/50 bg-white p-3 dark:bg-neutral-900"
     >
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold">Merge into one PDF</h2>
+        <h2 className="font-semibold">{t('Merge into one PDF')}</h2>
         <button type="button" className={icon} aria-label={t('Close merge')} onClick={p.onClose}>
           <X aria-hidden size={16} />
         </button>
@@ -77,7 +77,7 @@ export function MergeSheet(p: { captures: StoredCapture[]; onClose: () => void }
       </p>
       <ol className="divide-y divide-neutral-200 dark:divide-neutral-800">
         {list.map(({ c, pages }, i) => {
-          const title = c.session.title || c.session.url || 'Untitled capture';
+          const title = c.session.title || c.session.url || t('Untitled capture');
           return (
             <li key={c.session.id} className="flex items-center gap-2 py-1.5">
               <span className="w-5 text-right font-mono text-neutral-500">{i + 1}</span>
@@ -85,7 +85,7 @@ export function MergeSheet(p: { captures: StoredCapture[]; onClose: () => void }
                 {title}
               </span>
               <input
-                aria-label={`Pages of ${title}`}
+                aria-label={t('Pages of {title}', { title })}
                 placeholder={t('all')}
                 value={pages}
                 onChange={(e) =>
@@ -96,7 +96,7 @@ export function MergeSheet(p: { captures: StoredCapture[]; onClose: () => void }
               <button
                 type="button"
                 className={icon}
-                aria-label={`Move ${title} up`}
+                aria-label={t('Move {title} up', { title })}
                 disabled={i === 0}
                 onClick={() => move(i, -1)}
               >
@@ -105,7 +105,7 @@ export function MergeSheet(p: { captures: StoredCapture[]; onClose: () => void }
               <button
                 type="button"
                 className={icon}
-                aria-label={`Move ${title} down`}
+                aria-label={t('Move {title} down', { title })}
                 disabled={i === list.length - 1}
                 onClick={() => move(i, 1)}
               >
@@ -114,7 +114,7 @@ export function MergeSheet(p: { captures: StoredCapture[]; onClose: () => void }
               <button
                 type="button"
                 className={icon}
-                aria-label={`Leave out ${title}`}
+                aria-label={t('Leave out {title}', { title })}
                 disabled={list.length === 1}
                 onClick={() => setList((l) => l.filter((_, j) => j !== i))}
               >

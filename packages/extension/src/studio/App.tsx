@@ -185,7 +185,7 @@ export function App() {
     ],
   );
 
-  // Projects are saved as they change, so they can be re-edited later (TODO M4).
+  // Projects are saved as they change, so they can be re-edited later.
   const loaded = useRef<Project | null>(null);
   useEffect(() => {
     if (!session) return;
@@ -193,11 +193,11 @@ export function App() {
       loaded.current = project;
       return;
     }
-    const t = setTimeout(() => void saveProject(SESSION_ID, project), 250);
+    const timer = setTimeout(() => void saveProject(SESSION_ID, project), 250);
     const flush = () => void saveProject(SESSION_ID, project);
     addEventListener('pagehide', flush);
     return () => {
-      clearTimeout(t);
+      clearTimeout(timer);
       removeEventListener('pagehide', flush);
     };
   }, [session, project]);
@@ -296,12 +296,12 @@ export function App() {
     );
     if (advice) list.push(advice);
     if (result.layout.scaleClamped)
-      list.push('The fixed scale was reduced so the page fits the paper width.');
+      list.push(t('The fixed scale was reduced so the page fits the paper width.'));
     for (const s of result.debug.slices) list.push(...s.warnings);
     if (session.session.status === 'cancelled')
-      list.unshift('Capture was cancelled; this is what was captured.');
+      list.unshift(t('Capture was cancelled; this is what was captured.'));
     if (session.session.status === 'error')
-      list.unshift('Capture stopped early; this is what was captured.');
+      list.unshift(t('Capture stopped early; this is what was captured.'));
     return list;
   }, [session, result]);
 
@@ -370,7 +370,7 @@ export function App() {
     const f = frames.current;
     let cancelled = false;
     setEstimate(null);
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       const sample = [...new Set([0, Math.floor(slices.length / 2)])].filter((i) => slices[i]);
       let bytes = 0;
       for (const i of sample) {
@@ -387,7 +387,7 @@ export function App() {
     }, 400);
     return () => {
       cancelled = true;
-      clearTimeout(t);
+      clearTimeout(timer);
     };
   }, [session, result, settings, slices, outAnns]);
 
@@ -423,9 +423,10 @@ export function App() {
       // One job at a time: a double click or a held Ctrl+S must not save twice.
       if (running.current) return null;
       running.current = true;
-      setBusy(label);
+      const shown = t(label);
+      setBusy(shown);
       try {
-        const done = await job((d, t) => setBusy(`${label} ${d}/${t}`));
+        const done = await job((d, total) => setBusy(`${shown} ${d}/${total}`));
         if (done) setToast(done);
         return { ok: true, text: done || '' };
       } catch (e) {
@@ -552,7 +553,10 @@ export function App() {
               ),
             );
             const name = await download(zip, filename('zip'), 'application/zip');
-            return `The image was too tall for one file; ${saved(name, filename('zip')).replace('Saved', 'saved')} (${parts.length} parts)`;
+            return t('The image was too tall for one file, so it was saved in {n} parts: {name}', {
+              n: parts.length,
+              name,
+            });
           }
         }
       });
@@ -585,7 +589,7 @@ export function App() {
     const f = frames.current;
     await run('Copying', async () => {
       await copyPageImage(session, f, slices[page]!, outAnns, settings?.pdf.filter);
-      return `Page ${page + 1} copied as an image`;
+      return t('Page {n} copied as an image', { n: page + 1 });
     });
   }, [session, slices, page, run, outAnns, settings]);
 
@@ -599,14 +603,14 @@ export function App() {
         filename('json').replace(/\.json$/, '-breaks.json'),
         'application/json',
       );
-      return 'Saved break overlay (PNG and JSON)';
+      return t('Saved break overlay (PNG and JSON)');
     });
   }, [session, analysis, result, filename, run]);
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 4000);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(timer);
   }, [toast]);
 
   /** Area mode → Copy: the whole capture as one PNG on the clipboard. */
@@ -628,10 +632,10 @@ export function App() {
         settings.pdf.filter,
       );
       if (parts.length > 1)
-        throw new Error('Too tall to copy as one image. Use Save PDF or save it as images.');
+        throw new Error(t('Too tall to copy as one image. Use Save PDF or save it as images.'));
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': parts[0]! })]);
       const px = (v: number) => Math.round(v * session.dpr);
-      return `Copied as an image · ${px(crop.x1 - crop.x0)} × ${px(range.y1 - range.y0)} px`;
+      return `${t('Copied as an image')} · ${px(crop.x1 - crop.x0)} × ${px(range.y1 - range.y0)} px`;
     });
   }, [session, result, settings, slices, run, outAnns]);
 
@@ -764,8 +768,8 @@ export function App() {
   if (!session || !analysis || !settings || !result) {
     const text =
       stage.kind === 'analysing'
-        ? `Reading the capture ${stage.done}/${stage.total}`
-        : 'Loading capture';
+        ? `${t('Reading the capture')} ${stage.done}/${stage.total}`
+        : t('Loading capture');
     return (
       <Centered>
         <p aria-live="polite">{text}</p>
@@ -901,7 +905,7 @@ export function App() {
       <header className="flex items-center gap-3 border-b border-neutral-200 bg-white px-3 py-2 dark:border-neutral-800 dark:bg-neutral-900">
         <div className="min-w-0 flex-1">
           <h1 className="truncate font-semibold" title={session.session.title}>
-            {session.session.title || 'Untitled capture'}
+            {session.session.title || t('Untitled capture')}
           </h1>
           <p className="truncate text-[12px] text-neutral-500">
             {[
@@ -980,7 +984,7 @@ export function App() {
                                 void chrome.runtime
                                   .sendMessage({ type: 'sp:recapture', sessionId: SESSION_ID })
                                   .then((r: { ok: boolean; error?: string }) => {
-                                    if (!r.ok) setToast(r.error ?? 'Could not capture again.');
+                                    if (!r.ok) setToast(r.error ?? t('Could not capture again.'));
                                   });
                               }}
                             >
@@ -1144,8 +1148,8 @@ function ThemeButton({ theme, onTheme }: { theme: Theme; onTheme: (t: Theme) => 
   return (
     <button
       type="button"
-      aria-label={`Theme: ${label}`}
-      title={`Theme: ${label}. Click for ${next[1].toLowerCase()}.`}
+      aria-label={t('Theme: {name}', { name: t(label) })}
+      title={t('Theme: {name}. Click for {next}.', { name: t(label), next: t(next[1]).toLowerCase() })}
       onClick={() => onTheme(next[0])}
       className="rounded-md p-1.5 text-neutral-600 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:text-neutral-300 dark:hover:bg-neutral-800"
     >
@@ -1173,8 +1177,8 @@ function writePref(key: string, value: unknown): void {
 /** Toast text for a finished save, explaining a changed file name. */
 function saved(name: string, wanted: string): string {
   return name === wanted
-    ? `Saved ${name}`
-    : `Saved as ${name}. The browser did not accept the page title as a file name.`;
+    ? t('Saved {name}', { name })
+    : t('Saved as {name}. The browser did not accept the page title as a file name.', { name });
 }
 
 function Centered({ children }: { children: React.ReactNode }) {

@@ -120,17 +120,17 @@ Goal: the most capable screen capture tool available, that still looks simple. A
 - [ ] Several scroll areas in one page (e.g. both panes of a mail client).
 - [ ] "Follow my scroll": capture while the user scrolls by hand, for pages that fight automation.
 - [ ] Only the scrolled part between two points (start here → end here).
-- [ ] Timed series (every N seconds) and whole-window capture.
+- [ ] Timed series (every N seconds) and whole-window capture. _(whole-window capture done 2026-11-05: panel → Capture a window; timed series not yet)_
 
 **Editing**
 - [ ] Resize and rotate handles, multi-select, align and snap, layers order.
 - [ ] Shapes with fill and opacity, callouts, text with background, stamps, zoom-in inset (magnified detail).
 - [ ] Brush blur, find-text-and-redact, redact-all-matches.
 - [ ] Page tools: reorder, delete, duplicate, insert blank, split one page, per-page crop.
-- [ ] Combine captures side by side or stacked; compare two captures (visual diff).
+- [ ] Combine captures side by side or stacked; compare two captures (visual diff). _(compare done 2026-11-05: Saved captures → Compare, text and pictures; stacking is the merge into one PDF; side by side not yet)_
 
 **Interface**
-- [ ] Interface languages, starting with Chinese (Simplified and Traditional). (Simplified Chinese done 2026-10-31: panel, Studio main views, Settings, Saved captures, capture hints; Traditional not yet.)
+- [ ] Interface languages, starting with Chinese (Simplified and Traditional). (Simplified Chinese done 2026-10-31: panel, Studio main views, Settings, Saved captures, capture hints; 2026-11-22: also batch capture, merge, Mark up tools and hints, filters, page labels, break tips, and a unit test that fails on any untranslated `t()` string, plurals included. Still English: capture warnings and the Details numbers. Traditional not yet.)
 - [x] Export/import of saved captures and settings as a backup file.
 
 **Output**

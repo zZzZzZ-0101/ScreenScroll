@@ -42,8 +42,8 @@ export function SidePanel(p: {
       >
         <button
           type="button"
-          aria-label={`Show ${p.label}`}
-          title={`Show ${p.label}`}
+          aria-label={t('Show {name}', { name: t(p.label) })}
+          title={t('Show {name}', { name: t(p.label) })}
           onClick={() => set({ open: true })}
           className="rounded p-1.5 text-neutral-600 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:text-neutral-300 dark:hover:bg-neutral-800"
         >
@@ -61,7 +61,7 @@ export function SidePanel(p: {
       <div
         role="separator"
         aria-orientation="vertical"
-        aria-label={`Resize ${p.label}`}
+        aria-label={t('Resize {name}', { name: t(p.label) })}
         aria-valuenow={width}
         aria-valuemin={MIN}
         aria-valuemax={MAX}
@@ -87,8 +87,8 @@ export function SidePanel(p: {
       <div className="flex items-center justify-end gap-0.5 border-b border-neutral-200 px-1 py-0.5 dark:border-neutral-800">
         <button
           type="button"
-          aria-label={`Move ${p.label} to the ${side === 'right' ? 'left' : 'right'}`}
-          title={`Move to the ${side === 'right' ? 'left' : 'right'}`}
+          aria-label={t(side === 'right' ? 'Move {name} to the left' : 'Move {name} to the right', { name: t(p.label) })}
+          title={t(side === 'right' ? 'Move to the left' : 'Move to the right')}
           onClick={() => set({ side: side === 'right' ? 'left' : 'right' })}
           className="rounded p-1 text-neutral-500 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:hover:bg-neutral-800"
         >
@@ -96,7 +96,7 @@ export function SidePanel(p: {
         </button>
         <button
           type="button"
-          aria-label={`Hide ${p.label}`}
+          aria-label={t('Hide {name}', { name: t(p.label) })}
           title={t('Hide')}
           onClick={() => set({ open: false })}
           className="rounded p-1 text-neutral-500 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:hover:bg-neutral-800"

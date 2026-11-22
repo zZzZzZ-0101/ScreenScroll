@@ -170,7 +170,7 @@ export function StripView(p: Props) {
                 onPointerEnter={() => !drag && setFocusY(b.y)}
                 onPointerLeave={() => !drag && setFocusY(null)}
                 data-testid="break"
-                title={KIND_TITLES[b.kind]}
+                title={t(KIND_TITLES[b.kind])}
               >
                 <div
                   className="absolute left-0 right-0 top-[5px]"
@@ -201,7 +201,7 @@ export function StripView(p: Props) {
                 {!p.locked && (
                   <button
                     type="button"
-                    aria-label={`Remove break ${i + 1}`}
+                    aria-label={t('Remove break {n}', { n: i + 1 })}
                     onClick={() => remove(b)}
                     className="absolute -right-7 -top-1 hidden h-5 w-5 rounded-full bg-neutral-800 text-[11px] text-white group-hover:block focus-visible:block focus-visible:outline-2 focus-visible:outline-accent"
                   >
@@ -331,7 +331,7 @@ function SheetOverlay(p: {
     <div
       key={`${edge}-${page}`}
       role="slider"
-      aria-label={`Page ${page + 1} ${edge} edge`}
+      aria-label={t('Page {n} {edge} edge', { n: page + 1, edge: t(edge) })}
       aria-valuenow={Math.round(edge === 'left' ? g.x0 : edge === 'right' ? g.x1 : edge === 'top' ? layout.sheets[page]!.y0 : layout.sheets[page]!.y1)}
       data-testid={`sheet-edge-${edge}-${page}`}
       className={`absolute z-10 ${cursor} hover:bg-accent/30`}

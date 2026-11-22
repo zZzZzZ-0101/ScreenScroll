@@ -113,8 +113,14 @@ export default defineBackground(() => {
         ...opts,
       });
     } catch (e) {
+      // Nothing was captured: undo everything set up above, so no debugger stays attached,
+      // no "REC" badge stays on and no empty capture is left in Saved captures.
       await restoreWindow(id);
       await stopQuiet(id);
+      await stopSharp(id);
+      await clearCapturing(tab.id);
+      windowOf.delete(id);
+      await deleteCapture(id).catch(() => undefined);
       throw e;
     }
     return id;
@@ -619,11 +625,41 @@ export default defineBackground(() => {
     return null;
   }
 
-  // A tab closed mid-capture can't report back: put a narrowed window back here.
+  // A tab closed mid-capture can't report back: put a narrowed window back here, end the
+  // capture with what it has (kept in Saved captures, marked incomplete), and let a batch
+  // waiting on it move on rather than wait out its 10 minutes.
   chrome.tabs.onRemoved.addListener((tabId) => {
     void (async () => {
-      const all = await (await db()).getAll('sessions');
-      for (const s of all) if (s.tabId === tabId && s.window) await restoreWindow(s.id);
+      const d = await db();
+      for (const s of await d.getAll('sessions')) {
+        if (s.tabId !== tabId) continue;
+        if (s.window) await restoreWindow(s.id);
+        if (s.status !== 'capturing') continue;
+        await stopSharp(s.id);
+        await stopQuiet(s.id);
+        windowOf.delete(s.id);
+        quiet.delete(s.id);
+        const warning = 'The tab was closed during the capture; this is what was captured.';
+        const fresh = await d.get('sessions', s.id);
+        if (fresh)
+          await d.put('sessions', {
+            ...fresh,
+            status: 'error',
+            frameCount: await d.countFromIndex('frames', 'bySession', s.id),
+            warnings: [...fresh.warnings, warning],
+          });
+        const done: CaptureDone = {
+          type: 'sp:done',
+          sessionId: s.id,
+          status: 'error',
+          docWidth: s.docWidth,
+          docHeight: s.docHeight,
+          warnings: [warning],
+        };
+        if (__SP_E2E__) finished.set(s.id, done);
+        waiters.get(s.id)?.(done);
+        waiters.delete(s.id);
+      }
     })();
   });
 

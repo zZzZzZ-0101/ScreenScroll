@@ -996,3 +996,44 @@ test('in the background, a scroll area inside the page is captured whole without
     });
   });
 });
+
+test('closing the tab mid-capture ends it: what was captured is kept, marked incomplete', async ({
+  context,
+  serviceWorker,
+}) => {
+  const page = await openPage(context, 'huge.html');
+  const id = await serviceWorker.evaluate(async (url) => {
+    const [tab] = await chrome.tabs.query({ active: true, url });
+    return (globalThis as unknown as { __spTest: Hook }).__spTest.start(tab!.id!, 'full');
+  }, `${FIXTURES}/huge.html`);
+  // Let a few frames land, then close the tab under the capture.
+  await expect
+    .poll(
+      () =>
+        serviceWorker.evaluate(
+          async (sid) =>
+            new Promise<number>((resolve) => {
+              const open = indexedDB.open('scrollpress');
+              open.onsuccess = () => {
+                const req = open.result
+                  .transaction('frames')
+                  .objectStore('frames')
+                  .index('bySession')
+                  .count(sid);
+                req.onsuccess = () => resolve(req.result);
+              };
+            }),
+          id,
+        ),
+      { timeout: 30_000 },
+    )
+    .toBeGreaterThan(1);
+  await page.close();
+  const result = await serviceWorker.evaluate(
+    (sid) => (globalThis as unknown as { __spTest: Hook }).__spTest.wait(sid),
+    id,
+  );
+  expect(result.done.status).toBe('error');
+  expect(result.done.warnings.join(' ')).toContain('The tab was closed during the capture');
+  expect(result.frames.length).toBeGreaterThan(1);
+});

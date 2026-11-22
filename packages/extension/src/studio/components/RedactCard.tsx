@@ -65,13 +65,13 @@ export function RedactCard(p: {
 
   return (
     <section className="mb-3 rounded-md border border-neutral-200 p-2 dark:border-neutral-700" data-testid="redact">
-      <h2 className="font-semibold">Personal data</h2>
+      <h2 className="font-semibold">{t('Personal data')}</h2>
       {!found.length ? (
         <p className="text-[12px] text-neutral-500">
           {t('No emails, phone, card or ID numbers in the page text.')}
         </p>
       ) : !open.length ? (
-        <p className="text-[12px] text-neutral-500">All {found.length} found are blurred.</p>
+        <p className="text-[12px] text-neutral-500">{t('All {n} found are blurred.', { n: found.length })}</p>
       ) : (
         <>
           <p className="pb-1 text-[12px] text-neutral-500">
@@ -92,10 +92,10 @@ export function RedactCard(p: {
                     }}
                     className="accent-[#0e7c7b]"
                   />
-                  <span className="w-16 shrink-0 text-neutral-500">{KIND[f.kind]}</span>
+                  <span className="w-16 shrink-0 text-neutral-500">{t(KIND[f.kind])}</span>
                   <span className="min-w-0 flex-1 truncate font-mono text-[11px]">{f.text}</span>
                   <span className="shrink-0 text-[11px] text-neutral-500">
-                    {f.page ? `p. ${f.page}` : ''}
+                    {f.page ? t('p. {n}', { n: f.page }) : ''}
                   </span>
                 </label>
               </li>
@@ -110,7 +110,7 @@ export function RedactCard(p: {
             }}
             className="mt-1 rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
           >
-            Blur {chosen.length} selected
+            {t('Blur {n} selected', { n: chosen.length })}
           </button>
         </>
       )}

@@ -29,14 +29,14 @@ pnpm dist     # builds and refreshes extension/
 
 ## Use it
 
-1. **Click the ScreenScroll icon.** The panel opens: **Capture full page**, or pick another way: Visible, **Area** (box with handles and a toolbar: box, arrow, text, mosaic, copy, PDF), **Line to line** (click a first line, scroll, click a last line), Element, or a scrolling Panel. Timer, paper and "after capture" are there too. While it captures, a bar at the bottom always shows how to stop: **Esc** or Cancel keeps nothing, **Stop here** keeps what was captured.
+1. **Click the ScreenScroll icon.** The panel opens: **Capture full page**, or pick another way: Visible, **Area** (box with handles and a toolbar: box, arrow, text, mosaic, copy, PDF), **Line to line** (click a first line, scroll, click a last line), Element, or a scrolling Panel. One-click rows set Speed (Fast / Normal / Careful), Scrolling (**On screen**, or **In background** so the page never moves), Sharpness (1× / 2× / 3×) and Page width; timer, paper and "after capture" are there too. **Capture a window** takes another window or app. While it captures, a bar at the bottom always shows how to stop: **Esc** or Cancel keeps nothing, **Stop here** keeps what was captured.
 2. **The Studio opens** with the pages as they will be saved. Adjust only if you want to:
-   - **Pages**: paper and orientation (everything else is under _More options_).
+   - **Pages**: paper and orientation (everything else is under _More options_). When the capture shows document pages (a PDF or slides viewer), a card suggests them: keep everything you captured (the default), use the found pages, adjust them, or set pages by hand; page numbers and repeated headers can be hidden or renumbered.
    - **Breaks**: drag, add or remove page breaks.
    - **Mark up**: crop, text, boxes, arrows, numbers, mosaic and blur; filters (Original, Enhanced, Sharper text, Greyscale, Black & white, Ink saver), page labels (date, page number…) and a watermark on every page or chosen pages.
-3. **Save PDF.** The arrow next to it has the other outputs (images, one long page, copy, print).
+3. **Save PDF.** The arrow next to it has the other outputs (images, one long page, text as Markdown or Word, copy, print).
 
-**Saved captures** (in the panel) lists what is kept on this computer, with sizes: reopen, delete one, several or all for good, or auto-delete after some days. Keys: Alt+Shift+P / V / S / E (full page / visible / selection / element).
+**Saved captures** (in the panel) lists what is kept on this computer, with sizes and full-text search: reopen, merge several into one PDF, compare two (text and pictures), back up and restore, delete for good, or auto-delete after some days. **Open files** / **Open a folder** turn PDFs and long screenshots into captures. **Capture several pages** captures chosen tabs or a list of addresses in one go. Keys: Alt+Shift+P / V / S / E (full page / visible / selection / element).
 
 ## Where to start reading
 

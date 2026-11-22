@@ -86,9 +86,11 @@ function OcrCard({ o }: { o: OcrCardProps }) {
       aria-label={t('Text recognition')}
     >
       <p className="font-medium">
-        {o.pages.length} page{o.pages.length === 1 ? '' : 's'} without text of their own
+        {t(o.pages.length === 1 ? '{n} page without text of its own' : '{n} pages without text of their own', {
+          n: o.pages.length,
+        })}
       </p>
-      <p className="text-[12px] text-neutral-600 dark:text-neutral-300">Pages {list}.</p>
+      <p className="text-[12px] text-neutral-600 dark:text-neutral-300">{t('Pages {list}.', { list })}</p>
       {o.ready ? (
         <p className="pt-1 text-[12px]">
           {t('Their text is read when you save, so the PDF can be searched.')}
@@ -102,18 +104,19 @@ function OcrCard({ o }: { o: OcrCardProps }) {
             aria-label={t('Downloading the text recognition model')}
           />
           <p className="text-[12px] text-neutral-500">
-            {mb(o.downloading.done)} of {mb(o.downloading.total)}
+            {t('{done} of {total}', { done: mb(o.downloading.done), total: mb(o.downloading.total) })}
           </p>
         </div>
       ) : (
         <>
           <p className="pt-1 text-[12px] text-neutral-600 dark:text-neutral-300">
-            To make them searchable, ScreenScroll can read them on this computer. It needs a text
-            recognition model (PP-OCRv6, {mb(o.size)}), downloaded once from an npm mirror and
-            checked; nothing of yours is sent.
+            {t(
+              'To make them searchable, ScreenScroll can read them on this computer. It needs a text recognition model (PP-OCRv6, {size}), downloaded once from an npm mirror and checked; nothing of yours is sent.',
+              { size: mb(o.size) },
+            )}
           </p>
           <button type="button" onClick={o.onDownload} className={`${button} mt-1`}>
-            Download model ({mb(o.size)})
+            {t('Download model ({size})', { size: mb(o.size) })}
           </button>
         </>
       )}
@@ -298,7 +301,9 @@ function SheetsCard(props: SheetsCardProps) {
           <label
             key={r.id}
             className="flex items-center gap-2 py-0.5"
-            title={`Fit ${r.fit.toFixed(3)}: rows between pages that are background × rows inside pages that are not`}
+            title={t('Fit {fit}: rows between pages that are background × rows inside pages that are not', {
+              fit: r.fit.toFixed(3),
+            })}
           >
             <input
               type="radio"
@@ -436,12 +441,12 @@ function SheetsCard(props: SheetsCardProps) {
               {t('CSS px of the capture. The pages update as you change a number.')}
             </p>
             {GRID_FIELDS.map(([k, label, name]) => (
-              <div key={k} className="flex items-center justify-between gap-1 py-0.5" title={name}>
-                <span className="text-neutral-600 dark:text-neutral-300">{label}</span>
+              <div key={k} className="flex items-center justify-between gap-1 py-0.5" title={t(name)}>
+                <span className="text-neutral-600 dark:text-neutral-300">{t(label)}</span>
                 <span className="flex items-center gap-0.5">
                   <button
                     type="button"
-                    aria-label={`${name} −1`}
+                    aria-label={`${t(name)} −1`}
                     className="h-6 w-6 rounded border border-neutral-300 hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
                     onClick={() => p.onGrid({ ...g, [k]: Math.max(0, Math.round(g[k]) - 1) })}
                   >
@@ -449,7 +454,7 @@ function SheetsCard(props: SheetsCardProps) {
                   </button>
                   <input
                     type="number"
-                    aria-label={name}
+                    aria-label={t(name)}
                     min={0}
                     step={1}
                     value={Math.round(g[k])}
@@ -461,7 +466,7 @@ function SheetsCard(props: SheetsCardProps) {
                   />
                   <button
                     type="button"
-                    aria-label={`${name} +1`}
+                    aria-label={`${t(name)} +1`}
                     className="h-6 w-6 rounded border border-neutral-300 hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
                     onClick={() => p.onGrid({ ...g, [k]: Math.round(g[k]) + 1 })}
                   >
@@ -632,7 +637,7 @@ export function PagesPanel(p: PagesProps) {
           {Object.keys(PAPERS).map((id) => (
             <option key={id}>{id}</option>
           ))}
-          {paperId === 'custom' && <option value="custom">Custom</option>}
+          {paperId === 'custom' && <option value="custom">{t('Custom')}</option>}
         </select>
       </label>
       <div className={field}>
@@ -649,8 +654,8 @@ export function PagesPanel(p: PagesProps) {
               type="button"
               role="radio"
               aria-checked={page.orientation === o}
-              aria-label={label}
-              title={label}
+              aria-label={t(label)}
+              title={t(label)}
               onClick={() => p.onSettings({ page: { ...page, orientation: o } })}
               className={`${button} ${page.orientation === o ? 'border-accent bg-accent/10 text-accent' : ''}`}
             >
@@ -760,13 +765,13 @@ export function PagesPanel(p: PagesProps) {
               value={p.settings.crop}
               onChange={(e) => p.onSettings({ crop: e.target.value as 'auto' | 'off' })}
             >
-              <option value="auto">Auto</option>
-              <option value="off">Off</option>
+              <option value="auto">{t('Auto')}</option>
+              <option value="off">{t('Off')}</option>
             </select>
           </label>
           {p.settings.crop === 'auto' && (
             <p className="pb-1 text-[12px] text-neutral-500">
-              {p.cropped ? 'Empty side margins are cropped.' : 'No wide margins to crop.'}
+              {p.cropped ? t('Empty side margins are cropped.') : t('No wide margins to crop.')}
             </p>
           )}
           <label className={field}>
@@ -853,7 +858,7 @@ export function BreaksPanel(p: BreaksProps) {
         {tips.map(([Icon, text]) => (
           <li key={text} className="flex gap-2 text-neutral-600 dark:text-neutral-300">
             <Icon aria-hidden size={16} className="mt-0.5 shrink-0 text-accent" />
-            {text}
+            {t(text)}
           </li>
         ))}
       </ul>
@@ -863,8 +868,11 @@ export function BreaksPanel(p: BreaksProps) {
       </button>
       <p className="pt-1 text-[12px] text-neutral-500">
         {edited
-          ? `${p.edits.pinned.length} added or moved, ${p.edits.removed.length} removed.`
-          : 'All breaks are automatic.'}
+          ? t('{added} added or moved, {removed} removed.', {
+              added: p.edits.pinned.length,
+              removed: p.edits.removed.length,
+            })
+          : t('All breaks are automatic.')}
       </p>
     </aside>
   );
@@ -891,8 +899,8 @@ function ChecksCard(p: Pick<BreaksProps, 'checks' | 'page' | 'onJump'>) {
       data-testid="break-checks"
     >
       <p className="font-medium">
-        {p.checks.length} {p.checks.length === 1 ? 'break needs' : 'breaks need'} a look
-        {at >= 0 ? ` · ${at + 1} of ${p.checks.length}` : ''}
+        {t(p.checks.length === 1 ? '{n} break needs a look' : '{n} breaks need a look', { n: p.checks.length })}
+        {at >= 0 ? ` · ${t('{n} of {total}', { n: at + 1, total: p.checks.length })}` : ''}
       </p>
       <ul className="max-h-40 overflow-y-auto py-1 text-[12px]">
         {p.checks.map((c) => (
@@ -902,7 +910,7 @@ function ChecksCard(p: Pick<BreaksProps, 'checks' | 'page' | 'onJump'>) {
               className={`w-full rounded px-1 py-0.5 text-left hover:bg-amber-100 dark:hover:bg-amber-900 ${c.index + 1 === p.page ? 'font-medium' : ''}`}
               onClick={() => p.onJump(c.index)}
             >
-              After page {c.index + 1}: {c.reason}
+              {t('After page {n}: {why}', { n: c.index + 1, why: c.reason })}
             </button>
           </li>
         ))}
@@ -947,7 +955,7 @@ function PdfOptions({ settings, onSettings }: Pick<PagesProps, 'settings' | 'onS
             onChange={(e) => onSettings({ pdf: { ...pdf, [key]: e.target.checked } })}
             className="accent-[#0e7c7b]"
           />
-          {label}
+          {t(label)}
         </label>
       ))}
       <p className="pt-1 text-[12px] text-neutral-500">
@@ -965,7 +973,7 @@ function FilterPicker({ value, onChange }: { value: FilterId; onChange: (f: Filt
   const [open, setOpen] = useState<FilterId | null>(null);
   return (
     <fieldset className="min-w-0">
-      <legend className="pb-1 font-semibold">Filter</legend>
+      <legend className="pb-1 font-semibold">{t('Filter')}</legend>
       <div role="radiogroup" aria-label={t('Filter')} className="flex flex-col">
         {FILTERS.map((f) => (
           <div
@@ -981,16 +989,16 @@ function FilterPicker({ value, onChange }: { value: FilterId; onChange: (f: Filt
                   onChange={() => onChange(f.id)}
                   className="accent-[#0e7c7b]"
                 />
-                <span className="shrink-0 font-medium whitespace-nowrap">{f.name}</span>
-                <span className="min-w-0 truncate text-[12px] text-neutral-500" title={f.short}>
-                  {f.short}
+                <span className="shrink-0 font-medium whitespace-nowrap">{t(f.name)}</span>
+                <span className="min-w-0 truncate text-[12px] text-neutral-500" title={t(f.short)}>
+                  {t(f.short)}
                 </span>
               </label>
               <button
                 type="button"
                 aria-expanded={open === f.id}
-                aria-label={`About ${f.name}`}
-                title={`About ${f.name}`}
+                aria-label={t('About {name}', { name: t(f.name) })}
+                title={t('About {name}', { name: t(f.name) })}
                 onClick={() => setOpen(open === f.id ? null : f.id)}
                 className="rounded p-0.5 text-neutral-400 hover:text-neutral-900 focus-visible:outline-2 focus-visible:outline-accent dark:hover:text-white"
               >
@@ -999,13 +1007,13 @@ function FilterPicker({ value, onChange }: { value: FilterId; onChange: (f: Filt
             </div>
             {open === f.id && (
               <dl className="mb-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 rounded-md bg-neutral-50 p-2 text-[12px] dark:bg-neutral-800/60">
-                <dt className="text-neutral-500">What</dt>
-                <dd>{f.details}</dd>
-                <dt className="text-neutral-500">For</dt>
-                <dd>{f.bestFor}</dd>
-                <dt className="text-neutral-500">Not for</dt>
-                <dd>{f.notFor}</dd>
-                <dt className="text-neutral-500">Method</dt>
+                <dt className="text-neutral-500">{t('What')}</dt>
+                <dd>{t(f.details)}</dd>
+                <dt className="text-neutral-500">{t('For')}</dt>
+                <dd>{t(f.bestFor)}</dd>
+                <dt className="text-neutral-500">{t('Not for')}</dt>
+                <dd>{t(f.notFor)}</dd>
+                <dt className="text-neutral-500">{t('Method')}</dt>
                 <dd className="font-mono text-[11px] leading-snug">{f.params}</dd>
               </dl>
             )}
@@ -1058,7 +1066,7 @@ function PresetChips<T>({
             <button
               type="button"
               onClick={() => onUse(t)}
-              title={`Use “${name(t)}”`}
+              title={tr('Use “{name}”', { name: name(t) })}
               className={`${chip} hover:bg-neutral-100 dark:hover:bg-neutral-800`}
             >
               {name(t)}
@@ -1070,7 +1078,7 @@ function PresetChips<T>({
           )}
           <button
             type="button"
-            aria-label={`Remove preset ${name(t)}`}
+            aria-label={tr('Remove preset {name}', { name: name(t) })}
             title={tr('Remove this preset')}
             onClick={() => onChange(items.filter((_, j) => j !== i))}
             className="border-l border-inherit px-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-white"
@@ -1090,12 +1098,12 @@ function PresetChips<T>({
             onClick={() => value !== null && onChange([...items, value])}
             title={
               value === null
-                ? 'Nothing to save yet'
+                ? tr('Nothing to save yet')
                 : dup
-                  ? 'Already a preset'
+                  ? tr('Already a preset')
                   : full
-                    ? `At most ${MAX_PRESETS} presets`
-                    : 'Keep this as a preset'
+                    ? tr('At most {n} presets', { n: MAX_PRESETS })
+                    : tr('Keep this as a preset')
             }
             className="rounded border border-dashed border-neutral-400 px-1.5 text-[12px] text-neutral-600 hover:bg-neutral-100 disabled:opacity-40 dark:text-neutral-300 dark:hover:bg-neutral-800"
           >
@@ -1109,7 +1117,7 @@ function PresetChips<T>({
           onClick={() => onChange([...items, ...missing])}
           className="text-[12px] text-accent underline-offset-2 hover:underline"
         >
-          Restore defaults ({missing.length})
+          {tr('Restore defaults ({n})', { n: missing.length })}
         </button>
       )}
     </div>
@@ -1159,9 +1167,9 @@ export function PageMarkPanel({
       {BANDS.map(([band, label]) => (
         <fieldset key={band} className="pt-1">
           <legend className="flex w-full items-center justify-between pb-1">
-            {label}
+            {t(label)}
             <select
-              aria-label={`${label} preset`}
+              aria-label={t('{band} preset', { band: t(label) })}
               value=""
               onChange={(e) => {
                 const v = e.target.value;
@@ -1173,21 +1181,21 @@ export function PageMarkPanel({
               }}
               className="rounded border border-neutral-300 bg-white px-1 text-[12px] dark:border-neutral-700 dark:bg-neutral-900"
             >
-              <option value="">Presets…</option>
+              <option value="">{t('Presets…')}</option>
               {presets.labels.map((l, i) => (
                 <option key={`${l.name}-${i}`} value={i}>
                   {l.name}
                 </option>
               ))}
-              <option value="none">None</option>
+              <option value="none">{t('None')}</option>
             </select>
           </legend>
           <div className="grid grid-cols-3 gap-1">
             {(['left', 'center', 'right'] as const).map((slot) => (
               <input
                 key={slot}
-                aria-label={`${label} ${slot}`}
-                placeholder={slot}
+                aria-label={`${t(label)} ${t(slot)}`}
+                placeholder={t(slot)}
                 className={`${control} min-w-0`}
                 value={pdf[band][slot]}
                 onChange={(e) =>
@@ -1202,14 +1210,14 @@ export function PageMarkPanel({
         {'{date} {time} {page} {pages} {title} {domain} {url}, or any text'}
       </p>
       <PresetChips
-        label="Label presets"
+        label={t('Label presets')}
         items={presets.labels}
         name={(l) => l.name}
         onChange={(labels) => setPresets({ labels })}
-        saves={BANDS.map(([band, label]) => {
+        saves={BANDS.map(([band]) => {
           const n = labelName(pdf[band]);
           return {
-            label: `+ Save ${label.toLowerCase()}`,
+            label: t(band === 'header' ? '+ Save header' : '+ Save footer'),
             value: n ? { name: n, band: pdf[band] } : null,
           };
         })}
@@ -1228,7 +1236,7 @@ export function PageMarkPanel({
         onChange={(e) => setWm({ text: e.target.value })}
       />
       <PresetChips
-        label="Watermark presets"
+        label={t('Watermark presets')}
         items={presets.watermarks}
         name={(t) => t}
         active={(t) => t === wm.text}
@@ -1263,7 +1271,7 @@ export function PageMarkPanel({
         />
       </label>
       <div className={field}>
-        <span id="wm-angle">Angle</span>
+        <span id="wm-angle">{t('Angle')}</span>
         <div role="radiogroup" aria-labelledby="wm-angle" className="flex gap-1">
           {[45, 0, -45].map((a) => (
             <button
@@ -1280,7 +1288,7 @@ export function PageMarkPanel({
         </div>
       </div>
       <div className={field}>
-        <span id="wm-colour">Colour</span>
+        <span id="wm-colour">{t('Colour')}</span>
         <div role="radiogroup" aria-labelledby="wm-colour" className="flex gap-1">
           {WM_COLOURS.map(([c, name]) => (
             <button
@@ -1288,7 +1296,7 @@ export function PageMarkPanel({
               type="button"
               role="radio"
               aria-checked={wm.color === c}
-              aria-label={name}
+              aria-label={t(name)}
               onClick={() => setWm({ color: c })}
               className={`h-5 w-5 rounded-full border border-neutral-300 ${wm.color === c ? 'ring-2 ring-accent ring-offset-1' : ''}`}
               style={{ background: c }}
@@ -1297,7 +1305,7 @@ export function PageMarkPanel({
         </div>
       </div>
       <fieldset className="pt-1">
-        <legend className="pb-1">Apply to</legend>
+        <legend className="pb-1">{t('Apply to')}</legend>
         {(
           [
             ['all', 'Every page'],
@@ -1313,7 +1321,7 @@ export function PageMarkPanel({
               onChange={() => setWm({ pages: v === 'some' ? '1' : v })}
               className="accent-[#0e7c7b]"
             />
-            {label}
+            {t(label)}
             {v === 'some' && mode === 'some' && (
               <input
                 aria-label={t('Watermark pages')}
@@ -1335,7 +1343,7 @@ export function PageMarkPanel({
           {t('Remove watermark')}
         </button>
       )}
-      <p className="pt-2 text-[12px] text-neutral-500">Shown in Pages and in the saved PDF.</p>
+      <p className="pt-2 text-[12px] text-neutral-500">{t('Shown in Pages and in the saved PDF.')}</p>
     </aside>
   );
 }

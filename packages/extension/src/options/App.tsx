@@ -30,7 +30,7 @@ export function App() {
   const [note, setNote] = useState<string | null>(null);
 
   useEffect(() => {
-    document.title = 'Settings · ScreenScroll';
+    document.title = `${t('Settings')} · ScreenScroll`;
     void loadSettings().then(setS);
   }, []);
 
@@ -44,8 +44,8 @@ export function App() {
       if (!ok) {
         setNote(
           patch.capture.quiet
-            ? 'Capturing in the background needs the permission; it stays on screen.'
-            : 'Sharp capture needs the permission; it stays at Standard.',
+            ? t('Capturing in the background needs the permission; it stays on screen.')
+            : t('Sharp capture needs the permission; it stays at Standard.'),
         );
         return;
       }
@@ -58,7 +58,7 @@ export function App() {
     void saveSettings(patch);
   };
   const resetAll = () => {
-    setUndo({ settings: s, text: 'All settings are back to their defaults.' });
+    setUndo({ settings: s, text: t('All settings are back to their defaults.') });
     setS(DEFAULT_SETTINGS);
     void saveSettings(DEFAULT_SETTINGS);
     setTimeout(() => setUndo(null), 8000);
@@ -107,7 +107,7 @@ export function App() {
       ))}
 
       <section
-        aria-label="Privacy"
+        aria-label={t('Privacy')}
         className="mt-5 flex gap-2 rounded-lg border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900"
       >
         <ShieldCheck aria-hidden size={18} className="mt-0.5 shrink-0 text-accent" />
@@ -119,7 +119,7 @@ export function App() {
       </section>
 
       <section
-        aria-label="Settings file"
+        aria-label={t('Settings file')}
         className="mt-5 flex flex-wrap items-center gap-2 rounded-lg border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900"
       >
         <span className="mr-auto text-neutral-600 dark:text-neutral-300">
@@ -153,7 +153,7 @@ export function App() {
               if (!file) return;
               try {
                 const next = readSettingsFile(await file.text());
-                setUndo({ settings: s, text: `Settings loaded from ${file.name}.` });
+                setUndo({ settings: s, text: t('Settings loaded from {name}.', { name: file.name }) });
                 setS(next);
                 await saveSettings(next);
                 setNote(null);
@@ -231,32 +231,33 @@ function OcrModelRow() {
   };
   const e = DEFAULT_ENGINE;
   return (
-    <div className="p-3" role="group" aria-label="Text recognition model">
+    <div className="p-3" role="group" aria-label={t('Text recognition model')}>
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="font-medium">Model: {e.name}</p>
+          <p className="font-medium">{t('Model: {name}', { name: e.name })}</p>
           <p className="text-[12px] text-neutral-500">
-            {e.languages}. {e.license}. Kept on this computer; downloaded once from{' '}
-            <span className="font-mono">{e.baseUrls.map((u) => new URL(u).host).join(' or ')}</span>{' '}
-            and checked (SHA-256).
+            {e.languages}. {e.license}.{' '}
+            {t('Kept on this computer; downloaded once from {hosts} and checked (SHA-256).', {
+              hosts: e.baseUrls.map((u) => new URL(u).host).join(t(' or ')),
+            })}
           </p>
         </div>
         {status?.ready ? (
           <button type="button" className={`${control} shrink-0`} onClick={() => void remove()}>
-            Remove ({mb(status.stored)})
+            {t('Remove ({size})', { size: mb(status.stored) })}
           </button>
         ) : progress ? null : (
           <button type="button" className={`${control} shrink-0`} onClick={() => void get()}>
-            Download ({mb(status?.total ?? 0)})
+            {t('Download ({size})', { size: mb(status?.total ?? 0) })}
           </button>
         )}
       </div>
       <p role="status" className="pt-1 text-[12px] text-neutral-600 dark:text-neutral-300">
         {progress
-          ? `Downloading ${mb(progress.done)} of ${mb(progress.total)}`
+          ? t('Downloading {done} of {total}', { done: mb(progress.done), total: mb(progress.total) })
           : status?.ready
-            ? 'Ready.'
-            : 'Not downloaded. Pages without text of their own stay unsearchable until it is.'}
+            ? t('Ready.')
+            : t('Not downloaded. Pages without text of their own stay unsearchable until it is.')}
       </p>
       {error && (
         <p role="alert" className="pt-1 text-[12px] text-red-700 dark:text-red-300">

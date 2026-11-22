@@ -1,6 +1,7 @@
 import { Copy, X } from 'lucide-react';
 import { useState } from 'react';
 import { detailsText, type Details } from '@/studio/engine/details';
+import { t } from '@/shared/i18n';
 
 /**
  * Details (header ⓘ): every number behind the pages and how it was calculated, then one
@@ -16,19 +17,19 @@ export function DetailsPanel({ details, onClose }: { details: Details; onClose: 
   const icon =
     'rounded p-1 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 focus-visible:outline-2 focus-visible:outline-accent dark:hover:bg-neutral-800 dark:hover:text-white';
   return (
-    <aside className="h-full overflow-y-auto p-3 text-[12px]" aria-label="Details">
+    <aside className="h-full overflow-y-auto p-3 text-[12px]" aria-label={t('Details')}>
       <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-[13px] font-semibold">Details</h2>
+        <h2 className="text-[13px] font-semibold">{t('Details')}</h2>
         <div className="flex items-center gap-1">
           <span role="status" className="text-[11px] text-neutral-500">
-            {copied ? 'Copied' : ''}
+            {copied ? t('Copied') : ''}
           </span>
           <button
             type="button"
             className={icon}
             onClick={() => void copy()}
-            aria-label="Copy all as text"
-            title="Copy all as text"
+            aria-label={t('Copy all as text')}
+            title={t('Copy all as text')}
           >
             <Copy aria-hidden size={14} />
           </button>
@@ -36,8 +37,8 @@ export function DetailsPanel({ details, onClose }: { details: Details; onClose: 
             type="button"
             className={icon}
             onClick={onClose}
-            aria-label="Close details"
-            title="Close details (I)"
+            aria-label={t('Close details')}
+            title={t('Close details (I)')}
           >
             <X aria-hidden size={14} />
           </button>
@@ -75,15 +76,15 @@ export function DetailsPanel({ details, onClose }: { details: Details; onClose: 
             setTimeout(() => setCopied(false), 1500);
           }}
         >
-          Copy page detection as a test case
+          {t('Copy page detection as a test case')}
         </button>
       )}
       <section>
         <h3 className="mb-1 border-b border-neutral-200 pb-0.5 text-[11px] font-semibold tracking-wide text-neutral-500 uppercase dark:border-neutral-700">
-          Pages
+          {t('Pages')}
         </h3>
         <div className="overflow-x-auto">
-          <table className="w-full font-mono text-[10.5px]" aria-label="Pages">
+          <table className="w-full font-mono text-[10.5px]" aria-label={t('Pages')}>
             <thead className="text-neutral-500">
               <tr>
                 <th className="pr-1.5 text-left font-normal">#</th>

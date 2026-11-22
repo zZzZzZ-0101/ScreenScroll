@@ -35,6 +35,11 @@ describe('interface languages', () => {
         const s = m[1]!.replace(/\\'/g, "'");
         if (!(s in ZH_CN)) missing.add(s);
       }
+      // Plurals and other choices: t(n === 1 ? 'one' : 'many', …).
+      for (const m of src.matchAll(/\b(?:t|tr)\(\s*[^'(),]+\?\s*'((?:[^'\\]|\\.)*)'\s*:\s*'((?:[^'\\]|\\.)*)'/g)) {
+        for (const s of [m[1]!, m[2]!].map((x) => x.replace(/\\'/g, "'")))
+          if (!(s in ZH_CN)) missing.add(s);
+      }
     }
     for (const e of SETTINGS) {
       for (const s of [e.section, e.label, e.help, e.why, ...(e.choices ?? []).map((c) => c.label)])
