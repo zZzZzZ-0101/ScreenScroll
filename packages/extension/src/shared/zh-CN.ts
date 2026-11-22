@@ -687,4 +687,5 @@ export const ZH_CN: Record<string, string> = {
   "p. {n}": "第 {n} 页",
   "Blur {n} selected": "模糊所选 {n} 处",
   "Watermark colour": "水印颜色",
+  "{list}, or any text": "{list}，或任意文字",
 };

@@ -1207,7 +1207,7 @@ export function PageMarkPanel({
         </fieldset>
       ))}
       <p className="pt-1 text-[12px] text-neutral-500">
-        {'{date} {time} {page} {pages} {title} {domain} {url}, or any text'}
+        {t('{list}, or any text', { list: '{date} {time} {page} {pages} {title} {domain} {url}' })}
       </p>
       <PresetChips
         label={t('Label presets')}
