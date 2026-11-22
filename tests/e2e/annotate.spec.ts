@@ -169,7 +169,10 @@ test('Annotate: draw, undo/redo, select/move/delete, crop, persist, flatten and 
   expect(moved.y).toBeCloseTo(step2.y, 0);
 
   // Colour change applies to the selection.
-  await studio.getByRole('radio', { name: '#1a73e8' }).click();
+  await studio
+    .getByRole('radiogroup', { name: 'Colour', exact: true })
+    .getByRole('radio', { name: 'Blue' })
+    .click();
   expect(((await anns()).filter((a) => a.kind === 'step')[1] as Annotation).style.color).toBe(
     '#1a73e8',
   );

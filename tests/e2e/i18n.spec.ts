@@ -50,4 +50,10 @@ test('Simplified Chinese: panel, Settings and the Studio follow the language set
   await expect(studio.getByText(/\d+ 页/).first()).toBeVisible();
   await studio.waitForTimeout(800);
   await studio.screenshot({ path: 'e2e-artifacts/studio-zh.png' });
+  // Mark up: tool names and the line under the toolbar are translated too.
+  await studio.getByRole('tab', { name: '标注' }).click();
+  await expect(studio.getByRole('button', { name: '矩形' })).toBeVisible();
+  await studio.getByRole('button', { name: '矩形' }).click();
+  await expect(studio.getByText('拖动画一个框。')).toBeVisible();
+  await studio.screenshot({ path: 'e2e-artifacts/markup-zh.png' });
 });

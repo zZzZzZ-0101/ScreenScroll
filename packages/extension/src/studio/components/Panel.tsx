@@ -1288,8 +1288,8 @@ export function PageMarkPanel({
         </div>
       </div>
       <div className={field}>
-        <span id="wm-colour">{t('Colour')}</span>
-        <div role="radiogroup" aria-labelledby="wm-colour" className="flex gap-1">
+        <span>{t('Colour')}</span>
+        <div role="radiogroup" aria-label={t('Watermark colour')} className="flex gap-1">
           {WM_COLOURS.map(([c, name]) => (
             <button
               key={c}
