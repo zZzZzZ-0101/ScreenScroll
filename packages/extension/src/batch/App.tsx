@@ -11,7 +11,7 @@ import {
 } from '@/shared/batch';
 import { listCaptures, type StoredCapture } from '@/shared/db';
 import { MergeSheet } from '@/library/MergeSheet';
-import { t } from '@/shared/i18n';
+import { t, tMsg } from '@/shared/i18n';
 
 const ALL_SITES = { origins: ['<all_urls>'] };
 const button =
@@ -149,7 +149,7 @@ export function App() {
                     <span className="min-w-0">
                       <span className="block truncate">{tab.title}</span>
                       {tab.blocked && (
-                        <span className="block text-[12px]">{tab.blocked.split('. ')[0]?.replace(/\.?$/, '.')}</span>
+                        <span className="block text-[12px]">{tMsg(tab.blocked)}</span>
                       )}
                     </span>
                   </label>
@@ -268,7 +268,7 @@ function ItemRow({ item }: { item: BatchItem }) {
           <span className="sr-only">{t(word)}: </span>
           {item.label}
         </p>
-        {item.reason && <p className="text-[12px] text-neutral-500">{item.reason}</p>}
+        {item.reason && <p className="text-[12px] text-neutral-500">{tMsg(item.reason)}</p>}
       </div>
     </li>
   );

@@ -7,7 +7,7 @@ import { importImage } from '@/shared/import-image';
 import { importPdf } from '@/shared/import-pdf';
 import { CompareSheet } from './CompareSheet';
 import { MergeSheet } from './MergeSheet';
-import { t } from '@/shared/i18n';
+import { formatDate, t } from '@/shared/i18n';
 
 const KEEP: Array<[number, string]> = [
   [0, 'Until I delete them'],
@@ -295,65 +295,6 @@ export function App() {
             className="flex-1 bg-transparent outline-none"
           />
         </label>
-        {confirm ? (
-          <span className="flex items-center gap-1" role="group" aria-label={t('Confirm deletion')}>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void remove(confirm)}
-              className="rounded-md bg-red-700 px-2 py-1 font-medium text-white hover:bg-red-800 disabled:opacity-50"
-            >
-              {t('Delete {n} for good', { n: confirm.length })}
-            </button>
-            <button
-              type="button"
-              onClick={() => setConfirm(null)}
-              className="rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
-            >
-              {t('Cancel')}
-            </button>
-          </span>
-        ) : (
-          <>
-          <button
-            type="button"
-            disabled={selected.size !== 2 || busy}
-            title={t('Compare the text of two captures, e.g. one page captured on two days')}
-            onClick={() => {
-              const two = (items ?? []).filter((c) => selected.has(c.session.id));
-              if (two.length === 2) setComparing([two[0]!, two[1]!]);
-            }}
-            className="flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
-          >
-            {t('Compare')}
-          </button>
-          <button
-            type="button"
-            disabled={selected.size < 2 || busy}
-            title={t('Save the selected captures as one PDF')}
-            onClick={() =>
-              setMerging(
-                (items ?? [])
-                  .filter((c) => selected.has(c.session.id) && c.session.frameCount > 0)
-                  .reverse(),
-              )
-            }
-            className="flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
-          >
-            <Files aria-hidden size={15} /> {t('Merge into one PDF')}
-            {selected.size > 1 ? ` (${selected.size})` : ''}
-          </button>
-          <button
-            type="button"
-            disabled={!selected.size || busy}
-            onClick={() => setConfirm([...selected])}
-            className="flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
-          >
-            <Trash2 aria-hidden size={15} /> {t('Delete selected')}
-            {selected.size ? ` (${selected.size})` : ''}
-          </button>
-          </>
-        )}
       </div>
 
       {note && (
@@ -365,8 +306,8 @@ export function App() {
       {merging && <MergeSheet captures={merging} onClose={() => setMerging(null)} />}
       {comparing && <CompareSheet captures={comparing} onClose={() => setComparing(null)} />}
 
-      {visible.length > 0 && (
-        <div className="mt-3 flex items-center justify-between px-2">
+      {(visible.length > 0 || confirm) && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 px-2 [&>*]:whitespace-nowrap">
           <label className="flex items-center gap-2 text-neutral-600 dark:text-neutral-300">
             <input
               type="checkbox"
@@ -380,6 +321,67 @@ export function App() {
             />
             {t(query ? 'Select all shown' : 'Select all')} ({visible.length})
           </label>
+          <span className="flex flex-1 flex-wrap items-center gap-2">
+            {confirm ? (
+              <span className="flex items-center gap-1" role="group" aria-label={t('Confirm deletion')}>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void remove(confirm)}
+                  className="rounded-md bg-red-700 px-2 py-1 font-medium text-white hover:bg-red-800 disabled:opacity-50"
+                >
+                  {t('Delete {n} for good', { n: confirm.length })}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirm(null)}
+                  className="rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
+                >
+                  {t('Cancel')}
+                </button>
+              </span>
+            ) : (
+              <>
+              <button
+                type="button"
+                disabled={selected.size !== 2 || busy}
+                title={t('Compare the text of two captures, e.g. one page captured on two days')}
+                onClick={() => {
+                  const two = (items ?? []).filter((c) => selected.has(c.session.id));
+                  if (two.length === 2) setComparing([two[0]!, two[1]!]);
+                }}
+                className="flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
+              >
+                {t('Compare')}
+              </button>
+              <button
+                type="button"
+                disabled={selected.size < 2 || busy}
+                title={t('Save the selected captures as one PDF')}
+                onClick={() =>
+                  setMerging(
+                    (items ?? [])
+                      .filter((c) => selected.has(c.session.id) && c.session.frameCount > 0)
+                      .reverse(),
+                  )
+                }
+                className="flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
+              >
+                <Files aria-hidden size={15} /> {t('Merge into one PDF')}
+                {selected.size > 1 ? ` (${selected.size})` : ''}
+              </button>
+              <button
+                type="button"
+                disabled={!selected.size || busy}
+                onClick={() => setConfirm([...selected])}
+                className="flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
+              >
+                <Trash2 aria-hidden size={15} /> {t('Delete selected')}
+                {selected.size ? ` (${selected.size})` : ''}
+              </button>
+              </>
+            )}
+          </span>
           {!confirm && (items?.length ?? 0) > 0 && (
             <button
               type="button"
@@ -440,7 +442,7 @@ function Row(p: {
     return () => URL.revokeObjectURL(url);
   }, [preview]);
   const title = session.title || session.url || t('Untitled capture');
-  const when = new Date(session.capturedAt).toLocaleString(undefined, {
+  const when = formatDate(new Date(session.capturedAt), {
     day: 'numeric',
     month: 'short',
     year: 'numeric',

@@ -12,7 +12,7 @@ import type { Analysis } from '@/studio/engine/analysis';
 import { composePage } from '@/studio/engine/compose';
 import type { FrameCache, LoadedSession } from '@/studio/engine/session';
 import type { Edits } from '../App';
-import { t } from '@/shared/i18n';
+import { t, tMsg } from '@/shared/i18n';
 
 /** Plain-language names for the break kinds (colours stay as the visual cue). */
 const KIND_TITLES: Record<BreakKind, string> = {
@@ -182,7 +182,7 @@ export function StripView(p: Props) {
                   <span
                     role="img"
                     aria-label={t('Needs a look')}
-                    title={p.checks.find((c) => c.index === i)!.reason}
+                    title={tMsg(p.checks.find((c) => c.index === i)!.reason)}
                     data-testid="break-check"
                     className="absolute -left-6 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white"
                   >

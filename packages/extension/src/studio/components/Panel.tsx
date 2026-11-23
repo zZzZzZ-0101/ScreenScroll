@@ -34,7 +34,7 @@ import {
 } from '@/shared/settings';
 import { ThemeSwitch } from '@/shared/ThemeSwitch';
 import type { Edits } from '../App';
-import { t, t as tr } from '@/shared/i18n';
+import { t, t as tr, tMsg } from '@/shared/i18n';
 
 const field = 'flex items-center justify-between gap-2 py-1';
 const control =
@@ -111,7 +111,7 @@ function OcrCard({ o }: { o: OcrCardProps }) {
         <>
           <p className="pt-1 text-[12px] text-neutral-600 dark:text-neutral-300">
             {t(
-              'To make them searchable, ScreenScroll can read them on this computer. It needs a text recognition model (PP-OCRv6, {size}), downloaded once from an npm mirror and checked; nothing of yours is sent.',
+              'To make them searchable, ScreenScroll can read them on this computer. This needs a text recognition model ({size}), downloaded once and checked; nothing of yours is sent.',
               { size: mb(o.size) },
             )}
           </p>
@@ -175,7 +175,15 @@ const GRID_FIELDS: [keyof SheetGrid, string, string][] = [
  */
 function SheetsCard(props: SheetsCardProps) {
   const [editing, setEditing] = useState(false);
-  const found = !!props.detected || props.readings.length > 0;
+  // A reading is worth offering at 5 % or more, or while it is the one chosen. Readings that
+  // all tie below 50 % (a photo, noise) say nothing: then only "set pages by hand" is offered.
+  const grid = props.mode === 'grid' ? props.grid : null;
+  const close = (a: SheetGrid | null, b: SheetGrid | null) =>
+    !!a && !!b && (['x0', 'x1', 'top', 'height', 'gap'] as const).every((k) => Math.abs(a[k] - b[k]) < 0.5);
+  const worth = props.readings.filter((r) => r.probability >= 0.05 || close(r.grid, grid));
+  const telling =
+    !!props.detected || !!grid || worth.some((r) => r.probability >= 0.5 || close(r.grid, grid));
+  const found = telling && (!!props.detected || worth.length > 0);
   // "Found pages" with nothing found is everything captured (what planPages does too).
   const p = props.mode === 'auto' && !found ? { ...props, mode: 'original' as const } : props;
   const sameGrid = (a: SheetGrid | null, b: SheetGrid | null) =>
@@ -196,7 +204,7 @@ function SheetsCard(props: SheetsCardProps) {
     : autoReading
       ? t(autoReading.label)
       : null;
-  const others = p.readings.filter((r) => r.grid);
+  const others = worth.filter((r) => r.grid);
   // Pages set by hand stay one click away after choosing something else.
   const handGrid = p.grid && !p.readings.some((r) => sameGrid(r.grid, p.grid)) ? p.grid : null;
   const fromAuto = (): SheetGrid | null =>
@@ -220,9 +228,10 @@ function SheetsCard(props: SheetsCardProps) {
     ) : null;
   if (!found && p.mode === 'original' && !editing)
     return (
+      // Rarely needed on an ordinary page, so a quiet link rather than the panel's first button.
       <button
         type="button"
-        className={`${button} mb-2 w-full`}
+        className="mb-2 text-left text-[12px] text-neutral-500 underline-offset-2 hover:text-accent hover:underline focus-visible:outline-2 focus-visible:outline-accent"
         onClick={() => {
           p.onGrid(fromScratch());
           setEditing(true);
@@ -521,6 +530,8 @@ function TextSizeCard(p: {
   contentWidth: number;
   settings: Settings;
   onSettings: (patch: Partial<Settings>) => void;
+  /** Document pages were found but everything captured is kept: one page each is larger. */
+  onDocPages?: () => void;
 }) {
   const page = p.settings.page;
   const size = printedTextSize(p.fontPx, page, p.contentWidth);
@@ -567,6 +578,16 @@ function TextSizeCard(p: {
         {t('Books use 9–11 pt.')}
       </p>
       <div className="flex flex-wrap gap-1">
+        {p.onDocPages && (
+          <button
+            type="button"
+            className={button}
+            title={t('One PDF page per document page, as in the card above (one click back there)')}
+            onClick={p.onDocPages}
+          >
+            {t('Use the document pages')}
+          </button>
+        )}
         {size.turnedPt > size.pt && (
           <button
             type="button"
@@ -626,7 +647,19 @@ export function PagesPanel(p: PagesProps) {
     <aside className={aside} aria-label={t('Page setup')}>
       <OcrCard o={p.ocr} />
       <SheetsCard {...p.sheets} />
-      {p.text && <TextSizeCard {...p.text} settings={p.settings} onSettings={p.onSettings} />}
+      {p.text && (
+        <TextSizeCard
+          {...p.text}
+          settings={p.settings}
+          onSettings={p.onSettings}
+          onDocPages={
+            p.sheets.mode === 'original' &&
+            (p.sheets.detected || confidentReading(p.sheets.readings))
+              ? () => p.sheets.onMode('auto')
+              : undefined
+          }
+        />
+      )}
       <label className={field}>
         {t('Paper')}
         <select
@@ -848,7 +881,7 @@ export function BreaksPanel(p: BreaksProps) {
           )}
         </p>
         <p className="pt-2 text-[12px] text-neutral-500">
-          {t('To place breaks yourself instead, turn off “One PDF page per document page” in Pages.')}
+          {t('To place breaks yourself instead, choose “Everything I captured” in Pages.')}
         </p>
       </aside>
     );
@@ -910,7 +943,7 @@ function ChecksCard(p: Pick<BreaksProps, 'checks' | 'page' | 'onJump'>) {
               className={`w-full rounded px-1 py-0.5 text-left hover:bg-amber-100 dark:hover:bg-amber-900 ${c.index + 1 === p.page ? 'font-medium' : ''}`}
               onClick={() => p.onJump(c.index)}
             >
-              {t('After page {n}: {why}', { n: c.index + 1, why: c.reason })}
+              {t('After page {n}: {why}', { n: c.index + 1, why: tMsg(c.reason) })}
             </button>
           </li>
         ))}
@@ -1196,6 +1229,7 @@ export function PageMarkPanel({
                 key={slot}
                 aria-label={`${t(label)} ${t(slot)}`}
                 placeholder={t(slot)}
+                title={pdf[band][slot]}
                 className={`${control} min-w-0`}
                 value={pdf[band][slot]}
                 onChange={(e) =>

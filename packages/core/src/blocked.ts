@@ -67,6 +67,6 @@ function pdfViewer(): BlockInfo {
   return {
     reason: 'pdf-viewer',
     message:
-      'The browser’s PDF viewer can’t be captured. Open the PDF file in ScreenScroll Studio instead.',
+      'The browser’s PDF viewer can’t be captured. Open the PDF in Saved captures → Open files instead.',
   };
 }

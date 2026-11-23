@@ -19,7 +19,7 @@ import { lastSession, listCaptures, type SessionRecord } from '@/shared/db';
 import type { CaptureMode } from '@/shared/messages';
 import { loadSettings, saveSettings, type Settings } from '@/shared/settings';
 import { ThemeSwitch } from '@/shared/ThemeSwitch';
-import { t } from '@/shared/i18n';
+import { t, tMsg } from '@/shared/i18n';
 
 /**
  * UI §1: the small panel under the toolbar icon. One main action, every other way to
@@ -157,10 +157,6 @@ export function App() {
           </button>
         </div>
       </header>
-      <div className="mb-2 flex items-center justify-between">
-        <span className="text-neutral-500">{t('Theme')}</span>
-        <ThemeSwitch />
-      </div>
 
       {running && (
         <section
@@ -199,7 +195,7 @@ export function App() {
           role="alert"
           className="mb-2 rounded-md bg-neutral-100 p-2 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"
         >
-          {blocked}
+          {tMsg(blocked)}
         </p>
       )}
 
@@ -432,12 +428,18 @@ export function App() {
         </span>
       </button>
 
+      {/* How the panel looks matters less than what it does: last. */}
+      <div className="mt-2 flex items-center justify-between border-t border-neutral-200 pt-2 dark:border-neutral-800">
+        <span className="text-neutral-500">{t('Theme')}</span>
+        <ThemeSwitch />
+      </div>
+
       {error && (
         <p
           role="alert"
           className="mt-2 rounded-md bg-amber-50 p-2 text-amber-900 dark:bg-amber-950 dark:text-amber-100"
         >
-          {error}
+          {tMsg(error)}
         </p>
       )}
     </main>

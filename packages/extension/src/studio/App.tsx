@@ -27,6 +27,7 @@ import {
 import {
   FileText,
   Info,
+  Keyboard,
   Monitor,
   Moon,
   PenLine,
@@ -62,6 +63,7 @@ import { ZoomControl, stepZoom, type Zoom } from './components/ZoomControl';
 import { useTheme } from '@/shared/theme';
 import type { Theme } from '@/shared/settings';
 import { BreaksPanel, PageMarkPanel, PagesPanel } from './components/Panel';
+import { Shortcuts } from '@/studio/components/Shortcuts';
 import { DetailsPanel } from './components/DetailsPanel';
 import { buildDetails } from '@/studio/engine/details';
 import { DEFAULT_ENGINE, pagesNeedingOcr } from '@screenscroll/core/ocr';
@@ -72,7 +74,7 @@ import { PagesView } from './components/PagesView';
 import { StripView } from './components/StripView';
 import { Thumbnails } from './components/Thumbnails';
 import { exportDebugOverlay } from './debug-export';
-import { t } from '@/shared/i18n';
+import { formatDate, t, tMsg } from '@/shared/i18n';
 
 type Stage =
   | { kind: 'loading' }
@@ -345,6 +347,10 @@ export function App() {
     }
   }, []);
   const [showDetails, setShowDetails] = useState(() => readPref('sp.details', false));
+  const [showKeys, setShowKeys] = useState(false);
+  // Read by the key handler: while the list is open, keys don't act on the capture behind it.
+  const keysOpen = useRef(false);
+  keysOpen.current = showKeys;
   useEffect(() => writePref('sp.details', showDetails), [showDetails]);
   const details = useMemo(
     () =>
@@ -663,6 +669,14 @@ export function App() {
       if (target.closest('input, select, textarea')) return;
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
+      if (!mod && e.key === '?') {
+        setShowKeys((v) => !v);
+        return;
+      }
+      if (keysOpen.current) {
+        if (e.key === 'Escape') setShowKeys(false);
+        return;
+      }
       if (mod && (key === 'y' || (key === 'z' && e.shiftKey))) {
         e.preventDefault();
         doRedo();
@@ -784,7 +798,7 @@ export function App() {
       return '';
     }
   })();
-  const captured = new Date(session.session.capturedAt).toLocaleString(undefined, {
+  const captured = formatDate(new Date(session.session.capturedAt), {
     day: 'numeric',
     month: 'short',
     hour: '2-digit',
@@ -933,21 +947,21 @@ export function App() {
               title={t(hint)}
               disabled={!result.ok}
               onClick={() => setView(v)}
-              className={`flex items-center gap-1.5 rounded-md px-3 py-1 focus-visible:outline-2 focus-visible:outline-accent ${view === v ? 'bg-white font-medium shadow-sm dark:bg-neutral-700' : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-white'}`}
+              className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1 focus-visible:outline-2 focus-visible:outline-accent ${view === v ? 'bg-white font-medium shadow-sm dark:bg-neutral-700' : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-white'}`}
             >
               <Icon aria-hidden size={15} />
               {t(label)}
             </button>
           ))}
         </div>
-        <div className="flex flex-1 items-center justify-end gap-2">
+        <div className="flex flex-1 shrink-0 items-center justify-end gap-2">
           {warnings.length > 0 && (
             <div className="relative">
               <button
                 type="button"
                 onClick={() => setShowWarnings((v) => !v)}
                 aria-expanded={showWarnings}
-                className="flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-amber-900 focus-visible:outline-2 focus-visible:outline-accent dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100"
+                className="flex items-center gap-1 whitespace-nowrap rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-amber-900 focus-visible:outline-2 focus-visible:outline-accent dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100"
               >
                 <TriangleAlert aria-hidden size={14} />
                 {t(warnings.length === 1 ? '{n} note' : '{n} notes', { n: warnings.length })}
@@ -971,11 +985,11 @@ export function App() {
                               setShowWarnings(false);
                             }}
                           >
-                            {w}
+                            {tMsg(w)}
                           </button>
                         ) : w === OVERLAY_WARNING ? (
                           <>
-                            {w}
+                            {tMsg(w)}
                             <button
                               type="button"
                               className="mt-1 block rounded-md border border-neutral-300 px-2 py-0.5 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:border-neutral-700 dark:hover:bg-neutral-800"
@@ -992,7 +1006,7 @@ export function App() {
                             </button>
                           </>
                         ) : (
-                          w
+                          tMsg(w)
                         )}
                       </li>
                     );
@@ -1011,6 +1025,15 @@ export function App() {
           >
             <Info aria-hidden size={17} />
           </button>
+          <button
+            type="button"
+            aria-label={t('Keyboard shortcuts')}
+            title={t('Keyboard shortcuts (?)')}
+            onClick={() => setShowKeys(true)}
+            className="rounded-md p-1.5 text-neutral-600 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:text-neutral-300 dark:hover:bg-neutral-800"
+          >
+            <Keyboard aria-hidden size={17} />
+          </button>
           <ThemeButton theme={theme} onTheme={setTheme} />
           <SaveMenu
             disabled={!!busy || !result.ok}
@@ -1022,6 +1045,7 @@ export function App() {
       </header>
 
       <div className="flex min-h-0 flex-1">
+        {showKeys && <Shortcuts onClose={() => setShowKeys(false)} />}
         {panel && panelPrefs.side === 'left' && panel}
         {result.ok ? (
           <>

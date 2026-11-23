@@ -58,7 +58,7 @@ export function SaveMenu(p: {
         onClick={() => p.onExport('pdf')}
         disabled={p.disabled}
         title={t('Save PDF (Ctrl+S)')}
-        className="flex items-center gap-1.5 rounded-l-md bg-accent px-3 py-1.5 font-medium text-white hover:bg-accent-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-60"
+        className="flex items-center gap-1.5 whitespace-nowrap rounded-l-md bg-accent px-3 py-1.5 font-medium text-white hover:bg-accent-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-60"
       >
         <Download aria-hidden size={15} />
         {t('Save PDF')}

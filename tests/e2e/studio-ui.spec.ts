@@ -86,3 +86,53 @@ test('Studio UI: pages view, long strip with break editing, export panel', async
     )
     .toMatch(/-breaks\.json$/);
 });
+
+test('walkthrough fixes: "?" lists the keys; a small-text document offers its own pages', async ({
+  context,
+  serviceWorker,
+}) => {
+  const page = await context.newPage();
+  await page.setViewportSize({ width: 1366, height: 768 });
+  const url = `${FIXTURES}/doc-viewer.html`;
+  await page.goto(url);
+  await page.bringToFront();
+  const studioPromise = context.waitForEvent('page', {
+    predicate: (p) => p.url().includes('/studio.html'),
+  });
+  await serviceWorker.evaluate(async (u) => {
+    const [tab] = await chrome.tabs.query({ active: true, url: u });
+    await (
+      globalThis as unknown as { __spTest: { capture(id: number): Promise<unknown> } }
+    ).__spTest.capture(tab!.id!);
+  }, url);
+  const studio = await studioPromise;
+  await studio.setViewportSize({ width: 1366, height: 768 });
+  await expect(studio.getByTestId('sheets')).toContainText('Document pages found', {
+    timeout: 60_000,
+  });
+
+  // The key list opens with "?", and keys don't act behind it; Esc closes it.
+  await studio.keyboard.press('?');
+  const keys = studio.getByRole('dialog', { name: 'Keyboard shortcuts' });
+  await expect(keys).toContainText('Save PDF');
+  await studio.keyboard.press('i');
+  await expect(studio.getByRole('complementary', { name: 'Details' })).toHaveCount(0);
+  await studio.keyboard.press('Escape');
+  await expect(keys).toHaveCount(0);
+
+  // Everything captured is kept, so the text prints small; the card offers the pages.
+  const small = studio.getByTestId('text-size');
+  await small.getByRole('button', { name: 'Use the document pages' }).click();
+  await expect(studio.getByTestId('sheets')).toContainText('6 pages');
+  await expect(
+    studio
+      .getByTestId('sheets')
+      .getByRole('radio', { name: /Document pages · found from the gaps/ }),
+  ).toBeChecked();
+  // One click back, in the card.
+  await studio
+    .getByTestId('sheets')
+    .getByRole('radio', { name: /Everything I captured/ })
+    .check();
+  await expect(small.getByRole('button', { name: 'Use the document pages' })).toBeVisible();
+});

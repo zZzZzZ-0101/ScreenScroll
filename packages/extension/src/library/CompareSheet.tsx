@@ -2,7 +2,7 @@ import { diffText, textToMarkdown, type TextChange } from '@screenscroll/core';
 import { X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { StoredCapture } from '@/shared/db';
-import { t } from '@/shared/i18n';
+import { formatDate, t } from '@/shared/i18n';
 import { loadSession } from '@/studio/engine/session';
 import { comparePictures, type PictureCrop, type PictureDiff } from './picture-diff';
 
@@ -46,7 +46,7 @@ export function CompareSheet(p: { captures: [StoredCapture, StoredCapture]; onCl
   }, [older.session.id, newer.session.id]);
 
   const count = (k: TextChange['kind']) => changes?.filter((c) => c.kind === k).length ?? 0;
-  const when = (c: StoredCapture) => new Date(c.session.capturedAt).toLocaleString();
+  const when = (c: StoredCapture) => formatDate(new Date(c.session.capturedAt), { dateStyle: 'medium', timeStyle: 'short' });
   // Fold runs of unchanged paragraphs, keeping one on each side of a change for context.
   const shown: Array<TextChange | { kind: 'fold'; n: number }> = [];
   if (changes) {

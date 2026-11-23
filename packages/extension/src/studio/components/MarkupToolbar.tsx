@@ -125,7 +125,7 @@ export function MarkupToolbar(a: MarkupControls) {
               aria-label={t(SWATCH_NAMES[c] ?? 'Colour')}
               title={t(SWATCH_NAMES[c] ?? 'Colour')}
               onClick={() => a.onStyle({ ...a.style, color: c })}
-              className={`h-5 w-5 rounded-full border border-neutral-300 focus-visible:outline-2 focus-visible:outline-accent dark:border-neutral-600 ${a.style.color === c ? 'ring-2 ring-accent ring-offset-1 dark:ring-offset-neutral-900' : ''}`}
+              className={`h-5 w-5 rounded-full border border-neutral-300 focus-visible:outline-2 focus-visible:outline-accent dark:border-neutral-400 ${a.style.color === c ? 'ring-2 ring-accent ring-offset-1 dark:ring-offset-neutral-900' : ''}`}
               style={{ background: c }}
             />
           ))}
