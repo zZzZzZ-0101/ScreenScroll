@@ -89,8 +89,8 @@ export function diffText(before: string, after: string): TextChange[] {
       k++;
       continue;
     }
-    // A run of changes: pair each removed paragraph with the first added one that keeps
-    // at least half its words (an edit); the rest are plain removals and additions.
+    // A run of changes: pair each removed paragraph with the next added one that keeps at
+    // least half its words (an edit); the rest are plain removals and additions.
     const dels: string[] = [];
     const adds: string[] = [];
     for (; k < ops.length && ops[k]!.kind !== 'same'; k++) {
@@ -98,14 +98,18 @@ export function diffText(before: string, after: string): TextChange[] {
       if (o.kind === 'del') dels.push(o.a);
       else if (o.kind === 'add') adds.push(o.b);
     }
-    const used = new Set<number>();
+    // Pairs go forward on both sides, and an added paragraph is shown where it comes, so
+    // reading only the old side or only the new side gives each text in its own order.
+    let next = 0;
     for (const d of dels) {
-      const m = adds.findIndex((a, n) => !used.has(n) && shared(d, a));
+      let m = -1;
+      for (let n = next; n < adds.length && m < 0; n++) if (shared(d, adds[n]!)) m = n;
       if (m < 0) {
         out.push({ kind: 'del', text: d });
         continue;
       }
-      used.add(m);
+      for (; next < m; next++) out.push({ kind: 'add', text: adds[next]! });
+      next = m + 1;
       out.push({
         kind: 'edit',
         words: shared(d, adds[m]!)!.map((w) =>
@@ -117,7 +121,7 @@ export function diffText(before: string, after: string): TextChange[] {
         ),
       });
     }
-    adds.forEach((a, n) => !used.has(n) && out.push({ kind: 'add', text: a }));
+    for (; next < adds.length; next++) out.push({ kind: 'add', text: adds[next]! });
   }
   return out;
 }

@@ -152,11 +152,16 @@ function enhance(img: Rgba): void {
   const hist = new Uint32Array(256);
   for (const v of y) hist[v]!++;
   const light = percentile(hist, y.length, 0.5) > 150;
-  const paper = Math.max(
-    percentile(hist, y.length, light ? 0.85 : 0.995),
-    percentile(hist, y.length, 0.005) + 32,
+  // Both ends stay inside 0…255: on a nearly blank page the darkest 0.5 % is already white,
+  // and "paper" above 255 would have mapped white to grey or black.
+  const paper = Math.min(
+    255,
+    Math.max(
+      percentile(hist, y.length, light ? 0.85 : 0.995),
+      percentile(hist, y.length, 0.005) + 32,
+    ),
   );
-  const ink = Math.min(percentile(hist, y.length, 0.005), paper - 32);
+  const ink = Math.max(0, Math.min(percentile(hist, y.length, 0.005), paper - 32));
   const lut = new Uint8ClampedArray(256);
   for (let v = 0; v < 256; v++) {
     const x = Math.max(0, Math.min(1, (v - ink) / (paper - ink)));

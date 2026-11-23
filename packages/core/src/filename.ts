@@ -60,6 +60,11 @@ export function sanitizeFilename(name: string): string {
   // A leading dot hides the file on macOS and Linux.
   s = s.replace(/^[. ]+/, '');
   if (!s) s = 'capture';
-  if (RESERVED.test(s)) s = `_${s}`;
+  // A reserved device name gets a prefix; the cap still holds afterwards.
+  if (RESERVED.test(s))
+    s = `_${Array.from(s)
+      .slice(0, MAX_CHARS - 1)
+      .join('')
+      .replace(/[. ]+$/, '')}`;
   return s;
 }

@@ -186,6 +186,15 @@ export function paginateDebug(input: PaginateInput): PaginationDebug {
     }
     cands = applyEdits(dedupe([...base, ...extra]), pinned, opts.removed, start, end);
     breaks = solve(cands, T, overlap, opts.alpha, opts.beta, rep);
+    if (!breaks) {
+      // Removed breaks next to each other on a very short page left a stretch with no cut
+      // at all: the last-resort cuts come back there rather than the export failing.
+      cands = dedupe([
+        ...applyEdits(base, pinned, opts.removed, start, end),
+        ...extra.filter((c) => !pinned.some((p) => Math.abs(p - c.y) < 0.5)),
+      ]).sort((x, y) => x.y - y.y);
+      breaks = solve(cands, T, overlap, opts.alpha, opts.beta, rep);
+    }
     if (!breaks) throw new Error('paginate: no feasible page breaks');
   }
 

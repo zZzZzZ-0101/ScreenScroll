@@ -78,6 +78,15 @@ describe('filters', () => {
     expect(px(img, 0, 25)[0]).toBeLessThan(10);
   });
 
+  it('enhanced: a blank page and a page with one short line keep a white background', () => {
+    // Found by the simulations: "paper" above 255 turned these grey or black.
+    for (const ink of [() => false, (x: number, y: number) => y === 50 && x < 20]) {
+      const img = image(200, 200, [255, 255, 255], [20, 20, 20], ink);
+      applyFilter('enhance', img);
+      expect(px(img, 150, 150)).toEqual([255, 255, 255]);
+    }
+  });
+
   it('ink saver: a dark-mode page becomes light with dark text; light pages stay', () => {
     const dark = image(80, 60, [20, 20, 30], [230, 230, 230], strokes);
     applyFilter('inksaver', dark);

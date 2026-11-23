@@ -195,19 +195,9 @@ async function run(msg: StartCapture): Promise<void> {
     const startOffset = target.offset;
     const t = target;
     log.record(() => t.scrollTo(startOffset));
-    // Settings → "Where I am now": a full-page capture from the current position to the end.
-    if (msg.startAt === 'here' && p.kind === 'scroll' && !p.visibleOnly && startOffset > 0) {
-      p = {
-        kind: 'region',
-        target,
-        region: {
-          x0: target.crop.x,
-          x1: target.crop.x + target.crop.width,
-          y0: startOffset,
-          y1: target.scrollHeight,
-        },
-      };
-    }
+    // Settings → "Where I am now": a full-page capture from the current position to the end
+    // (in the background from that row; on screen as a region, set up below).
+    const here = msg.startAt === 'here' && p.kind === 'scroll' && !p.visibleOnly && startOffset > 0;
     warnings.push(...prepare(log, target, !!msg.hideOverlays));
     // Viewers that live in an embedded frame (some document previews) can't be scrolled from
     // here: say so instead of quietly returning one screen.
@@ -239,6 +229,18 @@ async function run(msg: StartCapture): Promise<void> {
       );
     }
     const quietNow = quiet && (!target.el || expanded.has(target.el));
+    if (here && !quietNow) {
+      p = {
+        kind: 'region',
+        target,
+        region: {
+          x0: target.crop.x,
+          x1: target.crop.x + target.crop.width,
+          y0: startOffset,
+          y1: target.scrollHeight,
+        },
+      };
+    }
     if (!quietNow && (p.kind === 'region' || !p.visibleOnly)) {
       const from = p.kind === 'region' ? p.region.y0 : 0;
       const to = p.kind === 'region' ? p.region.y1 : Infinity;
@@ -278,7 +280,7 @@ async function run(msg: StartCapture): Promise<void> {
       p.kind === 'region'
         ? await captureRegion(ctx, target, p.region)
         : quietNow
-          ? await captureQuiet(ctx, target)
+          ? await captureQuiet(ctx, target, here ? startOffset : 0)
           : await captureScroll(ctx, target, p.visibleOnly);
     status = result.status;
     size = result.size;
@@ -488,7 +490,8 @@ const stoppedWarning = (frames: number) =>
  * bottom; nothing scrolls. Pages that size themselves to the window can look different
  * when pictured this way, so a change in the page's height is reported.
  */
-async function captureQuiet(ctx: LoopContext, target: Target): Promise<LoopResult> {
+/** `from`: the content row to start at (Settings → "Where I am now"); frames count from it. */
+async function captureQuiet(ctx: LoopContext, target: Target, from = 0): Promise<LoopResult> {
   const el = target.el;
   // An expanded scroll area: its content starts at its own top, laid out in full.
   const box = el ? contentBox(el) : target.crop;
@@ -497,7 +500,8 @@ async function captureQuiet(ctx: LoopContext, target: Target): Promise<LoopResul
   const originY = () => (el ? contentBox(el).y : box.y - target.offset);
   const limits = ctx.msg.limits ?? DEFAULT_LIMITS;
   const startHeight = height();
-  let y = 0;
+  let y = Math.max(0, Math.min(from, startHeight - 1));
+  const top = y;
   let index = 0;
   for (; ; index++) {
     if (ctx.cancelled()) throw new Cancelled();
@@ -508,9 +512,9 @@ async function captureQuiet(ctx: LoopContext, target: Target): Promise<LoopResul
     }
     const total = height();
     if (y >= total - 0.5) break;
-    if (index >= limits.maxScreens || y >= limits.maxHeight) {
+    if (index >= limits.maxScreens || y - top >= limits.maxHeight) {
       ctx.warnings.push(
-        `The page is longer than ScreenScroll captures at once; it stopped after ${index} screens (${Math.round(y)} px).`,
+        `The page is longer than ScreenScroll captures at once; it stopped after ${index} screens (${Math.round(y - top)} px).`,
       );
       break;
     }
@@ -520,7 +524,7 @@ async function captureQuiet(ctx: LoopContext, target: Target): Promise<LoopResul
     // The region in viewport coordinates (below the screen is fine: layout boxes exist).
     const crop = { x: box.x, y: originY() + y, width: box.width, height: h };
     ctx.hints.crop = crop;
-    ctx.hints.offset = y;
+    ctx.hints.offset = y - top;
     const t0 = performance.now();
     const hints = collectHints(ctx.hints);
     const hintsMs = performance.now() - t0;
@@ -533,7 +537,7 @@ async function captureQuiet(ctx: LoopContext, target: Target): Promise<LoopResul
       type: 'sp:grab',
       sessionId: ctx.msg.sessionId,
       index,
-      docY: y,
+      docY: y - top,
       crop: { x: 0, y: 0, width: box.width, height: h },
       viewportWidth: box.width,
       hints,
@@ -549,7 +553,7 @@ async function captureQuiet(ctx: LoopContext, target: Target): Promise<LoopResul
     ctx.warnings.push(
       'The page changed height while it was captured in the background; if something looks stretched or doubled, capture it on screen instead.',
     );
-  return { status: 'complete', size: { width: box.width, height: y } };
+  return { status: 'complete', size: { width: box.width, height: y - top } };
 }
 
 const expanded = new WeakSet<Element>();

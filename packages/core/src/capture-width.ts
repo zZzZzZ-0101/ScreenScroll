@@ -23,6 +23,10 @@ export function narrowWindowTo(
   zoom = 1,
 ): number | null {
   if (!target || viewportCss <= target + 1) return null;
-  const width = Math.round(window.width - (viewportCss - target) * zoom);
-  return Math.max(MIN_WINDOW_WIDTH, width);
+  const width = Math.max(
+    MIN_WINDOW_WIDTH,
+    Math.round(window.width - (viewportCss - target) * zoom),
+  );
+  // A window already at the minimum is left as it is: this only ever narrows.
+  return width < window.width ? width : null;
 }

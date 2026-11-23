@@ -65,8 +65,8 @@ export function overlay(interactive: boolean) {
     // Not the start of a drag in the selection picker.
     bar.addEventListener('pointerdown', (e) => e.stopPropagation());
     const cancel = el('button', '', bar);
-    cancel.textContent = 'Cancel';
-    cancel.title = 'Stop without capturing (Esc)';
+    cancel.textContent = tr('Cancel');
+    cancel.title = tr('Stop without capturing (Esc)');
     cancel.addEventListener('click', (e) => {
       e.stopPropagation();
       onCancel();
@@ -140,7 +140,7 @@ export function pickLines(): Promise<Selection | null> {
     const sides = (['x0', 'x1'] as const).map((edge) => {
       const el = ui.el('div', 'side');
       el.dataset.edge = edge;
-      el.title = 'Drag to set the left or right edge';
+      el.title = tr('Drag to set the left or right edge');
       ui.el('div', 'grip', el);
       el.style.display = 'none';
       el.addEventListener('pointerdown', (e) => {
@@ -190,7 +190,7 @@ export function pickLines(): Promise<Selection | null> {
       place(line, t, y);
       if (startY === null) {
         hint.set(tr('Click the first line to capture · Press Esc to cancel'));
-        tag.textContent = 'Start here';
+        tag.textContent = tr('Start here');
         startLine.style.display = 'none';
         band.style.display = 'none';
         for (const el of sides) el.style.display = 'none';
@@ -221,7 +221,7 @@ export function pickLines(): Promise<Selection | null> {
         height: `${bottom - top}px`,
       });
       const height = Math.round(Math.abs(contentY(t, y) - startY));
-      tag.textContent = `End here · ${Math.round(x1 - x0)} × ${height} px`;
+      tag.textContent = `${tr('End here')} · ${Math.round(x1 - x0)} × ${height} px`;
     };
 
     const finish = (result: Selection | null) => {
@@ -308,7 +308,7 @@ function pickWith(
 ): Promise<Element | null> {
   return new Promise((resolve) => {
     const ui = overlay(false);
-    ui.hint(() => finish(null)).set(hintText);
+    ui.hint(() => finish(null)).set(tr(hintText));
     const outline = ui.el('div', 'outline');
     const label = ui.el('div', 'label', outline);
     outline.style.display = 'none';

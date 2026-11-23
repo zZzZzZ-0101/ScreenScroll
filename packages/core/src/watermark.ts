@@ -26,12 +26,16 @@ export const NO_WATERMARK: Watermark = {
 /** "1-3, 5, 8-" → [1,2,3,5,8,…,max]; out-of-range and malformed parts are ignored. */
 export function parsePageList(list: string, max: number): number[] {
   const out = new Set<number>();
-  for (const part of list.split(/[,，;；、\s]+/)) {
-    const m = /^(\d*)\s*[-–~]\s*(\d*)$/.exec(part) ?? /^(\d+)$/.exec(part);
-    if (!m) continue;
-    const a = Number(m[1] || 1);
-    const b = m[2] === undefined ? a : Number(m[2] || max);
-    for (let p = Math.max(1, Math.min(a, b)); p <= Math.min(max, Math.max(a, b)); p++) out.add(p);
+  // "3 - 5" is one range: join the dash to its numbers before splitting on spaces.
+  for (const part of list.replace(/\s*([-–~])\s*/g, '$1').split(/[,，;；、\s]+/)) {
+    const m = /^(\d*)[-–~](\d*)$/.exec(part) ?? /^(\d+)$/.exec(part);
+    // A dash alone names no pages.
+    if (!m || (m[1] === '' && m[2] === '')) continue;
+    let a = m[1] === '' ? 1 : Number(m[1]);
+    let b = m[2] === undefined ? a : m[2] === '' ? Infinity : Number(m[2]);
+    // "5-3" means 3 to 5; an open end ("8-", "-2") is never turned around.
+    if (m[1] !== '' && m[2] && a > b) [a, b] = [b, a];
+    for (let p = Math.max(1, a); p <= Math.min(max, b); p++) out.add(p);
   }
   return [...out].sort((x, y) => x - y);
 }

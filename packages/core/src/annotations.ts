@@ -195,6 +195,8 @@ export function hitTest(a: Annotation, x: Px, y: Px, tol = 6): boolean {
     case 'pen':
     case 'highlighter': {
       const w = a.kind === 'highlighter' ? highlighterWidth(a.style) / 2 : a.style.width / 2;
+      // A click without a drag leaves a single dot: it can still be selected.
+      if (a.points.length === 2) return Math.hypot(x - a.points[0]!, y - a.points[1]!) <= tol + w;
       for (let i = 2; i < a.points.length; i += 2) {
         if (
           distToSegment(x, y, a.points[i - 2]!, a.points[i - 1]!, a.points[i]!, a.points[i + 1]!) <=

@@ -164,6 +164,12 @@ describe('pagination fuzz', () => {
     expect(slices.filter((s) => s.y1 === 900)).toHaveLength(1);
   });
 
+  it('a removed break on a very short page never makes pagination fail', () => {
+    // Found by the simulations: the last-resort cut next to a removed break went with it.
+    const input: PaginateInput = { height: 100, width: 300, T: 20.08, options: { removed: [16] } };
+    expect(check(input, paginate(input))).toEqual([]);
+  });
+
   it('a 1,000,000 px page paginates quickly', () => {
     const hints = emptyHints();
     for (let y = 0; y < 1e6; y += 24) hints.forbidden.push({ y0: y, y1: y + 20, kind: 'line' });
@@ -306,7 +312,8 @@ describe('annotation edge cases', () => {
       const b = bounds(a);
       expect([b.x, b.y, b.width, b.height].every(Number.isFinite)).toBe(true);
     }
-    expect(hitTest(dot, 51, 51)).toBe(false); // no segment to hit, and no crash
+    expect(hitTest(dot, 51, 51)).toBe(true); // a dot can be selected (it has no segment)
+    expect(hitTest(dot, 80, 80)).toBe(false);
     expect(hitTest(flat, 10, 10)).toBe(true);
     expect(annotationAt([], 0, 0)).toBeNull();
   });

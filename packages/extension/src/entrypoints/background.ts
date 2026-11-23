@@ -30,7 +30,7 @@ export default defineBackground(() => {
   const sharp = new Map<string, { tabId: number; failed: boolean }>();
   // Captures taken in the background (Settings → Scrolling: in background): the debugger
   // pictures each region of the page's layout, so the page itself never scrolls.
-  const quietTabs = new Map<string, { tabId: number; scale: number }>();
+  const quietTabs = new Map<string, { tabId: number; scale: number; scrolled?: boolean }>();
   // Window of each running capture. Only a cache: the service worker can be stopped at any
   // time, so the session record in IndexedDB is the source of truth.
   const windowOf = new Map<string, number>();
@@ -323,6 +323,9 @@ export default defineBackground(() => {
 
   async function grab(msg: GrabFrame, tabId?: number): Promise<GrabResult> {
     if (msg.clip) return grabQuiet(msg as GrabFrame & { clip: Rect });
+    // A background capture that fell back to scrolling pictures the screen as it is.
+    const q = quietTabs.get(msg.sessionId);
+    if (q) q.scrolled = true;
     let windowId = windowOf.get(msg.sessionId);
     if (windowId === undefined) {
       windowId = (await (await db()).get('sessions', msg.sessionId))?.windowId;
@@ -394,6 +397,11 @@ export default defineBackground(() => {
     if (hi?.failed)
       msg.warnings.push(
         'Sharp capture stopped part-way (the debugging bar was closed); the rest is at screen resolution.',
+      );
+    const q = quietTabs.get(msg.sessionId);
+    if (q?.scrolled && q.scale > 1)
+      msg.warnings.push(
+        `The part captured by scrolling is at screen sharpness, not ${q.scale}×: in the background, Sharpness applies to what is pictured without scrolling.`,
       );
     await stopSharp(msg.sessionId);
     await stopQuiet(msg.sessionId);

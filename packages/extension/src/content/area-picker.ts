@@ -101,7 +101,7 @@ export function pickArea(): Promise<AreaResult | null> {
     const hint = ui.hint(() => finish(null));
     const tb = ui.el('div', 'tb');
     tb.setAttribute('role', 'toolbar');
-    tb.setAttribute('aria-label', 'Area capture');
+    tb.setAttribute('aria-label', t('Area capture'));
     tb.style.display = 'none';
 
     let target: Target | null = null;
@@ -121,7 +121,8 @@ export function pickArea(): Promise<AreaResult | null> {
     let raf = 0;
     let seq = 0;
 
-    const button = (name: string, label: string, onClick: () => void, cls = '') => {
+    const button = (name: string, english: string, onClick: () => void, cls = '') => {
+      const label = t(english);
       const b = ui.el('button', cls, tb);
       b.type = 'button';
       b.title = label;
@@ -141,10 +142,10 @@ export function pickArea(): Promise<AreaResult | null> {
         ['text', 'Text (T)'],
         ['pixelate', 'Mosaic: hide what is under it (M)'],
       ] as const
-    ).map(([t, label]) => {
-      const b = button(t, label, () => setTool(tool === t ? null : t));
+    ).map(([name, label]) => {
+      const b = button(name, label, () => setTool(tool === name ? null : name));
       b.setAttribute('aria-pressed', 'false');
-      return [t, b] as const;
+      return [name, b] as const;
     });
     sep();
     const undoBtn = button('undo', 'Undo (Ctrl+Z)', () => undo());
@@ -157,10 +158,10 @@ export function pickArea(): Promise<AreaResult | null> {
     button('cancel', 'Cancel (Esc)', () => finish(null), 'cancel');
     button('done', 'Capture and review (Enter)', () => done('studio'), 'done');
 
-    const setTool = (t: MarkTool | null) => {
+    const setTool = (next: MarkTool | null) => {
       commitText();
-      tool = t;
-      for (const [name, b] of toolButtons) b.setAttribute('aria-pressed', String(name === t));
+      tool = next;
+      for (const [name, b] of toolButtons) b.setAttribute('aria-pressed', String(name === next));
       render();
     };
 
@@ -223,8 +224,8 @@ export function pickArea(): Promise<AreaResult | null> {
       tb.style.top = `${y}px`;
       hint.set(
         tool
-          ? 'Draw on the area · press the tool again to stop drawing · Press Esc to cancel'
-          : 'Drag to move · drag the edges to resize · Enter to capture · Press Esc to cancel',
+          ? t('Draw on the area · press the tool again to stop drawing · Press Esc to cancel')
+          : t('Drag to move · drag the edges to resize · Enter to capture · Press Esc to cancel'),
       );
     };
 

@@ -56,10 +56,13 @@ export function normalizeRegion(
   width: Px,
   height: Px,
 ): Region {
+  // Both ends clamped: a rectangle drawn wholly outside the box becomes an empty one at
+  // its edge, never an inverted one.
+  const clamp = (v: Px, hi: Px) => Math.max(0, Math.min(hi, v));
   return {
-    x0: Math.max(0, Math.min(a.x, b.x)),
-    x1: Math.min(width, Math.max(a.x, b.x)),
-    y0: Math.max(0, Math.min(a.y, b.y)),
-    y1: Math.min(height, Math.max(a.y, b.y)),
+    x0: clamp(Math.min(a.x, b.x), width),
+    x1: clamp(Math.max(a.x, b.x), width),
+    y0: clamp(Math.min(a.y, b.y), height),
+    y1: clamp(Math.max(a.y, b.y), height),
   };
 }

@@ -997,6 +997,44 @@ test('in the background, a scroll area inside the page is captured whole without
   });
 });
 
+test('in the background, "Where I am now" starts at the reader\'s place and never scrolls', async ({
+  context,
+  serviceWorker,
+}) => {
+  const set = (patch: object) =>
+    serviceWorker.evaluate(async (p) => {
+      const { settings } = await chrome.storage.local.get('settings');
+      await chrome.storage.local.set({
+        settings: { ...(settings ?? {}), capture: { ...(settings?.capture ?? {}), ...p } },
+      });
+    }, patch);
+  await set({ quiet: true, start: 'here' });
+  const page = await openPage(context, 'shifting.html');
+  await page.evaluate(() => {
+    scrollTo(0, 2000);
+    const w = window as unknown as { scrolls: number[] };
+    w.scrolls = [];
+    addEventListener('scroll', () => w.scrolls.push(scrollY));
+  });
+  const run = (await serviceWorker.evaluate(async (url) => {
+    const [tab] = await chrome.tabs.query({ active: true, url });
+    const hook = (globalThis as unknown as { __spTest: Hook }).__spTest;
+    return hook.wait(await hook.start(tab!.id!, 'full'));
+  }, `${FIXTURES}/shifting.html`)) as {
+    done: { status: string; docHeight: number };
+    frames: Array<{ docY: number; hints: { textRuns: Array<{ text: string }> } }>;
+  };
+  await set({ quiet: false, start: 'top' });
+  expect(run.done.status).toBe('complete');
+  // Rows 50…149 (40 px each), the first one at the top of the first frame.
+  expect(run.done.docHeight).toBe(4000);
+  expect(run.frames[0]!.docY).toBe(0);
+  expect(run.frames[0]!.hints.textRuns[0]!.text.trim()).toBe('Row 50');
+  const seen = await page.evaluate(() => (window as unknown as { scrolls: number[] }).scrolls);
+  expect(seen.every((y) => y === 2000)).toBe(true);
+  expect(await page.evaluate(() => scrollY)).toBe(2000);
+});
+
 test('closing the tab mid-capture ends it: what was captured is kept, marked incomplete', async ({
   context,
   serviceWorker,
