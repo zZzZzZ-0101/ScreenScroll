@@ -151,7 +151,7 @@ export function App() {
         setAnalysis(a);
         setStage({ kind: 'ready' });
       } catch (e) {
-        setStage({ kind: 'error', message: e instanceof Error ? e.message : String(e) });
+        setStage({ kind: 'error', message: tMsg(e instanceof Error ? e.message : String(e)) });
       }
     })();
     return () => {
@@ -341,7 +341,7 @@ export function App() {
       await downloadModel((done, total) => setOcrDownload({ done, total }));
       setOcrModel(await modelStatus(DEFAULT_ENGINE));
     } catch (e) {
-      setOcrError(e instanceof Error ? e.message : String(e));
+      setOcrError(tMsg(e instanceof Error ? e.message : String(e)));
     } finally {
       setOcrDownload(null);
     }
@@ -436,7 +436,7 @@ export function App() {
         if (done) setToast(done);
         return { ok: true, text: done || '' };
       } catch (e) {
-        const text = e instanceof Error ? e.message : String(e);
+        const text = tMsg(e instanceof Error ? e.message : String(e));
         setToast(text);
         return { ok: false, text };
       } finally {
@@ -824,6 +824,7 @@ export function App() {
           detected: analysis.sheets,
           readings: analysis.readings,
           grid: project.sheetGrid ?? null,
+          fileGrid: project.fileGrid ?? null,
           pages: result.ok && result.sheets ? result.debug.slices.length : 0,
           width: session.width,
           mode: pagesMode(project, settings),
@@ -1138,7 +1139,7 @@ export function App() {
           </>
         ) : (
           <main className="flex flex-1 items-center justify-center p-6">
-            <p role="alert">{result.error}</p>
+            <p role="alert">{tMsg(result.error)}</p>
           </main>
         )}
         {panel && panelPrefs.side === 'right' && panel}

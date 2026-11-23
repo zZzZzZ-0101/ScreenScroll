@@ -7,7 +7,7 @@ import { importImage } from '@/shared/import-image';
 import { importPdf } from '@/shared/import-pdf';
 import { CompareSheet } from './CompareSheet';
 import { MergeSheet } from './MergeSheet';
-import { formatDate, t } from '@/shared/i18n';
+import { formatDate, t, tMsg } from '@/shared/i18n';
 
 const KEEP: Array<[number, string]> = [
   [0, 'Until I delete them'],
@@ -72,7 +72,7 @@ export function App() {
           url: chrome.runtime.getURL(`/studio.html?session=${encodeURIComponent(id)}`),
         });
       } catch (err) {
-        setNote(err instanceof Error ? err.message : String(err));
+        setNote(tMsg(err instanceof Error ? err.message : String(err)));
       }
       return;
     }
@@ -136,7 +136,7 @@ export function App() {
       setSelected(new Set());
       setNote(ids.length === 1 ? t('Capture deleted.') : t('{n} captures deleted.', { n: ids.length }));
     } catch (e) {
-      setNote(t('Could not delete: {why}', { why: e instanceof Error ? e.message : String(e) }));
+      setNote(t('Could not delete: {why}', { why: tMsg(e instanceof Error ? e.message : String(e)) }));
     } finally {
       await refresh();
       setBusy(false);
@@ -279,7 +279,7 @@ export function App() {
                       (skipped ? t('; {n} already here, left as they are.', { n: skipped }) : '.'),
                   );
                 },
-                (err: unknown) => setNote(err instanceof Error ? err.message : String(err)),
+                (err: unknown) => setNote(tMsg(err instanceof Error ? err.message : String(err))),
               );
             }}
           />
@@ -399,6 +399,11 @@ export function App() {
         {items !== null && !visible.length && (
           <li className="p-4 text-neutral-500">
             {query ? t('No capture matches.') : t('No saved captures.')}
+            {!query && (
+              <span className="block pt-1 text-[12px]">
+                {t('Captures appear here once taken (click the ScreenScroll icon on any page). Open files turns a PDF or a long screenshot into one.')}
+              </span>
+            )}
           </li>
         )}
         {visible.map((c) => (

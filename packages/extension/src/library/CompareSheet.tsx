@@ -2,7 +2,7 @@ import { diffText, textToMarkdown, type TextChange } from '@screenscroll/core';
 import { X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { StoredCapture } from '@/shared/db';
-import { formatDate, t } from '@/shared/i18n';
+import { formatDate, t, tMsg } from '@/shared/i18n';
 import { loadSession } from '@/studio/engine/session';
 import { comparePictures, type PictureCrop, type PictureDiff } from './picture-diff';
 
@@ -34,17 +34,19 @@ export function CompareSheet(p: { captures: [StoredCapture, StoredCapture]; onCl
         urls = d.shown.flatMap((s) => [s.before?.url, s.after?.url]).filter((u): u is string => !!u);
         setPictures(d);
       },
-      (e: unknown) => setPictureError(e instanceof Error ? e.message : String(e)),
+      (e: unknown) => setPictureError(tMsg(e instanceof Error ? e.message : String(e))),
     );
     return () => urls.forEach((u) => URL.revokeObjectURL(u));
   }, [older.session.id, newer.session.id]);
   useEffect(() => {
     void Promise.all([textOf(older.session.id), textOf(newer.session.id)]).then(
       ([a, b]) => setChanges(diffText(a, b)),
-      (e: unknown) => setError(e instanceof Error ? e.message : String(e)),
+      (e: unknown) => setError(tMsg(e instanceof Error ? e.message : String(e))),
     );
   }, [older.session.id, newer.session.id]);
 
+  const page = (u: string) => u.replace(/#.*$/, '');
+  const differentPages = page(older.session.url) !== page(newer.session.url);
   const count = (k: TextChange['kind']) => changes?.filter((c) => c.kind === k).length ?? 0;
   const when = (c: StoredCapture) => formatDate(new Date(c.session.capturedAt), { dateStyle: 'medium', timeStyle: 'short' });
   // Fold runs of unchanged paragraphs, keeping one on each side of a change for context.
@@ -87,9 +89,19 @@ export function CompareSheet(p: { captures: [StoredCapture, StoredCapture]; onCl
         {!changes && !error && <p className="pt-2 text-neutral-500">{t('Comparing…')}</p>}
         {changes && (
           <>
-            <p className="pt-2 font-mono text-[12px]" data-testid="compare-summary">
-              +{count('add')} −{count('del')} ~{count('edit')} · {count('same')} {t('unchanged')}
+            <p className="pt-2 text-[12px]" data-testid="compare-summary">
+              {t('{add} added · {del} removed · {edit} edited · {same} unchanged (paragraphs)', {
+                add: count('add'),
+                del: count('del'),
+                edit: count('edit'),
+                same: count('same'),
+              })}
             </p>
+            {differentPages && (
+              <p className="pt-1 text-[12px] text-amber-800 dark:text-amber-300" data-testid="compare-other-page">
+                {t('These are two different pages (their addresses differ), so most of the text shows as changed. Compare works best on one page captured twice.')}
+              </p>
+            )}
             {count('add') + count('del') + count('edit') === 0 ? (
               <p className="pt-2">{t('No differences in the text.')}</p>
             ) : (

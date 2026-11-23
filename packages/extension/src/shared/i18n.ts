@@ -25,9 +25,17 @@ export function setLang(l: Lang): void {
  * "Page 5: …": translated when known, else shown as written.
  */
 export function tMsg(text: string): string {
+  if (lang === 'en') return text;
   const m = /^Page (\d+): ([\s\S]*)$/.exec(text);
   if (m) return t('Page {n}: {text}', { n: m[1]!, text: tMsg(m[2]!) });
-  return t(text);
+  const f = /^Capture failed: ([\s\S]*)$/.exec(text);
+  if (f) return t('Capture failed: {why}', { why: tMsg(f[1]!) });
+  if (text in ZH_CN) return t(text);
+  // Messages with numbers in them are keyed with {0}, {1}… in their place.
+  const nums: string[] = [];
+  const key = text.replace(/\d+(?:\.\d+)?/g, (n) => `{${nums.push(n) - 1}}`);
+  const zh = ZH_CN[key];
+  return zh ? zh.replace(/\{(\d+)\}/g, (_, i: string) => nums[Number(i)] ?? '') : text;
 }
 
 /** A date and time as the interface's language writes them. */

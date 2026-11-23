@@ -93,7 +93,8 @@ test('a document viewer: one PDF page per document page, cropped to the page', a
   await studio.getByRole('button', { name: 'Save PDF' }).click();
   const bytes = new Uint8Array(readFileSync(await (await dl).path()));
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  const pdf = await pdfjs.getDocument({ data: bytes.slice(), standardFontDataUrl: STANDARD_FONTS }).promise;
+  const pdf = await pdfjs.getDocument({ data: bytes.slice(), standardFontDataUrl: STANDARD_FONTS })
+    .promise;
   expect(pdf.numPages).toBe(6);
   for (let i = 1; i <= 6; i++) {
     const text = (await (await pdf.getPage(i)).getTextContent()).items

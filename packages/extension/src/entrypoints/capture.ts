@@ -31,7 +31,7 @@ import { pickArea, type AreaOutput } from '@/content/area-picker';
 import { elementRegion, pickElement, pickLines, pickScrollArea } from '@/content/page-ui';
 import { makePill, type Pill } from '@/content/pill';
 import { documentTarget, elementTarget, isScroller, type Target } from '@/content/targets';
-import { setLang, t as tr } from '@/shared/i18n';
+import { setLang, t as tr, tMsg } from '@/shared/i18n';
 
 // Injected on demand into the page (CAPTURE §2). All page changes go through `log` so they
 // are undone on success, error, Esc and pagehide (CAPTURE §10).
@@ -299,10 +299,10 @@ async function run(msg: StartCapture): Promise<void> {
     control = null;
     // Whatever happened is said where the user is looking (never fail silently), and stays
     // long enough to read.
-    if (status! === 'error') pill.notice(warnings.at(-1)!.replace(/^Capture failed: /, ''));
-    else if (abandoned) pill.notice(abandoned);
+    if (status! === 'error') pill.notice(tMsg(warnings.at(-1)!.replace(/^Capture failed: /, '')));
+    else if (abandoned) pill.notice(tMsg(abandoned));
     else if (status! === 'cancelled')
-      pill.notice('Capture cancelled. Nothing was saved.', 'done', 3500);
+      pill.notice(tr('Capture cancelled. Nothing was saved.'), 'done', 3500);
     else pill.remove();
     const errors = log.restore();
     if (errors.length) warnings.push(`${errors.length} page change(s) could not be undone.`);

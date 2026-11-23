@@ -132,6 +132,13 @@ export async function importPdf(file: File): Promise<string> {
       (z) => Math.abs(z.w - sizes[0]!.w) < 1 && Math.abs(Math.round(z.h) - Math.round(sizes[0]!.h)) < 1,
     );
     const firstLeft = Math.round((width - sizes[0]!.w) / 2);
+    const grid = {
+      x0: firstLeft,
+      x1: firstLeft + sizes[0]!.w,
+      top: 0,
+      height: Math.round(sizes[0]!.h),
+      gap: GAP,
+    };
     if (!order) warnings.push('This PDF has no text layer: pages are pictures. Text recognition can read them at export.');
     await d.put('sessions', {
       id,
@@ -152,7 +159,8 @@ export async function importPdf(file: File): Promise<string> {
             annotations: [],
             crop: null,
             pages: 'grid',
-            sheetGrid: { x0: firstLeft, x1: firstLeft + sizes[0]!.w, top: 0, height: Math.round(sizes[0]!.h), gap: GAP },
+            sheetGrid: grid,
+            fileGrid: grid,
           }
         : { annotations: [], crop: null, pages: 'auto' },
     });

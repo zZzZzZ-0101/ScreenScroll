@@ -38,6 +38,8 @@ export interface Project {
   crop: Region | null;
   /** Document pages set by hand (Pages → document pages), or none to use the detected ones. */
   sheetGrid?: SheetGrid | null;
+  /** An opened PDF's own pages, so the card can name them as such (not "set by hand"). */
+  fileGrid?: SheetGrid;
   /** What the pages are made from when document pages are found (see plan.ts PagesMode). */
   pages?: 'original' | 'auto' | 'grid';
   /** The document's own page numbers: hide them, or number the pages from 1; and its

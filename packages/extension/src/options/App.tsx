@@ -1,4 +1,4 @@
-import { t, resolveLang, setLang } from '@/shared/i18n';
+import { t, resolveLang, setLang, tMsg } from '@/shared/i18n';
 import { RotateCcw, ShieldCheck } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import {
@@ -159,7 +159,7 @@ export function App() {
                 setNote(null);
                 setTimeout(() => setUndo(null), 8000);
               } catch (err) {
-                setNote(err instanceof Error ? err.message : String(err));
+                setNote(tMsg(err instanceof Error ? err.message : String(err)));
               }
             }}
           />
@@ -219,7 +219,7 @@ function OcrModelRow() {
     try {
       await downloadModel((done, total) => setProgress({ done, total }));
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(tMsg(e instanceof Error ? e.message : String(e)));
     } finally {
       setProgress(null);
       refresh();

@@ -293,7 +293,9 @@ test('compare two captures of a page: what was added, removed and edited', async
   await lib.getByRole('checkbox', { name: /Select all/ }).check();
   await lib.getByRole('button', { name: 'Compare' }).click();
   const sheet = lib.getByRole('dialog', { name: 'Compare captures' });
-  await expect(sheet.getByTestId('compare-summary')).toHaveText(/^\+1 −1 ~1 · \d+ unchanged$/);
+  await expect(sheet.getByTestId('compare-summary')).toHaveText(
+    /^1 added · 1 removed · 1 edited · \d+ unchanged \(paragraphs\)$/,
+  );
   await expect(sheet.locator('[data-change="del"]')).toContainText('the café is closed');
   await expect(sheet.locator('[data-change="add"]')).toContainText('family tickets');
   const edit = sheet.locator('[data-change="edit"]');

@@ -8,7 +8,7 @@ import { readImage } from '@/ocr/client';
 import { modelStatus } from '@/ocr/store';
 import { download } from '@/studio/engine/export';
 import { exportMerged } from '@/studio/engine/merge';
-import { t } from '@/shared/i18n';
+import { t, tMsg } from '@/shared/i18n';
 
 const button =
   'rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800';
@@ -55,7 +55,7 @@ export function MergeSheet(p: { captures: StoredCapture[]; onClose: () => void }
       const saved = await download(out.bytes, name, 'application/pdf');
       setNote(t('Saved {n} pages as {name}', { n: out.pages, name: saved }));
     } catch (e) {
-      setNote(t('Could not merge: {why}', { why: e instanceof Error ? e.message : String(e) }));
+      setNote(t('Could not merge: {why}', { why: tMsg(e instanceof Error ? e.message : String(e)) }));
     } finally {
       setBusy(null);
     }

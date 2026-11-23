@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { resolveLang, setLang, t } from '../src/shared/i18n';
+import { resolveLang, setLang, t, tMsg } from '../src/shared/i18n';
 import { ZH_CN } from '../src/shared/zh-CN';
 import { SETTINGS } from '../src/shared/settings-schema';
 
@@ -26,6 +26,21 @@ describe('interface languages', () => {
     expect(t('Something not translated yet')).toBe('Something not translated yet');
     setLang('en');
     expect(t('{n} pages', { n: 13 })).toBe('13 pages');
+  });
+  it('messages made elsewhere: page notes, numbers in place, unknown ones as written', () => {
+    setLang('zh-CN');
+    expect(tMsg('Page 3: an element taller than one page was split.')).toBe(
+      '第 3 页：一个比一页还高的元素被切开了。',
+    );
+    expect(tMsg('You stopped the capture after 12 screens; the rest was not captured.')).toBe(
+      '你在截了 12 屏后停止了截图；其余部分没有截取。',
+    );
+    expect(tMsg('Capture failed: No tab to capture.')).toBe('截图失败：没有可截图的标签页。');
+    expect(tMsg('Something new 42')).toBe('Something new 42');
+    setLang('en');
+    expect(tMsg('Page 3: an element taller than one page was split.')).toBe(
+      'Page 3: an element taller than one page was split.',
+    );
   });
   it('every string the interface passes to t(), and every setting, has a translation', () => {
     const missing = new Set<string>();

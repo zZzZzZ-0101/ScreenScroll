@@ -134,6 +134,8 @@ export interface SheetsCardProps {
   /** Ranked readings of the capture as pages, best first (empty for ordinary pages). */
   readings: SheetCandidate[];
   grid: SheetGrid | null;
+  /** An opened PDF's own pages. */
+  fileGrid?: SheetGrid | null;
   /** Pages the current choice makes. */
   pages: number;
   /** Capture width, CSS px. */
@@ -342,7 +344,9 @@ function SheetsCard(props: SheetsCardProps) {
               onChange={() => p.onGrid(handGrid)}
               className="accent-[#0e7c7b]"
             />
-            <span className="flex-1">{t('Set by hand')}</span>
+            <span className="flex-1">
+              {sameGrid(handGrid, p.fileGrid ?? null) ? t('The PDF’s own pages') : t('Set by hand')}
+            </span>
           </label>
         )}
       </div>
