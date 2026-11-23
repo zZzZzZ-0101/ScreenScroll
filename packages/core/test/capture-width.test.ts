@@ -17,3 +17,9 @@ describe('capture at width W', () => {
     expect(narrowWindowTo(1000, { width: 700 }, 1400, 0.5)).toBe(500);
   });
 });
+
+describe('page width, found by the simulations', () => {
+  it('a window already narrower than the minimum is left alone, never widened', () => {
+    expect(narrowWindowTo(1000, { width: 400 }, 1400)).toBeNull();
+  });
+});

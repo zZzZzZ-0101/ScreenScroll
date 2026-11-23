@@ -58,3 +58,11 @@ describe('sanitizeFilename', () => {
     expect(s).toBe('😀'.repeat(150));
   });
 });
+
+describe('file names, found by the simulations', () => {
+  it('a 150-character reserved name stays within 150 after its prefix', () => {
+    const s = sanitizeFilename(`con.${'x'.repeat(200)}`);
+    expect(Array.from(s).length).toBeLessThanOrEqual(150);
+    expect(s.startsWith('_con.')).toBe(true);
+  });
+});

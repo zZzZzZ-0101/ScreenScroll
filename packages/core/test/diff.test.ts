@@ -38,3 +38,10 @@ describe('what changed between two captures', () => {
     expect(diffText('A\n\nB', 'A\n\nB').every((c) => c.kind === 'same')).toBe(true);
   });
 });
+
+describe('text compare, found by the simulations', () => {
+  it('each side reads in its own order when an edit pairs past an added paragraph', () => {
+    const out = diffText('one two three four', 'new paragraph\n\none two three five');
+    expect(out.map((c) => c.kind)).toEqual(['add', 'edit']);
+  });
+});

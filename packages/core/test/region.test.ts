@@ -59,3 +59,10 @@ describe('region capture', () => {
     });
   });
 });
+
+describe('regions, found by the simulations', () => {
+  it('a rectangle drawn wholly outside the box is empty, never inverted', () => {
+    const r = normalizeRegion({ x: 1500, y: 2000 }, { x: 1800, y: 2500 }, 1000, 1200);
+    expect(r).toEqual({ x0: 1000, x1: 1000, y0: 1200, y1: 1200 });
+  });
+});

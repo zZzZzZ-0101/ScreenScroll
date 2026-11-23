@@ -28,3 +28,12 @@ describe('watermark', () => {
     expect(hexToRgb('nope')).toEqual([0.5, 0.5, 0.5]);
   });
 });
+
+describe('page lists, found by the simulations', () => {
+  it('an open range past the end, a lone dash and spaced ranges', () => {
+    expect(parsePageList('8-', 3)).toEqual([]);
+    expect(parsePageList('-', 5)).toEqual([]);
+    expect(parsePageList('3 - 5', 10)).toEqual([3, 4, 5]);
+    expect(parsePageList('52 - 39', 47)).toEqual([39, 40, 41, 42, 43, 44, 45, 46, 47]);
+  });
+});
