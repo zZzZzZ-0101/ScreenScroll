@@ -22,10 +22,13 @@ export async function importImage(file: File): Promise<string> {
   const id = crypto.randomUUID();
   const d = await db();
   let index = 0;
+  let bytes = 0;
   for (let y = 0; y < height; y += IMPORT_FRAME_ROWS, index++) {
     const h = Math.min(IMPORT_FRAME_ROWS, height - y);
     const c = new OffscreenCanvas(width, h);
     c.getContext('2d')!.drawImage(bmp, 0, y, width, h, 0, 0, width, h);
+    const blob = await c.convertToBlob({ type: 'image/png' });
+    bytes += blob.size;
     await d.put('frames', {
       sessionId: id,
       index,
@@ -34,7 +37,7 @@ export async function importImage(file: File): Promise<string> {
       dpr: 1,
       imageWidth: width,
       imageHeight: h,
-      blob: await c.convertToBlob({ type: 'image/png' }),
+      blob,
       hints: emptyHints(),
       hintsMs: 0,
     });
@@ -49,6 +52,8 @@ export async function importImage(file: File): Promise<string> {
     docWidth: width,
     docHeight: height,
     frameCount: index,
+    bytes,
+    searchText: '',
     warnings: [],
     tabId: -1,
     windowId: -1,

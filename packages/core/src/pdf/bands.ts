@@ -9,6 +9,7 @@ export * from '../templates.js';
 export type TextRenderer = (
   text: string,
   sizePt: number,
+  color?: string,
 ) => Promise<{ png: Uint8Array; widthPt: number; heightPt: number }>;
 
 const GREY = rgb(0.45, 0.45, 0.45);

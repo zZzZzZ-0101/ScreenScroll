@@ -213,6 +213,7 @@ export async function buildSingleLongPagePdf(
   let y = height - margin;
   let crop: { x0: number; x1: number } | null = null;
   const ocrRuns: TextRun[] = [];
+  const bands: Array<{ y: number; h: number }> = [];
   for await (const p of pages) {
     crop ??= { x0: p.slice.x0, x1: p.slice.x1 };
     if (p.textRuns) ocrRuns.push(...p.textRuns);
@@ -222,8 +223,17 @@ export async function buildSingleLongPagePdf(
     // A forced-cut overlap repeats rows already drawn; shifting the image up by it lays
     // those identical pixels over themselves, so nothing appears twice.
     const skip = p.slice.overlapTop * layout.s;
-    page.drawImage(img, { x: margin, y: y - full + skip, width: w, height: full });
+    const bandY = y - full + skip;
+    page.drawImage(img, { x: margin, y: bandY, width: w, height: full });
+    bands.push({ y: bandY, h: full });
     y -= full - skip;
+  }
+  if (opts.watermark && opts.watermark.text.trim() && bands.length) {
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    for (let i = 0; i < bands.length; i++) {
+      if (watermarkOn(opts.watermark, i + 1, bands.length))
+        await drawWatermark(doc, page, font, opts.watermark, opts.renderText, bands[i]!);
+    }
   }
   if (crop) {
     // The whole capture is one slice on one tall "paper": the same text, link and bookmark
@@ -256,8 +266,9 @@ export async function buildSingleLongPagePdf(
 }
 
 /**
- * The watermark, centred and rotated, shrunk to fit the page. Latin text is real text;
- * other scripts are drawn by the browser's fonts as an image (like header/footer bands).
+ * The watermark, centred and rotated, shrunk to fit the page (or a slice's band on a
+ * single long page). Latin text is real text; other scripts are drawn by the browser's
+ * fonts as an image (like header/footer bands).
  */
 async function drawWatermark(
   doc: PDFDocument,
@@ -265,15 +276,18 @@ async function drawWatermark(
   font: PDFFont,
   w: Watermark,
   render?: TextRenderer,
+  band?: { y: number; h: number },
 ): Promise<void> {
-  const { width: pw, height: ph } = page.getSize();
+  const { width: pw, height: pageH } = page.getSize();
+  const y0 = band?.y ?? 0;
+  const ph = band?.h ?? pageH;
   const theta = (w.angle * Math.PI) / 180;
   const room =
     0.85 * Math.hypot(pw, ph) * (Math.abs(Math.cos(theta)) > 0.2 ? 1 : ph / Math.hypot(pw, ph));
   const [r, g, b] = hexToRgb(w.color);
   const centre = (tw: number, th: number) => ({
     x: pw / 2 - (tw / 2) * Math.cos(theta) + (th / 2) * Math.sin(theta),
-    y: ph / 2 - (tw / 2) * Math.sin(theta) - (th / 2) * Math.cos(theta),
+    y: y0 + ph / 2 - (tw / 2) * Math.sin(theta) - (th / 2) * Math.cos(theta),
   });
   const text = w.text.trim();
   if (isWinAnsi(text)) {
@@ -291,7 +305,7 @@ async function drawWatermark(
       rotate: degrees(w.angle),
     });
   } else if (render) {
-    const img = await render(text, w.sizePt);
+    const img = await render(text, w.sizePt, w.color);
     let scale = 1;
     if (img.widthPt > room) scale = room / img.widthPt;
     const png = await doc.embedPng(img.png);

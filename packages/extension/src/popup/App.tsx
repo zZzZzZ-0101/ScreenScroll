@@ -15,7 +15,7 @@ import {
   Timer,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { lastSession, listCaptures, type SessionRecord } from '@/shared/db';
+import { lastSession, storageSummary, type SessionRecord } from '@/shared/db';
 import type { CaptureMode } from '@/shared/messages';
 import { loadSettings, saveSettings, type Settings } from '@/shared/settings';
 import { ThemeSwitch } from '@/shared/ThemeSwitch';
@@ -69,8 +69,8 @@ export function App() {
     void lastSession()
       .then(setLast)
       .catch(() => setLast(null));
-    void listCaptures()
-      .then((all) => setStored({ count: all.length, bytes: all.reduce((n, c) => n + c.bytes, 0) }))
+    void storageSummary()
+      .then(setStored)
       .catch(() => setStored(null));
     // A capture already running here (perhaps started by accident): offer the way out first.
     void chrome.runtime
@@ -273,7 +273,9 @@ export function App() {
             <Choice
               id="speed"
               label={t('Speed')}
-              title={t('Fast: shorter waits between screens. Careful: waits longer for pictures and slow pages.')}
+              title={t(
+                'Fast: shorter waits between screens. Careful: waits longer for pictures and slow pages.',
+              )}
               value={settings.capture.speed}
               options={[
                 ['fast', t('Fast')],
@@ -285,7 +287,9 @@ export function App() {
             <Choice
               id="scrolling"
               label={t('Scrolling')}
-              title={t('In background: the page stays where you are while it is captured (Chrome shows a “debugging” bar meanwhile).')}
+              title={t(
+                'In background: the page stays where you are while it is captured (Chrome shows a “debugging” bar meanwhile).',
+              )}
               value={settings.capture.quiet ? 'quiet' : 'screen'}
               options={[
                 ['screen', t('On screen')],
@@ -298,8 +302,14 @@ export function App() {
                     const ok = await chrome.permissions
                       .request({ permissions: ['debugger'] })
                       .catch(() => false);
-                    if (!ok) return;
+                    if (!ok) {
+                      setError(
+                        t('Capturing in the background needs the permission; it stays on screen.'),
+                      );
+                      return;
+                    }
                   }
+                  setError(null);
                   update({ capture: { ...settings.capture, quiet: v === 'quiet' } });
                 })();
               }}
@@ -307,14 +317,31 @@ export function App() {
             <Choice
               id="sharp"
               label={t('Sharpness')}
-              title={t('2× and 3× render the page at a higher density for crisp print; Chrome shows a “debugging” bar while they capture.')}
+              title={t(
+                '2× and 3× render the page at a higher density for crisp print; Chrome shows a “debugging” bar while they capture.',
+              )}
               value={settings.capture.resolution}
               options={[
                 ['standard', '1×'],
                 ['high', '2×'],
                 ['max', '3×'],
               ]}
-              onChange={(resolution) => update({ capture: { ...settings.capture, resolution } })}
+              onChange={(resolution) => {
+                void (async () => {
+                  // Asked while the click still counts as a user gesture.
+                  if (resolution !== 'standard') {
+                    const ok = await chrome.permissions
+                      .request({ permissions: ['debugger'] })
+                      .catch(() => false);
+                    if (!ok) {
+                      setError(t('Sharp capture needs the permission; it stays at Standard.'));
+                      return;
+                    }
+                  }
+                  setError(null);
+                  update({ capture: { ...settings.capture, resolution } });
+                })();
+              }}
             />
             <Choice
               id="width"
@@ -330,7 +357,10 @@ export function App() {
               }
             />
             {settings.capture.width !== 0 && (
-              <p className="pb-1 text-[11px] text-amber-700 dark:text-amber-300" data-testid="width-note">
+              <p
+                className="pb-1 text-[11px] text-amber-700 dark:text-amber-300"
+                data-testid="width-note"
+              >
                 {t('The browser window narrows to {w} px while capturing, then comes back.', {
                   w: settings.capture.width,
                 })}

@@ -4,8 +4,6 @@ import {
   DEFAULT_STYLE,
   findPageNumbers,
   findRunningLines,
-  runningLineAnnotations,
-  pageNumberAnnotations,
   confidentReading,
   gridOf,
   breaksToCheck,
@@ -35,12 +33,20 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { EMPTY_PROJECT, saveProject, type Project } from '@/shared/db';
+import { EMPTY_PROJECT, saveProject, type OcrMeta, type Project } from '@/shared/db';
 import { OVERLAY_WARNING } from '@/shared/messages';
 import { RedactCard } from './components/RedactCard';
 import { loadSettings, saveSettings, type Settings } from '@/shared/settings';
 import { analyze, type Analysis } from '@/studio/engine/analysis';
-import { pagesMode, pdfFor, planPages, type Edits, type PageResult } from '@/studio/engine/plan';
+import {
+  allTextRuns,
+  effectiveAnnotations,
+  NO_EDITS,
+  pagesMode,
+  pdfFor,
+  planPages,
+  type PageResult,
+} from '@/studio/engine/plan';
 import {
   copyPageImage,
   download,
@@ -50,7 +56,9 @@ import {
   exportText,
   exportPdf,
   ext,
+  hasCachedOcr,
   openPdfForPrint,
+  readPagesOcr,
   zipBlobs,
 } from '@/studio/engine/export';
 import { FrameCache, loadSession, type LoadedSession } from '@/studio/engine/session';
@@ -100,7 +108,6 @@ export function App() {
   const [session, setSession] = useState<LoadedSession | null>(null);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [edits, setEdits] = useState<Edits>({ pinned: [], removed: [] });
   const [view, setViewState] = useState<View>('pages');
   // Per-viewer UI memory (zoom, panel); nothing here needs to sync or persist reliably.
   const [zoom, setZoom] = useState<Zoom>(() => readPref('ss-zoom', 'width' as Zoom));
@@ -124,6 +131,7 @@ export function App() {
   const [selected, setSelected] = useState<string | null>(null);
   const project = history.present;
   const annotations = project.annotations;
+  const edits = project.edits ?? NO_EDITS;
   const [page, setPage] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -142,8 +150,11 @@ export function App() {
         setHistory(emptyHistory(s.project));
         setSession(s);
         setSettings(st);
-        const a = await analyze(s, frames.current, (done, total) =>
-          setStage({ kind: 'analysing', done, total }),
+        const a = await analyze(
+          s,
+          frames.current,
+          (done, total) => setStage({ kind: 'analysing', done, total }),
+          { alignSeams: !s.project.rawSeams },
         );
         if (cancelled) return;
         setAnalysis(a);
@@ -154,27 +165,51 @@ export function App() {
     })();
     return () => {
       cancelled = true;
+      frames.current?.clear();
     };
   }, []);
 
+  const seamMode = !!project.rawSeams;
+  const prevSeamMode = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (!session || !frames.current) return;
+    if (prevSeamMode.current === null) {
+      prevSeamMode.current = seamMode;
+      return;
+    }
+    if (prevSeamMode.current === seamMode) return;
+    prevSeamMode.current = seamMode;
+    let cancelled = false;
+    void analyze(session, frames.current, undefined, { alignSeams: !seamMode }).then((a) => {
+      if (!cancelled) setAnalysis(a);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [session, seamMode]);
+
+  const activeSession = useMemo(
+    (): LoadedSession | null =>
+      session && analysis
+        ? { ...session, geoms: analysis.geoms, height: analysis.height }
+        : session,
+    [session, analysis],
+  );
+  const allRuns = useMemo(() => (activeSession ? allTextRuns(activeSession) : []), [activeSession]);
+
   const result = useMemo(
     (): PageResult | null =>
-      session && analysis && settings
-        ? planPages(
-            session,
-            analysis,
-            settings,
-            {
-              crop: project.crop,
-              annotations,
-              sheetGrid: project.sheetGrid,
-              pages: project.pages,
-            },
+      activeSession && analysis && settings
+        ? planPages(activeSession, analysis, settings, {
+            crop: project.crop,
+            annotations,
             edits,
-          )
+            sheetGrid: project.sheetGrid,
+            pages: project.pages,
+          })
         : null,
     [
-      session,
+      activeSession,
       analysis,
       settings,
       edits,
@@ -205,30 +240,16 @@ export function App() {
   // The document's own page numbers (document pages only), and what hiding or renumbering
   // them draws on export: derived, never stored, so either switch turns back exactly.
   const pageNumbers = useMemo(
-    () =>
-      session && result?.ok && result.sheets
-        ? findPageNumbers(result.debug.slices, session.hints.textRuns)
-        : null,
-    [session, result],
+    () => (result?.ok && result.sheets ? findPageNumbers(result.debug.slices, allRuns) : null),
+    [allRuns, result],
   );
   const runningLines = useMemo(
-    () =>
-      session && result?.ok && result.sheets
-        ? findRunningLines(result.debug.slices, session.hints.textRuns)
-        : [],
-    [session, result],
+    () => (result?.ok && result.sheets ? findRunningLines(result.debug.slices, allRuns) : []),
+    [allRuns, result],
   );
   const outAnns = useMemo(
-    () => [
-      ...annotations,
-      ...pageNumberAnnotations(
-        pageNumbers,
-        project.pageNumbers,
-        result?.ok ? result.debug.slices.length : 0,
-      ),
-      ...runningLineAnnotations(runningLines, project.pageNumbers?.hideRunning),
-    ],
-    [annotations, pageNumbers, runningLines, project.pageNumbers, result],
+    () => (activeSession ? effectiveAnnotations(activeSession, result, project) : annotations),
+    [activeSession, result, project, annotations],
   );
   const changeProject = useCallback(
     (patch: Partial<Project>) => setHistory((h) => commit(h, { ...h.present, ...patch })),
@@ -283,33 +304,36 @@ export function App() {
     return l ? gridOf(l) : null;
   }, [project.sheetGrid, project.pages, analysis]);
   const fontPx = useMemo(
-    () => (session ? medianFontPx(session.hints.textRuns.map((t) => t.fontSizePx)) : null),
-    [session],
+    () => (allRuns.length ? medianFontPx(allRuns.map((t) => t.fontSizePx)) : null),
+    [allRuns],
   );
 
   const warnings = useMemo(() => {
-    if (!session || !result || !result.ok) return [];
-    const list = [...session.session.warnings];
+    if (!activeSession || !result || !result.ok) return [];
+    const list = [...activeSession.session.warnings];
+    if (analysis) list.push(...analysis.seamWarnings);
+    if (project.rawSeams) list.push(t('Automatic seam alignment is turned off for this capture.'));
     const advice = readabilityAdvice(
-      medianFontPx(session.hints.textRuns.map((t) => t.fontSizePx)),
+      medianFontPx(allRuns.map((t) => t.fontSizePx)),
       result.layout.s,
     );
     if (advice) list.push(advice);
     if (result.layout.scaleClamped)
       list.push('The fixed scale was reduced so the page fits the paper width.');
     for (const s of result.debug.slices) list.push(...s.warnings);
-    if (session.session.status === 'cancelled')
+    if (activeSession.session.status === 'cancelled')
       list.unshift('Capture was cancelled; this is what was captured.');
-    if (session.session.status === 'error')
+    if (activeSession.session.status === 'error')
       list.unshift('Capture stopped early; this is what was captured.');
     return list;
-  }, [session, result]);
+  }, [activeSession, analysis, project.rawSeams, allRuns, result]);
 
   // Export tab "estimated file size" (UI §3): encode the first and a middle page, extrapolate.
   const [estimate, setEstimate] = useState<number | null>(null);
   // Text recognition (Settings → Text recognition): which pages need it, and the model.
   const [ocrModel, setOcrModel] = useState<ModelStatus | null>(null);
   const [ocrDownload, setOcrDownload] = useState<{ done: number; total: number } | null>(null);
+  const [ocrReading, setOcrReading] = useState<{ done: number; total: number } | null>(null);
   const [ocrError, setOcrError] = useState<string | null>(null);
   useEffect(() => {
     void (async () => {
@@ -322,16 +346,62 @@ export function App() {
   }, []);
   const ocrPages = useMemo(
     () =>
-      session && settings ? pagesNeedingOcr(settings.ocr, slices, session.hints.textRuns) : [],
-    [session, settings, slices],
+      activeSession && settings
+        ? pagesNeedingOcr(settings.ocr, slices, activeSession.hints.textRuns)
+        : [],
+    [activeSession, settings, slices],
   );
+  const onOcrCached = useCallback((runs: LoadedSession['ocrRuns'], meta: OcrMeta) => {
+    setSession((prev) => (prev ? { ...prev, ocrRuns: runs, ocrMeta: meta } : prev));
+  }, []);
   const pageOcr = useMemo(
     () =>
       ocrModel?.ready && ocrPages.length
-        ? { pages: new Set(ocrPages), read: readImage }
+        ? { pages: new Set(ocrPages), read: readImage, onCached: onOcrCached }
         : undefined,
-    [ocrModel, ocrPages],
+    [ocrModel, ocrPages, onOcrCached],
   );
+  const ocrReadCount = useMemo(
+    () =>
+      activeSession &&
+      settings &&
+      ocrPages.length > 0 &&
+      hasCachedOcr(activeSession, slices, settings.pdf.filter, ocrPages.length)
+        ? activeSession.ocrRuns.length
+        : null,
+    [activeSession, settings, slices, ocrPages.length],
+  );
+  const readOcrNow = useCallback(async () => {
+    if (
+      !activeSession ||
+      !result?.ok ||
+      !settings ||
+      !frames.current ||
+      !ocrModel?.ready ||
+      !ocrPages.length
+    )
+      return;
+    setOcrError(null);
+    setOcrReading({ done: 0, total: ocrPages.length });
+    try {
+      const { runs, meta } = await readPagesOcr(
+        activeSession,
+        frames.current,
+        slices,
+        result.layout,
+        settings.exportPreset,
+        settings.pdf.filter,
+        ocrPages,
+        readImage,
+        (done, total) => setOcrReading({ done, total }),
+      );
+      onOcrCached(runs, meta);
+    } catch (e) {
+      setOcrError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setOcrReading(null);
+    }
+  }, [activeSession, result, settings, ocrModel, ocrPages, slices, onOcrCached]);
   const getOcrModel = useCallback(async () => {
     setOcrError(null);
     setOcrDownload({ done: 0, total: 1 });
@@ -348,9 +418,9 @@ export function App() {
   useEffect(() => writePref('sp.details', showDetails), [showDetails]);
   const details = useMemo(
     () =>
-      session && settings && result?.ok
+      activeSession && settings && result?.ok
         ? buildDetails({
-            session,
+            session: activeSession,
             settings,
             layout: result.layout,
             crop: result.crop,
@@ -363,10 +433,10 @@ export function App() {
               : undefined,
           })
         : null,
-    [session, settings, result, slices, estimate, ocrPages, ocrModel, analysis],
+    [activeSession, settings, result, slices, estimate, ocrPages, ocrModel, analysis],
   );
   useEffect(() => {
-    if (!session || !result?.ok || !settings || !frames.current) return;
+    if (!activeSession || !result?.ok || !settings || !frames.current) return;
     const f = frames.current;
     let cancelled = false;
     setEstimate(null);
@@ -375,9 +445,9 @@ export function App() {
       let bytes = 0;
       for (const i of sample) {
         const spec = QUALITY[settings.exportPreset];
-        const scale = exportScale(session.dpr, result.layout.s, spec);
+        const scale = exportScale(activeSession.dpr, result.layout.s, spec);
         const img = await encodePage(
-          await composePage(session, f, slices[i]!, scale, outAnns, settings.pdf.filter),
+          await composePage(activeSession, f, slices[i]!, scale, outAnns, settings.pdf.filter),
           slices[i]!,
           spec,
         );
@@ -389,7 +459,7 @@ export function App() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [session, result, settings, slices, outAnns]);
+  }, [activeSession, result, settings, slices, outAnns]);
 
   // The UI changes at once; writes are queued so they land in order (fast typing in a text
   // field would otherwise lose characters, or an older write could finish last).
@@ -442,14 +512,14 @@ export function App() {
 
   const doExport = useCallback(
     async (format: ExportFormat) => {
-      if (!session || !result || !result.ok || !settings || !frames.current) return null;
+      if (!activeSession || !result || !result.ok || !settings || !frames.current) return null;
       const f = frames.current;
       const { layout, crop } = result;
       return run('Exporting', async (progress) => {
         switch (format) {
           case 'pdf': {
             const bytes = await exportPdf(
-              session,
+              activeSession,
               f,
               slices,
               layout,
@@ -466,7 +536,7 @@ export function App() {
           }
           case 'pdf-long': {
             const bytes = await exportLongPagePdf(
-              session,
+              activeSession,
               f,
               slices,
               layout,
@@ -484,7 +554,7 @@ export function App() {
           case 'md':
           case 'docx': {
             const bytes = await exportText(
-              session,
+              activeSession,
               f,
               slices,
               layout,
@@ -494,6 +564,7 @@ export function App() {
               outAnns,
               pageOcr,
               format,
+              settings.pdf.filter,
             );
             return saved(
               await download(
@@ -511,7 +582,7 @@ export function App() {
           case 'webp': {
             const base = filename('zip').replace(/\.zip$/, '');
             const bytes = await exportPageImagesZip(
-              session,
+              activeSession,
               f,
               slices,
               format,
@@ -519,6 +590,8 @@ export function App() {
               progress,
               outAnns,
               settings.pdf.filter,
+              settings.pdf.watermark,
+              layout.s,
             );
             return saved(
               await download(bytes, filename('zip'), 'application/zip'),
@@ -527,7 +600,7 @@ export function App() {
           }
           case 'long-png': {
             const parts = await exportLongImage(
-              session,
+              activeSession,
               f,
               crop,
               'png',
@@ -535,6 +608,7 @@ export function App() {
               outAnns,
               { y0: slices[0]!.y0, y1: slices.at(-1)!.y1 },
               settings.pdf.filter,
+              { wm: settings.pdf.watermark, slices, s: layout.s },
             );
             if (parts.length === 1) {
               return saved(
@@ -557,16 +631,16 @@ export function App() {
         }
       });
     },
-    [session, result, settings, slices, filename, run, outAnns, pageOcr],
+    [activeSession, result, settings, slices, filename, run, outAnns, pageOcr],
   );
 
   const doPrint = useCallback(async () => {
-    if (!session || !result || !result.ok || !settings || !frames.current) return;
+    if (!activeSession || !result || !result.ok || !settings || !frames.current) return;
     const f = frames.current;
     await run('Preparing PDF', async (progress) => {
       openPdfForPrint(
         await exportPdf(
-          session,
+          activeSession,
           f,
           slices,
           result.layout,
@@ -578,21 +652,35 @@ export function App() {
         ),
       );
     });
-  }, [session, result, settings, slices, run, outAnns, pageOcr]);
+  }, [activeSession, result, settings, slices, run, outAnns, pageOcr]);
 
   const doCopy = useCallback(async () => {
-    if (!session || !frames.current || !slices[page]) return;
+    if (!activeSession || !result || !result.ok || !frames.current || !slices[page]) return;
     const f = frames.current;
     await run('Copying', async () => {
-      await copyPageImage(session, f, slices[page]!, outAnns, settings?.pdf.filter);
+      await copyPageImage(
+        activeSession,
+        f,
+        slices[page]!,
+        outAnns,
+        settings?.pdf.filter,
+        settings
+          ? {
+              wm: settings.pdf.watermark,
+              pageIndex: page,
+              pageCount: slices.length,
+              s: result.layout.s,
+            }
+          : undefined,
+      );
       return `Page ${page + 1} copied as an image`;
     });
-  }, [session, slices, page, run, outAnns, settings]);
+  }, [activeSession, result, slices, page, run, outAnns, settings]);
 
   const doDebug = useCallback(async () => {
-    if (!session || !analysis || !result || !result.ok) return;
+    if (!activeSession || !analysis || !result || !result.ok) return;
     await run('Exporting overlay', async () => {
-      const { png, json } = await exportDebugOverlay(analysis, result.debug, session.width);
+      const { png, json } = await exportDebugOverlay(analysis, result.debug, activeSession.width);
       await download(png, filename('png').replace(/\.png$/, '-breaks.png'), 'image/png');
       await download(
         new Blob([json], { type: 'application/json' }),
@@ -601,7 +689,7 @@ export function App() {
       );
       return 'Saved break overlay (PNG and JSON)';
     });
-  }, [session, analysis, result, filename, run]);
+  }, [activeSession, analysis, result, filename, run]);
 
   useEffect(() => {
     if (!toast) return;
@@ -611,14 +699,14 @@ export function App() {
 
   /** Area mode → Copy: the whole capture as one PNG on the clipboard. */
   const doCopyAll = useCallback(async () => {
-    if (!session || !result || !result.ok || !settings || !frames.current || !slices.length)
+    if (!activeSession || !result || !result.ok || !settings || !frames.current || !slices.length)
       return null;
     const f = frames.current;
-    const { crop } = result;
+    const { crop, layout } = result;
     return run('Copying', async () => {
       const range = { y0: slices[0]!.y0, y1: slices.at(-1)!.y1 };
       const parts = await exportLongImage(
-        session,
+        activeSession,
         f,
         crop,
         'png',
@@ -626,14 +714,15 @@ export function App() {
         outAnns,
         range,
         settings.pdf.filter,
+        { wm: settings.pdf.watermark, slices, s: layout.s },
       );
       if (parts.length > 1)
         throw new Error('Too tall to copy as one image. Use Save PDF or save it as images.');
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': parts[0]! })]);
-      const px = (v: number) => Math.round(v * session.dpr);
+      const px = (v: number) => Math.round(v * activeSession.dpr);
       return `Copied as an image · ${px(crop.x1 - crop.x0)} × ${px(range.y1 - range.y0)} px`;
     });
-  }, [session, result, settings, slices, run, outAnns]);
+  }, [activeSession, result, settings, slices, run, outAnns]);
 
   // UI §1 fast path (and area mode's PDF and Copy): do it, say so on the captured page, and
   // close this tab. On failure the tab stays open with the reason.
@@ -721,7 +810,8 @@ export function App() {
 
   // e2e hook (stripped from production builds).
   useEffect(() => {
-    if (!__SP_E2E__ || !session || !result || !result.ok || !settings || !frames.current) return;
+    if (!__SP_E2E__ || !activeSession || !result || !result.ok || !settings || !frames.current)
+      return;
     const f = frames.current;
     Object.assign(window, {
       __spStudio: {
@@ -730,17 +820,17 @@ export function App() {
         crop: () => result.crop,
         warnings: () => warnings,
         project: () => project,
-        size: () => ({ width: session.width, height: session.height }),
+        size: () => ({ width: activeSession.width, height: activeSession.height }),
         async pdfBase64() {
           const bytes = await exportPdf(
-            session,
+            activeSession,
             f,
             result.debug.slices,
             result.layout,
             settings.exportPreset,
             pdfFor(settings, result),
             undefined,
-            project.annotations,
+            outAnns,
             pageOcr,
           );
           let bin = '';
@@ -750,7 +840,7 @@ export function App() {
         },
       },
     });
-  }, [session, result, settings, warnings, project, pageOcr]);
+  }, [activeSession, result, settings, warnings, project, outAnns, pageOcr]);
 
   if (stage.kind === 'error') {
     return (
@@ -761,7 +851,7 @@ export function App() {
       </Centered>
     );
   }
-  if (!session || !analysis || !settings || !result) {
+  if (!activeSession || !analysis || !settings || !result) {
     const text =
       stage.kind === 'analysing'
         ? `Reading the capture ${stage.done}/${stage.total}`
@@ -775,12 +865,12 @@ export function App() {
 
   const domain = (() => {
     try {
-      return new URL(session.session.url).hostname.replace(/^www\./, '');
+      return new URL(activeSession.session.url).hostname.replace(/^www\./, '');
     } catch {
       return '';
     }
   })();
-  const captured = new Date(session.session.capturedAt).toLocaleString(undefined, {
+  const captured = new Date(activeSession.session.capturedAt).toLocaleString(undefined, {
     day: 'numeric',
     month: 'short',
     hour: '2-digit',
@@ -807,7 +897,7 @@ export function App() {
           readings: analysis.readings,
           grid: project.sheetGrid ?? null,
           pages: result.ok && result.sheets ? result.debug.slices.length : 0,
-          width: session.width,
+          width: activeSession.width,
           mode: pagesMode(project, settings),
           // The grid set by hand is kept when switching away, so switching back restores it.
           onMode: (pages) => changeProject({ pages }),
@@ -830,14 +920,17 @@ export function App() {
           ready: !!ocrModel?.ready,
           size: ocrModel?.total ?? 0,
           downloading: ocrDownload,
+          readCount: ocrReadCount,
+          reading: ocrReading,
           error: ocrError,
           onDownload: () => void getOcrModel(),
+          onRead: () => void readOcrNow(),
         }}
       />
     ) : view === 'breaks' ? (
       <BreaksPanel
         edits={edits}
-        onReset={() => setEdits({ pinned: [], removed: [] })}
+        onReset={() => changeProject({ edits: NO_EDITS })}
         locked={result.ok && result.sheets}
         checks={checks}
         page={page}
@@ -846,24 +939,22 @@ export function App() {
     ) : view === 'markup' ? (
       <PageMarkPanel settings={settings} onSettings={updateSettings}>
         <RedactCard
-          runs={session.hints.textRuns}
+          runs={allRuns}
           slices={slices}
           covered={redactions(annotations)}
           onBlur={(rects) =>
             changeProject({
               annotations: [
                 ...annotations,
-                ...rects.map(
-                  (r): Annotation => ({
-                    id: crypto.randomUUID(),
-                    kind: 'blur',
-                    style: DEFAULT_STYLE,
-                    x: r.x,
-                    y: r.y,
-                    w: r.width,
-                    h: r.height,
-                  }),
-                ),
+                ...rects.map((r): Annotation => ({
+                  id: crypto.randomUUID(),
+                  kind: 'blur',
+                  style: DEFAULT_STYLE,
+                  x: r.x,
+                  y: r.y,
+                  w: r.width,
+                  h: r.height,
+                })),
               ],
             })
           }
@@ -900,8 +991,8 @@ export function App() {
     <div className="flex h-screen flex-col bg-neutral-50 text-[13px] text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
       <header className="flex items-center gap-3 border-b border-neutral-200 bg-white px-3 py-2 dark:border-neutral-800 dark:bg-neutral-900">
         <div className="min-w-0 flex-1">
-          <h1 className="truncate font-semibold" title={session.session.title}>
-            {session.session.title || 'Untitled capture'}
+          <h1 className="truncate font-semibold" title={activeSession.session.title}>
+            {activeSession.session.title || 'Untitled capture'}
           </h1>
           <p className="truncate text-[12px] text-neutral-500">
             {[
@@ -987,6 +1078,20 @@ export function App() {
                               {t('Hide pop-ups and capture again')}
                             </button>
                           </>
+                        ) : w.startsWith('Screen seams were realigned') ||
+                          w === t('Automatic seam alignment is turned off for this capture.') ? (
+                          <>
+                            {w}
+                            <button
+                              type="button"
+                              className="mt-1 block rounded-md border border-neutral-300 px-2 py-0.5 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:border-neutral-700 dark:hover:bg-neutral-800"
+                              onClick={() => changeProject({ rawSeams: !project.rawSeams })}
+                            >
+                              {project.rawSeams
+                                ? t('Realign seams automatically')
+                                : t('Use original offsets')}
+                            </button>
+                          </>
                         ) : (
                           w
                         )}
@@ -1046,7 +1151,7 @@ export function App() {
                 <PagesView
                   watermark={settings.pdf.watermark}
                   filter={settings.pdf.filter}
-                  session={session}
+                  session={activeSession}
                   frames={frames.current!}
                   analysis={analysis}
                   slices={slices}
@@ -1062,7 +1167,7 @@ export function App() {
                 <>
                   <MarkupToolbar {...markup} />
                   <AnnotateView
-                    session={session}
+                    session={activeSession}
                     frames={frames.current!}
                     annotations={annotations}
                     crop={project.crop}
@@ -1086,13 +1191,13 @@ export function App() {
                 </>
               ) : (
                 <StripView
-                  session={session}
+                  session={activeSession}
                   frames={frames.current!}
                   analysis={analysis}
                   debug={result.debug}
-                  crop={result.sheets ? { x0: 0, x1: session.width } : result.crop}
+                  crop={result.sheets ? { x0: 0, x1: activeSession.width } : result.crop}
                   edits={edits}
-                  onEdits={setEdits}
+                  onEdits={(next) => changeProject({ edits: next })}
                   page={page}
                   locked={result.sheets}
                   checks={checks}
