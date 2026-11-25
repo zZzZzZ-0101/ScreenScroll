@@ -25,7 +25,8 @@ export type FromAnalysisWorker =
   | { id: number; type: 'done'; result: RawAnalysis | ArrayBuffer }
   | { id: number; type: 'error'; message: string };
 
-const post = (m: FromAnalysisWorker, transfer: Transferable[] = []) => postMessage(m, transfer);
+const post = (m: FromAnalysisWorker, transfer?: Transferable[]) =>
+  postMessage(m, transfer ? { transfer } : undefined);
 
 onmessage = async (e: MessageEvent<ToAnalysisWorker>) => {
   const m = e.data;

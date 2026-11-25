@@ -60,11 +60,13 @@ export async function exportMerged(
   if (!items.length) throw new Error('Nothing to merge.');
   const parts: PdfPart[] = [];
   const titles: string[] = [];
-  for (const [k, item] of items.entries()) {
-    onProgress?.('Reading', k, items.length);
-    const raw = await loadSession(item.id);
-    const frames = new FrameCache(raw.frames);
-    try {
+  const caches: FrameCache[] = [];
+  try {
+    for (const [k, item] of items.entries()) {
+      onProgress?.('Reading', k, items.length);
+      const raw = await loadSession(item.id);
+      const frames = new FrameCache(raw.frames);
+      caches.push(frames);
       const a = await analyze(raw, frames, undefined, {
         buildStrip: false,
         alignSeams: !raw.project.rawSeams,
@@ -105,22 +107,12 @@ export async function exportMerged(
         content: contentOf(s, anns, cached),
       });
       titles.push(name);
-    } catch (e) {
-      frames.clear();
-      throw e;
     }
-  }
-  try {
     const title = titles.length === 1 ? titles[0]! : `${titles[0]} and ${titles.length - 1} more`;
     const meta = { title, url: parts[0]!.meta.url, capturedAt: new Date() };
     const bytes = await buildMergedPdf(parts, meta, pdfOptions(settings.pdf));
     return { bytes, pages: parts.reduce((n, p) => n + p.pageCount, 0), title };
-  } catch (e) {
-    // If an earlier part failed mid-build, release any remaining generators' frame caches.
-    for (const p of parts) {
-      const it = p.pages[Symbol.asyncIterator]?.();
-      await it?.return?.();
-    }
-    throw e;
+  } finally {
+    for (const f of caches) f.clear();
   }
 }

@@ -10,7 +10,7 @@ import type { LoadedSession } from '../src/studio/engine/session';
 function makeAnalysis(width: number, height: number): Analysis {
   const analyzer = new RowAnalyzer(width, 1);
   const data = new Uint8Array(width * height).fill(255);
-  analyzer.push({ width, height, data, channels: 1 });
+  analyzer.push({ width, height, data });
   return {
     rows: analyzer.finish(),
     strip: [],
@@ -197,7 +197,7 @@ describe('planPages and effectiveAnnotations', () => {
       ],
       true,
     );
-    expect(content.textRuns.map((r) => r.text)).toEqual(['Public line']);
+    expect((content.textRuns ?? []).map((r) => r.text)).toEqual(['Public line']);
 
     const summary = summarizeFrames(
       [
