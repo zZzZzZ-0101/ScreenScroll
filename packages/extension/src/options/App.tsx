@@ -44,8 +44,8 @@ export function App() {
       if (!ok) {
         setNote(
           patch.capture.quiet
-            ? 'Capturing in the background needs the permission; it stays on screen.'
-            : 'Sharp capture needs the permission; it stays at Standard.',
+            ? t('Capturing in the background needs the permission; it stays on screen.')
+            : t('Sharp capture needs the permission; it stays at Standard.'),
         );
         return;
       }

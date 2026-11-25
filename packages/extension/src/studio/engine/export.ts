@@ -8,9 +8,12 @@ import {
   type PageLayout,
   type PageSlice,
   type Rect,
+  type TextRun,
+  type Watermark,
   blocksToDocx,
   textBlocks,
   textToMarkdown,
+  watermarkOn,
 } from '@screenscroll/core';
 import {
   buildPdf,
@@ -23,8 +26,9 @@ import {
 } from '@screenscroll/core/pdf';
 import { ocrRuns, type OcrLine } from '@screenscroll/core/ocr';
 import { zipSync } from 'fflate';
-import type { PdfSettings } from '@/shared/settings';
-import { composePage, encodePage } from './compose';
+import { saveOcrRuns, type OcrMeta } from '../../shared/db';
+import type { PdfSettings } from '../../shared/settings';
+import { composePage, encodePage, paintWatermark } from './compose';
 import { renderBandText } from './render-text';
 import type { FrameCache, LoadedSession } from './session';
 
@@ -35,6 +39,61 @@ export interface PageOcr {
   /** Indices of the pages to read. */
   pages: ReadonlySet<number>;
   read: (img: ImageData, detScale: number) => Promise<OcrLine[]>;
+  /** Called once newly read runs have been persisted on the capture. */
+  onCached?: (runs: TextRun[], meta: OcrMeta) => void;
+}
+
+/** Whether `s.ocrRuns` already covers `slices` and `ocrPages` for `filter`. */
+export function hasCachedOcr(
+  s: LoadedSession,
+  slices: readonly PageSlice[],
+  filter: FilterId,
+  pageCount: number,
+): boolean {
+  const m = s.ocrMeta;
+  if (!m || m.filter !== filter || m.count < pageCount) return false;
+  const y0 = slices[0]?.y0 ?? 0;
+  const y1 = slices.at(-1)?.y1 ?? s.height;
+  return m.y0 <= y0 + 1 && m.y1 >= y1 - 1;
+}
+
+/**
+ * Reads OCR on the requested pages now (unredacted so Personal data and page-number detection
+ * can inspect the text before saving), persists `ocrRuns` on the capture, and returns them.
+ */
+export async function readPagesOcr(
+  s: LoadedSession,
+  frames: FrameCache,
+  slices: readonly PageSlice[],
+  layout: PageLayout,
+  preset: ExportPreset,
+  filter: FilterId,
+  pageIndices: readonly number[],
+  read: PageOcr['read'],
+  onProgress?: Progress,
+): Promise<{ runs: TextRun[]; meta: OcrMeta }> {
+  const spec = QUALITY[preset];
+  const scale = exportScale(s.dpr, layout.s, spec);
+  const pxPerCss = s.dpr * scale;
+  const collected: TextRun[] = [];
+  for (let k = 0; k < pageIndices.length; k++) {
+    const i = pageIndices[k]!;
+    const slice = slices[i];
+    if (!slice) continue;
+    const canvas = await composePage(s, frames, slice, scale, [], filter);
+    const img = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height);
+    const lines = await read(img, pxPerCss < 1.5 ? 2 : 1);
+    collected.push(...ocrRuns(lines, slice, pxPerCss, s.hints.textRuns));
+    onProgress?.(k + 1, pageIndices.length);
+  }
+  const meta: OcrMeta = {
+    filter,
+    y0: slices[0]?.y0 ?? 0,
+    y1: slices.at(-1)?.y1 ?? s.height,
+    count: pageIndices.length,
+  };
+  await saveOcrRuns(s.session.id, collected, meta);
+  return { runs: collected, meta };
 }
 
 export async function* pageImages(
@@ -51,19 +110,37 @@ export async function* pageImages(
   const spec = QUALITY[preset];
   const scale = exportScale(s.dpr, layout.s, spec);
   const pxPerCss = s.dpr * scale;
+  const hidden = redactions(annotations);
+  const visible = (r: Rect) => !hidden.some((h) => overlaps(h, r));
+  const collected: TextRun[] = [];
   for (let i = 0; i < slices.length; i++) {
     const slice = slices[i]!;
     const canvas = await composePage(s, frames, slice, scale, annotations, filter);
     const page = await encodePage(canvas, slice, spec);
     if (ocr?.pages.has(i)) {
-      // Read the page as it will look (filter and redactions applied); small text is
-      // enlarged for detection.
-      const img = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height);
+      // Read the clean page so future exports and tools can reuse the cached runs, then
+      // strip anything under a redaction before placing runs into this export's text layer.
+      const clean = annotations.length
+        ? await composePage(s, frames, slice, scale, [], filter)
+        : canvas;
+      const img = clean.getContext('2d')!.getImageData(0, 0, clean.width, clean.height);
       const lines = await ocr.read(img, pxPerCss < 1.5 ? 2 : 1);
-      page.textRuns = ocrRuns(lines, slice, pxPerCss, s.hints.textRuns);
+      const raw = ocrRuns(lines, slice, pxPerCss, s.hints.textRuns);
+      collected.push(...raw);
+      page.textRuns = raw.filter((t) => visible(t.rect));
     }
     yield page;
     onProgress?.(i + 1, slices.length);
+  }
+  if (ocr?.pages.size) {
+    const meta: OcrMeta = {
+      filter,
+      y0: slices[0]?.y0 ?? 0,
+      y1: slices.at(-1)?.y1 ?? s.height,
+      count: ocr.pages.size,
+    };
+    await saveOcrRuns(s.session.id, collected, meta).catch(() => undefined);
+    ocr.onCached?.(collected, meta);
   }
 }
 
@@ -76,18 +153,19 @@ export function pdfOptions(pdf: PdfSettings): Partial<PdfOptions> {
 }
 
 /**
- * What the DOM told us: text for the invisible layer, links, headings for bookmarks. Anything
- * under a blur or pixelate area is left out, or the redacted text would still be searchable.
+ * What the DOM (plus cached OCR, when used) told us: text for the invisible layer, links,
+ * headings for bookmarks. Anything under a blur, pixelate or cover area is left out.
  */
-export function contentOf(s: LoadedSession, annotations: readonly Annotation[]): PdfContent {
+export function contentOf(
+  s: LoadedSession,
+  annotations: readonly Annotation[],
+  includeCachedOcr = false,
+): PdfContent {
   const hidden = redactions(annotations);
-  const visible = (r: Rect) =>
-    !hidden.some(
-      (h) =>
-        r.x < h.x + h.width && r.x + r.width > h.x && r.y < h.y + h.height && r.y + r.height > h.y,
-    );
+  const visible = (r: Rect) => !hidden.some((h) => overlaps(h, r));
+  const sourceRuns = includeCachedOcr ? [...s.hints.textRuns, ...s.ocrRuns] : s.hints.textRuns;
   return {
-    textRuns: s.hints.textRuns.filter((t) => visible(t.rect)),
+    textRuns: sourceRuns.filter((t) => visible(t.rect)),
     links: s.hints.links.filter((l) => visible(l.rect)),
     headings: s.hints.headings.filter((h) => visible({ x: 0, y: h.y, width: s.width, height: 1 })),
   };
@@ -105,13 +183,24 @@ export async function exportPdf(
   annotations: readonly Annotation[] = [],
   ocr?: PageOcr,
 ): Promise<Uint8Array> {
+  const cached = !!ocr?.pages.size && hasCachedOcr(s, slices, pdf.filter, ocr.pages.size);
   const bytes = await buildPdf(
-    pageImages(s, frames, slices, layout, preset, onProgress, annotations, pdf.filter, ocr),
+    pageImages(
+      s,
+      frames,
+      slices,
+      layout,
+      preset,
+      onProgress,
+      annotations,
+      pdf.filter,
+      cached ? undefined : ocr,
+    ),
     slices.length,
     layout,
     metaOf(s),
     pdfOptions(pdf),
-    contentOf(s, annotations),
+    contentOf(s, annotations, cached),
   );
   // Two pages a sheet or a booklet: laid out on the finished pages.
   return impose(bytes, pdf.perSheet);
@@ -131,13 +220,24 @@ export function exportLongPagePdf(
   const total = slices.reduce((h, sl) => h + sl.y1 - sl.y0 - sl.overlapTop, 0);
   // One long page has no page tops, so table headers aren't repeated on it.
   const plain = slices.map(({ repeat: _repeat, ...sl }) => sl);
+  const cached = !!ocr?.pages.size && hasCachedOcr(s, plain, pdf.filter, ocr.pages.size);
   return buildSingleLongPagePdf(
-    pageImages(s, frames, plain, layout, preset, onProgress, annotations, pdf.filter, ocr),
+    pageImages(
+      s,
+      frames,
+      plain,
+      layout,
+      preset,
+      onProgress,
+      annotations,
+      pdf.filter,
+      cached ? undefined : ocr,
+    ),
     total,
     layout,
     metaOf(s),
     pdfOptions(pdf),
-    contentOf(s, annotations),
+    contentOf(s, annotations, cached),
   );
 }
 
@@ -158,11 +258,15 @@ export async function exportPageImagesZip(
   onProgress?: Progress,
   annotations: readonly Annotation[] = [],
   filter: FilterId = 'original',
+  watermark?: Watermark,
+  layoutS = 1,
 ): Promise<Uint8Array> {
   const files: Record<string, [Uint8Array, { level: 0 }]> = {};
   const digits = String(slices.length).length;
   for (let i = 0; i < slices.length; i++) {
     const canvas = await composePage(s, frames, slices[i]!, 1, annotations, filter);
+    if (watermark && watermarkOn(watermark, i + 1, slices.length))
+      paintWatermark(canvas.getContext('2d')!, watermark, s.dpr / layoutS);
     const blob = await canvas.convertToBlob({ type: MIME[format], quality: 0.92 });
     files[`${baseName}-${String(i + 1).padStart(digits, '0')}.${ext(format)}`] = [
       new Uint8Array(await blob.arrayBuffer()),
@@ -189,6 +293,7 @@ export async function exportLongImage(
   annotations: readonly Annotation[] = [],
   range: { y0: number; y1: number } = { y0: 0, y1: s.height },
   filter: FilterId = 'original',
+  watermark?: { wm: Watermark; slices: readonly PageSlice[]; s: number },
 ): Promise<Blob[]> {
   const partCss = Math.floor(LONG_IMAGE_MAX / s.dpr);
   const parts: Blob[] = [];
@@ -197,6 +302,18 @@ export async function exportLongImage(
     const y0 = range.y0 + k * partCss;
     const y1 = Math.min(range.y1, y0 + partCss);
     const canvas = await composePage(s, frames, { ...crop, y0, y1 }, 1, annotations, filter);
+    if (watermark?.wm.text.trim()) {
+      const ctx = canvas.getContext('2d')!;
+      const pxPerPt = s.dpr / watermark.s;
+      watermark.slices.forEach((sl, i) => {
+        if (!watermarkOn(watermark.wm, i + 1, watermark.slices.length)) return;
+        if (sl.y1 <= y0 || sl.y0 >= y1) return;
+        paintWatermark(ctx, watermark.wm, pxPerPt, {
+          y: (sl.y0 - y0) * s.dpr,
+          h: (sl.y1 - sl.y0) * s.dpr,
+        });
+      });
+    }
     parts.push(await canvas.convertToBlob({ type: MIME[format], quality: 0.92 }));
     onProgress?.(k + 1, count);
   }
@@ -260,8 +377,11 @@ export async function copyPageImage(
   slice: PageSlice,
   annotations: readonly Annotation[] = [],
   filter: FilterId = 'original',
+  watermark?: { wm: Watermark; pageIndex: number; pageCount: number; s: number },
 ): Promise<void> {
   const canvas = await composePage(s, frames, slice, 1, annotations, filter);
+  if (watermark && watermarkOn(watermark.wm, watermark.pageIndex + 1, watermark.pageCount))
+    paintWatermark(canvas.getContext('2d')!, watermark.wm, s.dpr / watermark.s);
   const blob = await canvas.convertToBlob({ type: 'image/png' });
   await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
 }
@@ -269,7 +389,18 @@ export async function copyPageImage(
 /** Print: open the PDF in the browser's viewer, which has the print dialog (UI §3). */
 export function openPdfForPrint(bytes: Uint8Array): void {
   const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/pdf' }));
-  void chrome.tabs.create({ url });
+  void chrome.tabs
+    .create({ url })
+    .then((tab) => {
+      if (tab.id === undefined || !chrome.tabs.onRemoved) return;
+      const onRemoved = (closedId: number) => {
+        if (closedId !== tab.id) return;
+        chrome.tabs.onRemoved.removeListener(onRemoved);
+        URL.revokeObjectURL(url);
+      };
+      chrome.tabs.onRemoved.addListener(onRemoved);
+    })
+    .catch(() => URL.revokeObjectURL(url));
 }
 
 /**
@@ -288,22 +419,38 @@ export async function exportText(
   annotations: readonly Annotation[] = [],
   ocr?: PageOcr,
   as: 'md' | 'docx' = 'md',
+  filter: FilterId = 'original',
 ): Promise<Uint8Array> {
   const y0 = slices[0]?.y0 ?? 0;
   const y1 = slices.at(-1)?.y1 ?? s.height;
   const hidden = redactions(annotations);
   const inside = (r: { rect: { x: number; y: number; width: number; height: number } }) => {
     const cy = r.rect.y + r.rect.height / 2;
-    // Text under a blur or mosaic stays out, as it does in the PDF.
+    // Text under a blur, mosaic or cover stays out, as it does in the PDF.
     return cy >= y0 && cy < y1 && !hidden.some((h) => overlaps(h, r.rect));
   };
   const runs = s.hints.textRuns.filter(inside);
   if (ocr?.pages.size) {
-    for await (const page of pageImages(s, frames, slices, layout, preset, onProgress, annotations, 'original', ocr))
-      runs.push(...(page.textRuns ?? []).filter(inside));
+    if (hasCachedOcr(s, slices, filter, ocr.pages.size)) {
+      runs.push(...s.ocrRuns.filter(inside));
+    } else {
+      for await (const page of pageImages(
+        s,
+        frames,
+        slices,
+        layout,
+        preset,
+        onProgress,
+        annotations,
+        filter,
+        ocr,
+      ))
+        runs.push(...(page.textRuns ?? []).filter(inside));
+    }
   }
   const pages = documentPages ? slices : [];
-  if (as === 'docx') return blocksToDocx(textBlocks(runs, s.hints.headings, pages), s.session.title);
+  if (as === 'docx')
+    return blocksToDocx(textBlocks(runs, s.hints.headings, pages), s.session.title);
   return new TextEncoder().encode(textToMarkdown(runs, s.hints.headings, pages));
 }
 

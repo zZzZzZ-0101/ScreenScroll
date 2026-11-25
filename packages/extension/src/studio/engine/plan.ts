@@ -5,10 +5,14 @@ import {
   contentCrop,
   cropAround,
   confidentReading,
+  findPageNumbers,
+  findRunningLines,
   fitSheets,
   matchPaper,
   gridSheets,
+  pageNumberAnnotations,
   paginateDebug,
+  runningLineAnnotations,
   sheetSlices,
   sliderWeights,
   type Annotation,
@@ -16,8 +20,10 @@ import {
   type PaginationDebug,
   type Region,
   type SheetGrid,
+  type TextRun,
 } from '@screenscroll/core';
-import { bandHeight, type Settings } from '@/shared/settings';
+import type { Project } from '../../shared/db';
+import { bandHeight, type Settings } from '../../shared/settings';
 import type { Analysis } from './analysis';
 import type { LoadedSession } from './session';
 
@@ -70,12 +76,14 @@ export function planPages(
   project: {
     crop: Region | null;
     annotations: readonly Annotation[];
+    edits?: Edits;
     sheetGrid?: SheetGrid | null;
     pages?: PagesMode;
   },
-  edits: Edits = NO_EDITS,
+  edits?: Edits,
 ): PageResult {
   const { annotations } = project;
+  const activeEdits = edits ?? project.edits ?? NO_EDITS;
   const mode = pagesMode(project, settings);
   // Only a reliable finding counts: weak readings exist on many ordinary pages.
   const docFound = !!(analysis.sheets || confidentReading(analysis.readings));
@@ -155,11 +163,41 @@ export function planPages(
     crop,
     range: manual ? { y0: manual.y0, y1: manual.y1 } : undefined,
     trimBlankEnd: true,
-    options: { ...sliderWeights(settings.breakStyle), ...edits },
+    options: { ...sliderWeights(settings.breakStyle), ...activeEdits },
   });
   if (!debug.slices.length)
     return { ok: false, error: 'Nothing to show: the captured area is empty.' };
   return { ok: true, sheets: false, crop, layout, debug };
+}
+
+/** Every text run known for the capture: DOM text plus any cached OCR text. */
+export function allTextRuns(
+  session: Pick<LoadedSession, 'hints'> & { ocrRuns?: readonly TextRun[] },
+): TextRun[] {
+  return session.ocrRuns?.length
+    ? [...session.hints.textRuns, ...session.ocrRuns]
+    : [...session.hints.textRuns];
+}
+
+/**
+ * Annotations drawn and redacted on export: the user's own marks, plus any derived covers
+ * and renumbering for a document's own page numbers and running headers/footers.
+ */
+export function effectiveAnnotations(
+  session: Pick<LoadedSession, 'hints'> & { ocrRuns?: readonly TextRun[] },
+  result: PageResult | null,
+  project: Pick<Project, 'annotations' | 'pageNumbers'>,
+): Annotation[] {
+  if (!result?.ok || !result.sheets) return [...project.annotations];
+  const slices = result.debug.slices;
+  const runs = allTextRuns(session);
+  const numbers = findPageNumbers(slices, runs);
+  const running = findRunningLines(slices, runs);
+  return [
+    ...project.annotations,
+    ...pageNumberAnnotations(numbers, project.pageNumbers, slices.length),
+    ...runningLineAnnotations(running, project.pageNumbers?.hideRunning),
+  ];
 }
 
 /** PDF settings for these pages: "as the original" leaves our page labels out. */

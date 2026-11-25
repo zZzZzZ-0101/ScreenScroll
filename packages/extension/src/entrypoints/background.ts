@@ -7,7 +7,13 @@ import {
   type Rect,
   type Region,
 } from '@screenscroll/core';
-import { db, deleteCapture, deleteOlderThan } from '@/shared/db';
+import {
+  db,
+  deleteCapture,
+  deleteOlderThan,
+  summarizeFrames,
+  type SessionRecord,
+} from '@/shared/db';
 import {
   TAB_HIDDEN,
   type CaptureControl,
@@ -27,16 +33,16 @@ import { loadSettings, RESOLUTION_SCALE, SPEED_TIMING } from '@/shared/settings'
 export default defineBackground(() => {
   let pacer = new Pacer();
   // Captures rendered at a higher pixel density through the debugger (Settings → Sharpness).
-  const sharp = new Map<string, { tabId: number; failed: boolean }>();
+  const sharp = new Map<string, { tabId: number; scale: number; failed: boolean }>();
   // Captures taken in the background (Settings → Scrolling: in background): the debugger
   // pictures each region of the page's layout, so the page itself never scrolls.
   const quietTabs = new Map<string, { tabId: number; scale: number }>();
-  // Window of each running capture. Only a cache: the service worker can be stopped at any
-  // time, so the session record in IndexedDB is the source of truth.
+  // Running captures whose IndexedDB record has been read into memory in this worker instance.
+  const known = new Set<string>();
   const windowOf = new Map<string, number>();
   const waiters = new Map<string, (done: CaptureDone) => void>();
   // Captures of a batch: saved without opening a Studio tab each.
-  const quiet = new Set<string>();
+  const silent = new Set<string>();
   // e2e only: finished sessions (a test may wait after the capture already ended) and an
   // injected grab failure, to exercise the error path.
   const finished = new Map<string, CaptureDone>();
@@ -50,7 +56,10 @@ export default defineBackground(() => {
     const blocked = blockedReason(tab.url, await chrome.extension.isAllowedFileSchemeAccess());
     if (blocked || tab.id === undefined) throw new Error(blocked?.message ?? 'No tab to capture.');
     const id = crypto.randomUUID();
+    const { silent: isSilent, ...startOpts } = opts;
+    known.add(id);
     windowOf.set(id, tab.windowId);
+    if (isSilent) silent.add(id);
     await (
       await db()
     ).put('sessions', {
@@ -66,6 +75,7 @@ export default defineBackground(() => {
       tabId: tab.id,
       windowId: tab.windowId,
       mode,
+      ...(isSilent ? { run: { silent: true } } : {}),
     });
     const settings = await loadSettings();
     const timing = SPEED_TIMING[settings.capture.speed];
@@ -73,6 +83,7 @@ export default defineBackground(() => {
     const warnings: string[] = [];
     const scale = RESOLUTION_SCALE[settings.capture.resolution];
     let quiet = false;
+    let sharpOk = false;
     if (settings.capture.quiet && mode === 'full') {
       const why = await startQuiet(id, tab.id, scale);
       if (why) warnings.push(why);
@@ -82,6 +93,7 @@ export default defineBackground(() => {
     if (scale > 1 && !quiet) {
       const why = await startSharp(id, tab.id, scale);
       if (why) warnings.push(why);
+      else sharpOk = true;
     }
     if (settings.capture.width && (mode === 'full' || mode === 'visible')) {
       try {
@@ -94,10 +106,20 @@ export default defineBackground(() => {
         );
       }
     }
-    if (warnings.length) {
+    const run: NonNullable<SessionRecord['run']> = {
+      ...(isSilent ? { silent: true } : {}),
+      ...(quiet ? { quietScale: scale } : {}),
+      ...(sharpOk ? { sharpScale: scale } : {}),
+    };
+    if (warnings.length || Object.keys(run).length) {
       const d = await db();
       const rec = await d.get('sessions', id);
-      if (rec) await d.put('sessions', { ...rec, warnings });
+      if (rec)
+        await d.put('sessions', {
+          ...rec,
+          warnings,
+          ...(Object.keys(run).length ? { run } : {}),
+        });
     }
     try {
       await showCapturing(tab.id);
@@ -110,11 +132,15 @@ export default defineBackground(() => {
         timing,
         lang: resolveLang(settings.language),
         quiet,
-        ...opts,
+        ...startOpts,
       });
     } catch (e) {
       await restoreWindow(id);
+      await stopSharp(id);
       await stopQuiet(id);
+      known.delete(id);
+      windowOf.delete(id);
+      silent.delete(id);
       throw e;
     }
     return id;
@@ -142,7 +168,9 @@ export default defineBackground(() => {
   ): Promise<string | null> {
     let win = await chrome.windows.get(windowId);
     const zoom = await chrome.tabs.getZoom(tabId);
-    if (narrowWindowTo(target, { width: win.width ?? 0 }, await viewportWidth(tabId), zoom) === null)
+    if (
+      narrowWindowTo(target, { width: win.width ?? 0 }, await viewportWidth(tabId), zoom) === null
+    )
       return null;
     const d = await db();
     const rec = await d.get('sessions', sessionId);
@@ -163,7 +191,12 @@ export default defineBackground(() => {
       await chrome.windows.update(windowId, { state: 'normal' });
       win = await chrome.windows.get(windowId);
     }
-    const width = narrowWindowTo(target, { width: win.width ?? 0 }, await viewportWidth(tabId), zoom);
+    const width = narrowWindowTo(
+      target,
+      { width: win.width ?? 0 },
+      await viewportWidth(tabId),
+      zoom,
+    );
     if (width !== null) await chrome.windows.update(windowId, { width });
     // Wait for the reflow, then a moment for layout-dependent content (images, lazy parts).
     let got = await viewportWidth(tabId);
@@ -194,6 +227,19 @@ export default defineBackground(() => {
       .catch(() => undefined);
   }
 
+  /** Restores in-memory capture state from IndexedDB if the service worker restarted mid-capture. */
+  async function hydrate(sessionId: string): Promise<void> {
+    if (known.has(sessionId)) return;
+    const s = await (await db()).get('sessions', sessionId);
+    if (!s) return;
+    known.add(sessionId);
+    windowOf.set(sessionId, s.windowId);
+    if (s.run?.silent) silent.add(sessionId);
+    if (s.run?.quietScale) quietTabs.set(sessionId, { tabId: s.tabId, scale: s.run.quietScale });
+    if (s.run?.sharpScale)
+      sharp.set(sessionId, { tabId: s.tabId, scale: s.run.sharpScale, failed: false });
+  }
+
   /**
    * Renders the tab at `scale` device pixels per CSS px (layout unchanged) through the
    * debugger. Returns a warning when that isn't possible; the capture then uses the screen's
@@ -205,7 +251,7 @@ export default defineBackground(() => {
     scale: number,
   ): Promise<string | null> {
     if (!(await chrome.permissions.contains({ permissions: ['debugger'] })))
-      return 'Sharp capture needs permission; open Settings → Sharpness to allow it. Captured at screen resolution.';
+      return 'Sharp capture needs permission (choose 2× or 3× in the panel or Settings to allow it); captured at screen resolution.';
     try {
       await chrome.debugger.attach({ tabId }, '1.3');
       await chrome.debugger.sendCommand({ tabId }, 'Emulation.setDeviceMetricsOverride', {
@@ -214,7 +260,7 @@ export default defineBackground(() => {
         deviceScaleFactor: scale,
         mobile: false,
       });
-      sharp.set(sessionId, { tabId, failed: false });
+      sharp.set(sessionId, { tabId, scale, failed: false });
       return null;
     } catch (e) {
       await chrome.debugger.detach({ tabId }).catch(() => undefined);
@@ -222,7 +268,11 @@ export default defineBackground(() => {
     }
   }
 
-  async function startQuiet(sessionId: string, tabId: number, scale: number): Promise<string | null> {
+  async function startQuiet(
+    sessionId: string,
+    tabId: number,
+    scale: number,
+  ): Promise<string | null> {
     if (!(await chrome.permissions.contains({ permissions: ['debugger'] })))
       return 'Capturing in the background needs permission (choose “In background” in the panel again to allow it); captured by scrolling instead.';
     try {
@@ -234,23 +284,31 @@ export default defineBackground(() => {
     }
   }
 
-  async function stopQuiet(sessionId: string): Promise<void> {
+  async function stopQuiet(sessionId: string, fallbackTabId?: number): Promise<void> {
     const q = quietTabs.get(sessionId);
-    if (!q) return;
     quietTabs.delete(sessionId);
-    await chrome.debugger.detach({ tabId: q.tabId }).catch(() => undefined);
+    const tabId = q?.tabId ?? fallbackTabId;
+    if (tabId === undefined) return;
+    await chrome.debugger.detach({ tabId }).catch(() => undefined);
   }
 
   /** One region of the page's layout, pictured without scrolling the page. */
   async function grabQuiet(msg: GrabFrame & { clip: Rect }): Promise<GrabResult> {
+    await hydrate(msg.sessionId);
     const q = quietTabs.get(msg.sessionId);
     if (!q) return { ok: false, error: 'Background capture is not running for this tab.' };
-    try {
-      const r = (await chrome.debugger.sendCommand({ tabId: q.tabId }, 'Page.captureScreenshot', {
+    const shot = () =>
+      chrome.debugger.sendCommand({ tabId: q.tabId }, 'Page.captureScreenshot', {
         format: 'png',
         captureBeyondViewport: true,
         clip: { ...msg.clip, scale: (msg.dpr ?? 1) * q.scale },
-      })) as { data: string };
+      }) as Promise<{ data: string }>;
+    try {
+      const r = await shot().catch(async (err: unknown) => {
+        if (!/not attached/i.test(String(err))) throw err;
+        await chrome.debugger.attach({ tabId: q.tabId }, '1.3');
+        return shot();
+      });
       const blob = dataUrlToBlob(`data:image/png;base64,${r.data}`);
       const size = await pngSize(blob);
       await (
@@ -276,14 +334,15 @@ export default defineBackground(() => {
     }
   }
 
-  async function stopSharp(sessionId: string): Promise<void> {
+  async function stopSharp(sessionId: string, fallbackTabId?: number): Promise<void> {
     const s = sharp.get(sessionId);
-    if (!s) return;
     sharp.delete(sessionId);
+    const tabId = s?.tabId ?? fallbackTabId;
+    if (tabId === undefined) return;
     await chrome.debugger
-      .sendCommand({ tabId: s.tabId }, 'Emulation.clearDeviceMetricsOverride')
+      .sendCommand({ tabId }, 'Emulation.clearDeviceMetricsOverride')
       .catch(() => undefined);
-    await chrome.debugger.detach({ tabId: s.tabId }).catch(() => undefined);
+    await chrome.debugger.detach({ tabId }).catch(() => undefined);
   }
 
   /**
@@ -317,12 +376,9 @@ export default defineBackground(() => {
 
   async function grab(msg: GrabFrame, tabId?: number): Promise<GrabResult> {
     if (msg.clip) return grabQuiet(msg as GrabFrame & { clip: Rect });
-    let windowId = windowOf.get(msg.sessionId);
-    if (windowId === undefined) {
-      windowId = (await (await db()).get('sessions', msg.sessionId))?.windowId;
-      if (windowId === undefined) return { ok: false, error: 'Unknown capture session.' };
-      windowOf.set(msg.sessionId, windowId);
-    }
+    await hydrate(msg.sessionId);
+    const windowId = windowOf.get(msg.sessionId);
+    if (windowId === undefined) return { ok: false, error: 'Unknown capture session.' };
     if (__SP_E2E__ && failGrabAt === msg.index) {
       failGrabAt = null;
       return { ok: false, error: 'Injected test failure' };
@@ -344,16 +400,34 @@ export default defineBackground(() => {
       await showCapturing(tabId);
     try {
       const hi = sharp.get(msg.sessionId);
+      const sharpShot = async (h: { tabId: number; scale: number }) => {
+        const take = () =>
+          chrome.debugger
+            .sendCommand({ tabId: h.tabId }, 'Page.captureScreenshot', { format: 'png' })
+            .then((r) => `data:image/png;base64,${(r as { data: string }).data}`);
+        return take().catch(async (err: unknown) => {
+          if (!/not attached/i.test(String(err))) throw err;
+          await chrome.debugger.attach({ tabId: h.tabId }, '1.3');
+          await chrome.debugger.sendCommand(
+            { tabId: h.tabId },
+            'Emulation.setDeviceMetricsOverride',
+            {
+              width: 0,
+              height: 0,
+              deviceScaleFactor: h.scale,
+              mobile: false,
+            },
+          );
+          return take();
+        });
+      };
       const dataUrl =
         hi && !hi.failed
-          ? await chrome.debugger
-              .sendCommand({ tabId: hi.tabId }, 'Page.captureScreenshot', { format: 'png' })
-              .then((r) => `data:image/png;base64,${(r as { data: string }).data}`)
-              .catch(async () => {
-                // The user closed the debugging bar: carry on at screen resolution.
-                hi.failed = true;
-                return pacer.run(() => chrome.tabs.captureVisibleTab(windowId, { format: 'png' }));
-              })
+          ? await sharpShot(hi).catch(async () => {
+              // The user closed the debugging bar: carry on at screen resolution.
+              hi.failed = true;
+              return pacer.run(() => chrome.tabs.captureVisibleTab(windowId, { format: 'png' }));
+            })
           : await pacer.run(async () => {
               // The pacer may have waited; the user can switch tabs meanwhile.
               if (!(await inFront(tabId))) throw new Error(TAB_HIDDEN);
@@ -384,28 +458,35 @@ export default defineBackground(() => {
   }
 
   async function finish(msg: CaptureDone): Promise<void> {
+    await hydrate(msg.sessionId);
     const hi = sharp.get(msg.sessionId);
     if (hi?.failed)
       msg.warnings.push(
         'Sharp capture stopped part-way (the debugging bar was closed); the rest is at screen resolution.',
       );
-    await stopSharp(msg.sessionId);
-    await stopQuiet(msg.sessionId);
-    await restoreWindow(msg.sessionId);
     const d = await db();
+    const pre = await d.get('sessions', msg.sessionId);
+    await stopSharp(msg.sessionId, pre?.run?.sharpScale ? pre.tabId : undefined);
+    await stopQuiet(msg.sessionId, pre?.run?.quietScale ? pre.tabId : undefined);
+    await restoreWindow(msg.sessionId);
     const session = await d.get('sessions', msg.sessionId);
     await clearCapturing(session?.tabId);
+    known.delete(msg.sessionId);
+    windowOf.delete(msg.sessionId);
+    const isSilent = silent.delete(msg.sessionId) || !!session?.run?.silent;
     if (msg.status === 'cancelled') {
       // Cancel (Esc) means "I didn't want this": nothing is kept and nothing opens. "Stop
       // here" is the way to keep a partial capture.
       await deleteCapture(msg.sessionId);
-      windowOf.delete(msg.sessionId);
       if (__SP_E2E__) finished.set(msg.sessionId, msg);
       waiters.get(msg.sessionId)?.(msg);
       waiters.delete(msg.sessionId);
       return;
     }
-    const frameCount = await d.countFromIndex('frames', 'bySession', msg.sessionId);
+    const frames = (await d.getAllFromIndex('frames', 'bySession', msg.sessionId)).sort(
+      (a, b) => a.index - b.index,
+    );
+    const frameCount = frames.length;
     if (session) {
       await d.put('sessions', {
         ...session,
@@ -413,10 +494,11 @@ export default defineBackground(() => {
         docWidth: msg.docWidth,
         docHeight: msg.docHeight,
         frameCount,
+        ...summarizeFrames(frames, session.ocrRuns),
         warnings: [...session.warnings, ...msg.warnings],
+        run: undefined,
       });
     }
-    windowOf.delete(msg.sessionId);
     // Auto-clean (Saved captures setting); never touches the capture that just finished.
     const { keepDays } = await loadSettings();
     if (keepDays) await deleteOlderThan(keepDays).catch(() => 0);
@@ -430,8 +512,7 @@ export default defineBackground(() => {
         });
     }
     // UI §7: whatever was captured opens, even after an error; the Studio says why.
-    if (frameCount > 0 && !quiet.delete(msg.sessionId))
-      await openStudio(msg.sessionId, msg.output, session?.tabId);
+    if (frameCount > 0 && !isSilent) await openStudio(msg.sessionId, msg.output, session?.tabId);
     if (__SP_E2E__) finished.set(msg.sessionId, msg);
     waiters.get(msg.sessionId)?.(msg);
     waiters.delete(msg.sessionId);
@@ -536,8 +617,7 @@ export default defineBackground(() => {
         item.url = tab.url ?? item.url;
         const blocked = blockedReason(tab.url, fileAccess);
         if (blocked) throw new Skip(blocked.message);
-        const id = await startCapture(tab, 'full');
-        quiet.add(id);
+        const id = await startCapture(tab, 'full', { silent: true });
         const done = await ended(id);
         if (!done) throw new Error('The capture did not finish within 10 minutes.');
         item.sessionId = id;
@@ -607,12 +687,18 @@ export default defineBackground(() => {
       await d.put('sessions', {
         ...s,
         status: 'error',
+        run: undefined,
         warnings: [
           ...s.warnings,
           'The capture was interrupted (the page or the extension was reloaded, or the browser closed) and stopped here.',
         ],
       });
+      await stopSharp(s.id, s.run?.sharpScale ? s.tabId : undefined);
+      await stopQuiet(s.id, s.run?.quietScale ? s.tabId : undefined);
       await restoreWindow(s.id);
+      known.delete(s.id);
+      windowOf.delete(s.id);
+      silent.delete(s.id);
     }
     if (live && stale.some((s) => s.id === live)) return { sessionId: live, tabId: tab.id };
     await clearCapturing(tab.id);
@@ -623,20 +709,30 @@ export default defineBackground(() => {
   chrome.tabs.onRemoved.addListener((tabId) => {
     void (async () => {
       const all = await (await db()).getAll('sessions');
-      for (const s of all) if (s.tabId === tabId && s.window) await restoreWindow(s.id);
+      for (const s of all) {
+        if (s.tabId !== tabId) continue;
+        if (s.window) await restoreWindow(s.id);
+        if (s.run?.sharpScale || s.run?.quietScale) {
+          await stopSharp(s.id);
+          await stopQuiet(s.id);
+        }
+        known.delete(s.id);
+        windowOf.delete(s.id);
+        silent.delete(s.id);
+      }
     })();
   });
 
   chrome.runtime.onMessage.addListener(
     (
       msg:
-      | ToBackground
-      | PopupCapture
-      | CaptureControl
-      | PageNotice
-      | BatchStart
-      | Recapture
-      | { type: 'sp:running' },
+        | ToBackground
+        | PopupCapture
+        | CaptureControl
+        | PageNotice
+        | BatchStart
+        | Recapture
+        | { type: 'sp:running' },
       _sender,
       reply,
     ) => {
@@ -645,11 +741,11 @@ export default defineBackground(() => {
         return true;
       }
       if (msg.type === 'sp:batch-start') {
-      void runBatch(msg);
-      reply({ ok: true });
-      return false;
-    }
-    if (msg.type === 'sp:notice') {
+        void runBatch(msg);
+        reply({ ok: true });
+        return false;
+      }
+      if (msg.type === 'sp:notice') {
         if (msg.tabId !== undefined)
           void chrome.tabs
             .sendMessage(msg.tabId, { type: 'sp:notice', text: msg.text })
@@ -793,7 +889,11 @@ export default defineBackground(() => {
         },
         /** Simulates a service-worker restart: all in-memory capture state is lost. */
         forgetMemory() {
+          known.clear();
           windowOf.clear();
+          sharp.clear();
+          quietTabs.clear();
+          silent.clear();
         },
         async capture(tabId: number, mode: CaptureMode = 'full') {
           const hook = (globalThis as unknown as { __spTest: E2EHook }).__spTest;
@@ -843,6 +943,7 @@ interface CaptureOptions {
   delayMs?: number;
   region?: Region;
   hideOverlays?: boolean;
+  silent?: boolean;
 }
 
 interface E2EHook {

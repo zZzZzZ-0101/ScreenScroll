@@ -83,3 +83,78 @@ function ncc(x: Float32Array, y: Float32Array): number {
   if (sxx < 1e-6 || syy < 1e-6) return -Infinity;
   return sxy / Math.sqrt(sxx * syy);
 }
+
+/** Max rows at the bottom of frame A and top of frame B inspected for seam matching. */
+export const SEAM_WINDOW = 200;
+/** Shortest overlap (CSS px) trusted for pixel-only seam alignment. */
+export const SEAM_MIN_OVERLAP = 16;
+
+export type SeamCheck =
+  | { kind: 'ok'; overlap: number; delta: 0; score: number }
+  | { kind: 'adjusted'; overlap: number; delta: number; score: number }
+  | { kind: 'unverified'; overlap: number; delta: 0; score: number };
+
+/**
+ * Compares the bottom strip of frame `i - 1` (`prevTail`) against the top strip of frame `i`
+ * (`currHead`) when DOM seam anchors are unavailable or when frames nominally overlap.
+ *
+ * Requires both high profile correlation (`score >= 0.985`, unique peak) and near-identical
+ * pixel intensities (`MAD <= 4` grey levels) before shifting a frame, so two different
+ * paragraphs with similar line spacing never false-match.
+ */
+export function checkSeam(prevTail: GreyImage, currHead: GreyImage, nominalOverlap = 0): SeamCheck {
+  if (
+    prevTail.width !== currHead.width ||
+    prevTail.width <= 0 ||
+    prevTail.height < SEAM_MIN_OVERLAP ||
+    currHead.height < SEAM_MIN_OVERLAP
+  ) {
+    return { kind: 'ok', overlap: nominalOverlap, delta: 0, score: -Infinity };
+  }
+  const reg = registerFrames(prevTail, currHead, { minOverlap: SEAM_MIN_OVERLAP });
+  const overlap = Math.min(prevTail.height - reg.shift, currHead.height);
+  if (reg.confident && reg.score >= 0.985 && overlap >= SEAM_MIN_OVERLAP) {
+    const w = prevTail.width;
+    const a = prevTail.data.subarray(reg.shift * w, (reg.shift + overlap) * w);
+    const b = currHead.data.subarray(0, overlap * w);
+    if (meanAbsDiff(a, b) <= 4 && greyStdDev(a) >= 4) {
+      const delta = overlap - nominalOverlap;
+      if (Math.abs(delta) >= 2) return { kind: 'adjusted', overlap, delta, score: reg.score };
+      return { kind: 'ok', overlap: nominalOverlap, delta: 0, score: reg.score };
+    }
+  }
+  // When frames were supposed to overlap significantly (e.g. clamped last screen) and both
+  // regions have clear visual texture, a failed match means the page redrew between grabs.
+  const nom = Math.round(nominalOverlap);
+  if (nom >= 24 && nom <= Math.min(prevTail.height, currHead.height)) {
+    const w = prevTail.width;
+    const a = prevTail.data.subarray((prevTail.height - nom) * w);
+    const b = currHead.data.subarray(0, nom * w);
+    if (greyStdDev(a) >= 8 && greyStdDev(b) >= 8 && meanAbsDiff(a, b) > 12) {
+      return { kind: 'unverified', overlap: nominalOverlap, delta: 0, score: reg.score };
+    }
+  }
+  return { kind: 'ok', overlap: nominalOverlap, delta: 0, score: reg.score };
+}
+
+export function meanAbsDiff(a: Uint8Array, b: Uint8Array): number {
+  const n = Math.min(a.length, b.length);
+  if (!n) return Infinity;
+  let sum = 0;
+  for (let i = 0; i < n; i++) sum += Math.abs(a[i]! - b[i]!);
+  return sum / n;
+}
+
+export function greyStdDev(a: Uint8Array): number {
+  const n = a.length;
+  if (!n) return 0;
+  let mean = 0;
+  for (let i = 0; i < n; i++) mean += a[i]!;
+  mean /= n;
+  let sq = 0;
+  for (let i = 0; i < n; i++) {
+    const d = a[i]! - mean;
+    sq += d * d;
+  }
+  return Math.sqrt(sq / n);
+}

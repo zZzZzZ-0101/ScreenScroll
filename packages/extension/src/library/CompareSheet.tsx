@@ -12,7 +12,7 @@ const plain = (s: string) => s.replace(/^(#{1,3}|-) /, '');
 /** A capture's text as paragraphs, the same way Save → Text (Markdown) writes it. */
 async function textOf(id: string): Promise<string> {
   const s = await loadSession(id);
-  return textToMarkdown(s.hints.textRuns, s.hints.headings);
+  return textToMarkdown([...s.hints.textRuns, ...s.ocrRuns], s.hints.headings);
 }
 
 /**
@@ -31,7 +31,9 @@ export function CompareSheet(p: { captures: [StoredCapture, StoredCapture]; onCl
     let urls: string[] = [];
     void comparePictures(older.session.id, newer.session.id).then(
       (d) => {
-        urls = d.shown.flatMap((s) => [s.before?.url, s.after?.url]).filter((u): u is string => !!u);
+        urls = d.shown
+          .flatMap((s) => [s.before?.url, s.after?.url])
+          .filter((u): u is string => !!u);
         setPictures(d);
       },
       (e: unknown) => setPictureError(e instanceof Error ? e.message : String(e)),
@@ -83,7 +85,11 @@ export function CompareSheet(p: { captures: [StoredCapture, StoredCapture]; onCl
           <br />
           {t('To')} {newer.session.title || newer.session.url} · {when(newer)}
         </p>
-        {error && <p role="alert" className="pt-2 text-red-700 dark:text-red-300">{error}</p>}
+        {error && (
+          <p role="alert" className="pt-2 text-red-700 dark:text-red-300">
+            {error}
+          </p>
+        )}
         {!changes && !error && <p className="pt-2 text-neutral-500">{t('Comparing…')}</p>}
         {changes && (
           <>
@@ -100,17 +106,31 @@ export function CompareSheet(p: { captures: [StoredCapture, StoredCapture]; onCl
                       … {t('{n} unchanged', { n: c.n })}
                     </p>
                   ) : c.kind === 'same' ? (
-                    <p key={i} className="text-neutral-500">{plain(c.text)}</p>
+                    <p key={i} className="text-neutral-500">
+                      {plain(c.text)}
+                    </p>
                   ) : c.kind === 'add' ? (
-                    <p key={i} className="rounded bg-green-50 px-1 dark:bg-green-950" data-change="add">
+                    <p
+                      key={i}
+                      className="rounded bg-green-50 px-1 dark:bg-green-950"
+                      data-change="add"
+                    >
                       + {plain(c.text)}
                     </p>
                   ) : c.kind === 'del' ? (
-                    <p key={i} className="rounded bg-red-50 px-1 line-through dark:bg-red-950" data-change="del">
+                    <p
+                      key={i}
+                      className="rounded bg-red-50 px-1 line-through dark:bg-red-950"
+                      data-change="del"
+                    >
                       − {plain(c.text)}
                     </p>
                   ) : (
-                    <p key={i} className="rounded bg-amber-50 px-1 dark:bg-amber-950" data-change="edit">
+                    <p
+                      key={i}
+                      className="rounded bg-amber-50 px-1 dark:bg-amber-950"
+                      data-change="edit"
+                    >
                       ~{' '}
                       {c.words.map((w, k) => (
                         <span
@@ -144,10 +164,13 @@ export function CompareSheet(p: { captures: [StoredCapture, StoredCapture]; onCl
           <div data-testid="picture-summary">
             {!pictures.changes ? (
               <p className="pt-1">
-                {t('Captured at different widths ({a} and {b} px), so the pictures are not compared row by row.', {
-                  a: pictures.widths[0],
-                  b: pictures.widths[1],
-                })}
+                {t(
+                  'Captured at different widths ({a} and {b} px), so the pictures are not compared row by row.',
+                  {
+                    a: pictures.widths[0],
+                    b: pictures.widths[1],
+                  },
+                )}
               </p>
             ) : pictures.changes.length === 0 ? (
               <p className="pt-1">{t('No differences in the pictures.')}</p>
@@ -190,7 +213,9 @@ function PicturePair(p: { before: PictureCrop | null; after: PictureCrop | null 
         </figcaption>
       </figure>
     ) : (
-      <p className="self-center text-center">{kind === 'del' ? t('(nothing before)') : t('(removed)')}</p>
+      <p className="self-center text-center">
+        {kind === 'del' ? t('(nothing before)') : t('(removed)')}
+      </p>
     );
   return (
     <>

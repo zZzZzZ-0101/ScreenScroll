@@ -245,4 +245,62 @@ describe('watermark', () => {
     await p2.render({ canvas: canvas as never, viewport: vp }).promise;
     writeFileSync(new URL('watermark-p2.png', OUT), canvas.toBuffer('image/png'));
   });
+
+  it('draws watermarks on the chosen slices of a single long-page PDF and passes colour to non-Latin renderer', async () => {
+    const { buildSingleLongPagePdf } = await import('@screenscroll/core/pdf');
+    const layout = computeLayout(DEFAULT_PAGE_SETTINGS, doc.width);
+    const slices = paginate({ height: doc.height, width: doc.width, T: layout.T }).slice(0, 3);
+    const totalCss = slices.reduce((h, sl) => h + sl.y1 - sl.y0 - sl.overlapTop, 0);
+    const meta = { title: 'LongW', url: '', capturedAt: new Date(2026, 9, 28) };
+    const bytes = await buildSingleLongPagePdf(
+      await pageImages(doc, slices),
+      totalCss,
+      layout,
+      meta,
+      {
+        watermark: {
+          text: 'CONFIDENTIAL',
+          opacity: 0.2,
+          sizePt: 70,
+          angle: 45,
+          color: '#d93025',
+          pages: '2-3',
+        },
+      },
+    );
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const pdf = await pdfjs.getDocument({
+      data: bytes.slice(),
+      standardFontDataUrl: STANDARD_FONTS,
+    }).promise;
+    expect(pdf.numPages).toBe(1);
+    const tc = await (await pdf.getPage(1)).getTextContent();
+    const hits = tc.items.filter((it) => 'str' in it && it.str.includes('CONFIDENTIAL'));
+    expect(hits).toHaveLength(2);
+
+    const colours: Array<string | undefined> = [];
+    const onepx = createCanvas(4, 4);
+    const tinyPng = new Uint8Array(await onepx.encode('png'));
+    await buildSingleLongPagePdf(
+      await pageImages(doc, slices.slice(0, 1)),
+      slices[0]!.y1 - slices[0]!.y0,
+      layout,
+      meta,
+      {
+        watermark: {
+          text: '机密',
+          opacity: 0.2,
+          sizePt: 60,
+          angle: 45,
+          color: '#1a73e8',
+          pages: 'all',
+        },
+        renderText: async (_text, _sizePt, color) => {
+          colours.push(color);
+          return { png: tinyPng, widthPt: 40, heightPt: 20 };
+        },
+      },
+    );
+    expect(colours).toEqual(['#1a73e8']);
+  });
 });

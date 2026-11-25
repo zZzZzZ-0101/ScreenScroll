@@ -1,9 +1,16 @@
-import { mergeHints, ownedBands, type DomHints, type FrameGeom } from '@screenscroll/core';
+import {
+  mergeHints,
+  ownedBands,
+  type DomHints,
+  type FrameGeom,
+  type TextRun,
+} from '@screenscroll/core';
 import {
   db,
   EMPTY_PROJECT,
   framesOf,
   type FrameRecord,
+  type OcrMeta,
   type Project,
   type SessionRecord,
 } from '@/shared/db';
@@ -14,6 +21,9 @@ export interface LoadedSession {
   frames: FrameRecord[];
   geoms: FrameGeom[];
   hints: DomHints;
+  /** Recognised OCR text runs cached on this capture (separate from DOM `hints.textRuns`). */
+  ocrRuns: TextRun[];
+  ocrMeta?: OcrMeta;
   /** Captured region size in CSS px. */
   width: number;
   height: number;
@@ -41,6 +51,8 @@ export async function loadSession(id: string): Promise<LoadedSession> {
     frames,
     geoms,
     hints: mergeHints(frames.map((f) => f.hints)),
+    ocrRuns: session.ocrRuns ?? [],
+    ocrMeta: session.ocrMeta,
     width: frames[0]!.crop.width,
     height: bands.at(-1)!.y1,
     dpr: Math.max(...frames.map((f) => f.dpr)),

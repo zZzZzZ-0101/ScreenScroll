@@ -1,5 +1,5 @@
 import { emptyHints, type DomHints } from '@screenscroll/core';
-import { db } from './db';
+import { db, SEARCH_TEXT_MAX } from './db';
 import { IMPORT_FRAME_ROWS } from './import-image';
 
 /** PDF points → CSS px (1 pt = 1/72 in, 1 CSS px = 1/96 in). */
@@ -36,11 +36,9 @@ function pdfjs(): Promise<PdfJs> {
 export async function importPdf(file: File): Promise<string> {
   const m = await pdfjs();
   const data = new Uint8Array(await file.arrayBuffer());
-  const doc = await m
-    .getDocument({ data, useSystemFonts: true })
-    .promise.catch(() => {
-      throw new Error(`${file.name} is not a PDF this browser can open.`);
-    });
+  const doc = await m.getDocument({ data, useSystemFonts: true }).promise.catch(() => {
+    throw new Error(`${file.name} is not a PDF this browser can open.`);
+  });
   try {
     // Every page at the widest page's width, so the capture is one column.
     const sizes: Array<{ w: number; h: number }> = [];
@@ -56,6 +54,8 @@ export async function importPdf(file: File): Promise<string> {
     let y = 0;
     let index = 0;
     let order = 0;
+    let bytes = 0;
+    let rawSearch = '';
     const warnings: string[] = [];
     for (let p = 1; p <= doc.numPages; p++) {
       const page = await doc.getPage(p);
@@ -78,6 +78,7 @@ export async function importPdf(file: File): Promise<string> {
           fontSizePx: size,
           order: order++,
         });
+        if (rawSearch.length < SEARCH_TEXT_MAX) rawSearch += `${item.str} `;
         hints.forbidden.push({ y0: top, y1: top + size * 1.1, kind: 'line' });
       }
       hints.blockEnds.push({ y: y + pageH, kind: 'section' });
@@ -109,6 +110,8 @@ export async function importPdf(file: File): Promise<string> {
           }).promise;
           ctx.restore();
         }
+        const blob = await c.convertToBlob({ type: 'image/png' });
+        bytes += blob.size;
         await d.put('frames', {
           sessionId: id,
           index,
@@ -117,7 +120,7 @@ export async function importPdf(file: File): Promise<string> {
           dpr: DPR,
           imageWidth: c.width,
           imageHeight: c.height,
-          blob: await c.convertToBlob({ type: 'image/png' }),
+          blob,
           // Text belongs to the page's first slice; frames' hints are merged by position.
           hints: sy === 0 ? hints : emptyHints(),
           hintsMs: 0,
@@ -129,10 +132,14 @@ export async function importPdf(file: File): Promise<string> {
     }
     // Same-size pages (the usual case): the pages are known exactly, no detection needed.
     const sameSize = sizes.every(
-      (z) => Math.abs(z.w - sizes[0]!.w) < 1 && Math.abs(Math.round(z.h) - Math.round(sizes[0]!.h)) < 1,
+      (z) =>
+        Math.abs(z.w - sizes[0]!.w) < 1 && Math.abs(Math.round(z.h) - Math.round(sizes[0]!.h)) < 1,
     );
     const firstLeft = Math.round((width - sizes[0]!.w) / 2);
-    if (!order) warnings.push('This PDF has no text layer: pages are pictures. Text recognition can read them at export.');
+    if (!order)
+      warnings.push(
+        'This PDF has no text layer: pages are pictures. Text recognition can read them at export.',
+      );
     await d.put('sessions', {
       id,
       url: '',
@@ -142,6 +149,8 @@ export async function importPdf(file: File): Promise<string> {
       docWidth: width,
       docHeight: y,
       frameCount: index,
+      bytes,
+      searchText: rawSearch.replace(/\s+/g, ' ').trim(),
       warnings,
       tabId: -1,
       windowId: -1,
@@ -152,7 +161,13 @@ export async function importPdf(file: File): Promise<string> {
             annotations: [],
             crop: null,
             pages: 'grid',
-            sheetGrid: { x0: firstLeft, x1: firstLeft + sizes[0]!.w, top: 0, height: Math.round(sizes[0]!.h), gap: GAP },
+            sheetGrid: {
+              x0: firstLeft,
+              x1: firstLeft + sizes[0]!.w,
+              top: 0,
+              height: Math.round(sizes[0]!.h),
+              gap: GAP,
+            },
           }
         : { annotations: [], crop: null, pages: 'auto' },
     });

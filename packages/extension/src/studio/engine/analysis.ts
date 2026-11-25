@@ -1,20 +1,23 @@
 import {
-  detectSheets,
+  applyFilter,
   evidenceSummary,
-  sheetCandidates,
-  sheetEvidence,
-  ownedBands,
-  RowAnalyzer,
-  SheetAnalyzer,
-  toGrey,
+  type FilterId,
+  type FrameGeom,
   type RowProfile,
   type SheetCandidate,
   type SheetLayout,
 } from '@screenscroll/core';
+import {
+  ANALYSIS_WIDTH,
+  analyzeFrames,
+  STRIP_WIDTH,
+  type FrameInput,
+  type RawAnalysis,
+} from './analysis-core';
+import type { FromAnalysisWorker, ToAnalysisWorker } from './analysis-worker';
 import type { FrameCache, LoadedSession } from './session';
 
-export const ANALYSIS_WIDTH = 800;
-export const STRIP_WIDTH = 320;
+export { ANALYSIS_WIDTH, STRIP_WIDTH };
 
 export interface Analysis {
   rows: RowProfile;
@@ -27,63 +30,154 @@ export interface Analysis {
   readings: SheetCandidate[];
   /** What page detection read (CSS px), for Details; null when there is no page column. */
   evidence: ReturnType<typeof evidenceSummary> | null;
+  /** Frame geometries after optional pixel seam alignment. */
+  geoms: FrameGeom[];
+  /** Total height in CSS px after optional pixel seam alignment. */
+  height: number;
+  /** True when one or more unanchored frame seams were shifted by image matching. */
+  seamAdjusted: boolean;
+  /** Explicit notes when seams were realigned or could not be verified. */
+  seamWarnings: string[];
+}
+
+type Pending = {
+  resolve: (v: unknown) => void;
+  reject: (e: Error) => void;
+  onProgress?: (done: number, total: number) => void;
+};
+
+let worker: Worker | null = null;
+let workerFailed = false;
+let seq = 0;
+const pending = new Map<number, Pending>();
+
+type WorkerReq = ToAnalysisWorker extends infer T
+  ? T extends { id: number }
+    ? Omit<T, 'id'>
+    : never
+  : never;
+
+function getWorker(): Worker | null {
+  if (workerFailed || typeof Worker === 'undefined') return null;
+  if (!worker) {
+    try {
+      worker = new Worker(new URL('./analysis-worker.ts', import.meta.url), { type: 'module' });
+      worker.onmessage = (e: MessageEvent<FromAnalysisWorker>) => {
+        const m = e.data;
+        const p = pending.get(m.id);
+        if (!p) return;
+        if (m.type === 'progress') p.onProgress?.(m.done, m.total);
+        else {
+          pending.delete(m.id);
+          if (m.type === 'done') p.resolve(m.result);
+          else p.reject(new Error(m.message));
+        }
+      };
+      worker.onerror = () => {
+        workerFailed = true;
+        worker = null;
+      };
+    } catch {
+      workerFailed = true;
+      return null;
+    }
+  }
+  return worker;
+}
+
+function callWorker<T>(
+  msg: WorkerReq,
+  onProgress?: (done: number, total: number) => void,
+  transfer: Transferable[] = [],
+): Promise<T> | null {
+  const w = getWorker();
+  if (!w) return null;
+  const id = ++seq;
+  return new Promise<T>((resolve, reject) => {
+    pending.set(id, { resolve: resolve as (v: unknown) => void, reject, onProgress });
+    w.postMessage({ ...msg, id } as ToAnalysisWorker, transfer);
+  });
 }
 
 /**
- * Streams every frame's own rows through the row analyzer (PAGINATION §4: ≤ 800 px wide,
- * one row per CSS px) and builds the long thumbnail strip on the way. Holds one frame's
- * pixels at a time.
+ * Streams every frame's rows through the row/sheet analyzers and pixel seam verifier off the
+ * main thread (falling back inline when Workers are unavailable), building the ≤ 320 px strip.
  */
 export async function analyze(
   s: LoadedSession,
-  frames: FrameCache,
+  _frames: FrameCache,
   onProgress?: (done: number, total: number) => void,
+  opts: { buildStrip?: boolean; alignSeams?: boolean } = {},
 ): Promise<Analysis> {
-  const aw = Math.min(ANALYSIS_WIDTH, Math.round(s.width));
-  const analyzer = new RowAnalyzer(aw, 1);
-  const sheetAnalyzer = new SheetAnalyzer(aw);
-  const stripScale = Math.min(1, STRIP_WIDTH / s.width);
-  const strip: Analysis['strip'] = [];
-  const bands = ownedBands(s.geoms);
-  for (let i = 0; i < bands.length; i++) {
-    const band = bands[i]!;
-    const h = Math.round(band.y1 - band.y0);
-    if (h <= 0) continue;
-    const g = s.geoms[i]!;
-    const bitmap = await frames.get(i);
-    const sx = g.cropX;
-    const sy = g.cropY + (band.y0 - g.docY) * g.dpr;
-    const sw = s.width * g.dpr;
-    const sh = h * g.dpr;
-
-    const a = new OffscreenCanvas(aw, h);
-    const actx = a.getContext('2d', { willReadFrequently: true })!;
-    actx.drawImage(bitmap, sx, sy, sw, sh, 0, 0, aw, h);
-    const img = actx.getImageData(0, 0, aw, h);
-    const grey = toGrey({ width: aw, height: h, data: img.data, channels: 4 });
-    analyzer.push(grey);
-    sheetAnalyzer.push(grey);
-
-    const c = document.createElement('canvas');
-    c.width = Math.max(1, Math.round(s.width * stripScale));
-    c.height = Math.max(1, Math.round(h * stripScale));
-    c.getContext('2d')!.drawImage(bitmap, sx, sy, sw, sh, 0, 0, c.width, c.height);
-    strip.push({ canvas: c, y0: band.y0, y1: band.y1 });
-    onProgress?.(i + 1, bands.length);
-    // Let the page paint between frames on long captures.
-    await new Promise((r) => setTimeout(r, 0));
-  }
-  const profile = sheetAnalyzer.finish();
-  const found = detectSheets(profile);
-  const k = s.width / aw; // analysis columns → CSS px (rows are already 1 per CSS px)
-  const toCss = <T extends { x0: number; x1: number }>(v: T): T => ({ ...v, x0: v.x0 * k, x1: v.x1 * k });
-  const sheets = found && toCss(found);
-  const ev = sheetEvidence(profile);
-  const evidence = ev && { ...evidenceSummary(ev), x0: ev.x0 * k, x1: ev.x1 * k };
-  const readings = sheetCandidates(ev, found, 3, k).map((c) => ({
-    ...c,
-    layout: toCss(c.layout),
-    grid: c.grid && toCss(c.grid),
+  const inputs: FrameInput[] = s.frames.map((f, i) => ({
+    blob: f.blob,
+    geom: s.geoms[i]!,
+    anchored: f.hints.textRuns.length > 0 || f.hints.blockEnds.length > 0,
   }));
-  return { rows: analyzer.finish(), strip, stripScale, sheets, readings, evidence };
+  const buildStrip = opts.buildStrip !== false && typeof document !== 'undefined';
+  const raw =
+    (await callWorker<RawAnalysis>(
+      {
+        type: 'analyze',
+        frames: inputs,
+        width: s.width,
+        buildStrip,
+        alignSeams: opts.alignSeams,
+      },
+      onProgress,
+    )) ??
+    (await analyzeFrames(inputs, s.width, {
+      buildStrip,
+      alignSeams: opts.alignSeams,
+      onProgress,
+    }));
+
+  const strip = raw.strip.map(({ bitmap, y0, y1 }) => {
+    const c = document.createElement('canvas');
+    c.width = bitmap.width;
+    c.height = bitmap.height;
+    c.getContext('2d')!.drawImage(bitmap, 0, 0);
+    bitmap.close();
+    return { canvas: c, y0, y1 };
+  });
+
+  return {
+    rows: raw.rows,
+    strip,
+    stripScale: raw.stripScale,
+    sheets: raw.sheets,
+    readings: raw.readings,
+    evidence: raw.evidence,
+    geoms: raw.geoms,
+    height: raw.height,
+    seamAdjusted: raw.seamAdjusted,
+    seamWarnings: raw.seamWarnings,
+  };
+}
+
+/** Runs `applyFilter` in the Studio worker for large page canvases, falling back inline. */
+export async function filterPixelsAsync(
+  img: ImageData,
+  filter: FilterId,
+  pxPerCss: number,
+): Promise<ImageData> {
+  if (filter === 'original') return img;
+  if (img.width * img.height >= 200_000) {
+    const copy = img.data.slice().buffer;
+    const out = await callWorker<ArrayBuffer>(
+      {
+        type: 'filter',
+        filter,
+        width: img.width,
+        height: img.height,
+        data: copy,
+        pxPerCss,
+      },
+      undefined,
+      [copy],
+    );
+    if (out) return new ImageData(new Uint8ClampedArray(out), img.width, img.height);
+  }
+  applyFilter(filter, img, pxPerCss);
+  return img;
 }

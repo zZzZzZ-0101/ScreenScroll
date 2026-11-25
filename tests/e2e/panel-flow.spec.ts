@@ -128,6 +128,7 @@ test('panel: speed, sharpness and page width are one click, and the window narro
   await expect(panel.getByTestId('width-note')).toHaveCount(0);
 
   await radio('Speed', 'Fast').click();
+  await radio('Sharpness', '2×').click();
   await radio('Page width', '1000 px').click();
   await expect(panel.getByTestId('width-note')).toHaveText(
     'The browser window narrows to 1000 px while capturing, then comes back.',
@@ -136,8 +137,17 @@ test('panel: speed, sharpness and page width are one click, and the window narro
   const stored = await serviceWorker.evaluate(
     async () => (await chrome.storage.local.get('settings')).settings.capture,
   );
-  expect(stored).toMatchObject({ speed: 'fast', width: 1000 });
-  // And back.
+  expect(stored).toMatchObject({ speed: 'fast', resolution: 'high', width: 1000 });
+  // And back; when permission is refused, Sharpness stays at Standard with an explanation.
+  await radio('Sharpness', '1×').click();
   await radio('Page width', 'As shown').click();
   await expect(panel.getByTestId('width-note')).toHaveCount(0);
+  await panel.evaluate(() => {
+    chrome.permissions.request = async () => false;
+  });
+  await radio('Sharpness', '3×').click();
+  await expect(panel.getByRole('alert')).toHaveText(
+    'Sharp capture needs the permission; it stays at Standard.',
+  );
+  await expect(radio('Sharpness', '1×')).toBeChecked();
 });

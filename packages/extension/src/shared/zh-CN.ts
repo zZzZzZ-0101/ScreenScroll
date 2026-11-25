@@ -432,6 +432,7 @@ export const ZH_CN: Record<string, string> = {
   'Scrolling on screen captures what you see, including pages that size themselves to the window.':
     '屏幕上滚动截取的就是你看到的内容，包括按窗口大小自适应的页面。',
   'Capturing in the background needs the permission; it stays on screen.': '后台截图需要该权限；保持在屏幕上截图。',
+  'Sharp capture needs the permission; it stays at Standard.': '高清截图需要该权限；保持在标准清晰度。',
   'Capture a window': '截取窗口',
   'Taking the picture in {n} s…': '{n} 秒后截图…',
   Window: '窗口',
@@ -449,4 +450,11 @@ export const ZH_CN: Record<string, string> = {
   'Number from 1': '从 1 重新编号',
   'Repeated on every page: {text}': '每页重复出现：{text}',
   'Hide headers and footers': '隐藏页眉页脚',
+  'Read pages now': '立即识别文字',
+  'Read again': '重新识别',
+  'Read: {n} lines.': '已识别：{n} 行。',
+  'Reading page {a} of {b}…': '正在识别第 {a}/{b} 页…',
+  'Use original offsets': '使用原始拼接位置',
+  'Realign seams automatically': '自动对齐接缝',
+  'Automatic seam alignment is turned off for this capture.': '此截图已关闭自动接缝对齐。',
 };

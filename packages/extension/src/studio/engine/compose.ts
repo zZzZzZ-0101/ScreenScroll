@@ -7,8 +7,11 @@ import {
   type FilterId,
   type PageSlice,
   type QualitySpec,
+  type Watermark,
 } from '@screenscroll/core';
 import { chooseImageFormat, type PageImage } from '@screenscroll/core/pdf';
+import { filterPixelsAsync } from './analysis';
+import { FONT_STACK } from './render-text';
 import type { FrameCache, LoadedSession } from './session';
 
 /**
@@ -44,8 +47,11 @@ export async function composePage(
   };
   if (region.repeat) await draw({ ...region, ...region.repeat }, 0);
   await draw(region, head * outDpr);
-  // The filter acts on the page, then mark-up goes on top in its own colours.
-  filterCanvas(ctx, filter, outDpr);
+  // The filter acts on the page (offloaded to the worker when large), then mark-up goes on top.
+  if (filter !== 'original') {
+    const img = ctx.getImageData(0, 0, w, h);
+    ctx.putImageData(await filterPixelsAsync(img, filter, outDpr), 0, 0);
+  }
   ctx.save();
   ctx.translate(0, head * outDpr);
   paintAnnotations(ctx, annotations, region, outDpr);
@@ -67,7 +73,7 @@ export async function composePage(
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
-/** Applies a page filter to the whole canvas; `pxPerCss` sizes its neighbourhoods. */
+/** Applies a page filter synchronously (for small preview canvases); `pxPerCss` sizes its neighbourhoods. */
 export function filterCanvas(ctx: Ctx, filter: FilterId, pxPerCss: number): void {
   if (filter === 'original') return;
   const { width, height } = ctx.canvas;
@@ -136,4 +142,41 @@ export async function encodePage(
     format === 'png' ? { type: 'image/png' } : { type: 'image/jpeg', quality: quality.jpegQuality },
   );
   return { bytes: new Uint8Array(await blob.arrayBuffer()), format, slice };
+}
+
+/**
+ * Draws the watermark centred and rotated over a page canvas (or a slice's band in a long
+ * image), matching the PDF's size, angle, colour and room limit.
+ */
+export function paintWatermark(
+  ctx: Ctx,
+  w: Watermark | undefined,
+  pxPerPt: number,
+  band?: { y: number; h: number },
+): void {
+  const text = w?.text.trim();
+  if (!w || !text) return;
+  const cw = ctx.canvas.width;
+  const y0 = band?.y ?? 0;
+  const bh = band?.h ?? ctx.canvas.height;
+  if (cw <= 0 || bh <= 0) return;
+  const theta = (w.angle * Math.PI) / 180;
+  const diag = Math.hypot(cw, bh);
+  const room = 0.85 * diag * (Math.abs(Math.cos(theta)) > 0.2 ? 1 : bh / diag);
+  let size = Math.max(1, w.sizePt * pxPerPt);
+  ctx.save();
+  ctx.font = `${size}px ${FONT_STACK}`;
+  const tw0 = ctx.measureText(text).width;
+  if (tw0 > room) {
+    size *= room / tw0;
+    ctx.font = `${size}px ${FONT_STACK}`;
+  }
+  ctx.translate(cw / 2, y0 + bh / 2);
+  ctx.rotate(-theta);
+  ctx.globalAlpha = w.opacity;
+  ctx.fillStyle = w.color;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 0, 0);
+  ctx.restore();
 }

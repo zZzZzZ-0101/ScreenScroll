@@ -322,7 +322,10 @@ test('mark up: no-ops, tiny drags and leaving mid-edit', async ({ context, servi
   expect((await anns()).annotations.map((a) => a.text)).toEqual(['kept', 'rabbit']);
 });
 
-test('break edits survive switching modes', async ({ context, serviceWorker }) => {
+test('break edits survive switching modes, undo/redo, and reloading the Studio', async ({
+  context,
+  serviceWorker,
+}) => {
   const studio = await capture(context, serviceWorker, 'article.html');
   const ys = () =>
     studio.evaluate(() =>
@@ -342,6 +345,17 @@ test('break edits survive switching modes', async ({ context, serviceWorker }) =
   await studio.getByRole('tab', { name: 'Pages' }).click();
   await studio.getByRole('tab', { name: 'Breaks' }).click();
   expect(await ys()).toEqual(edited);
+  // Undo and redo apply to break edits too.
+  await studio.keyboard.press('Control+z');
+  await expect.poll(ys).toEqual(before);
+  await studio.keyboard.press('Control+y');
+  await expect.poll(ys).toEqual(edited);
+  // Wait for the debounced project save, reload the Studio, and check the break edit stayed.
+  await studio.waitForTimeout(350);
+  await studio.reload();
+  await expect(studio.getByRole('button', { name: 'Save PDF' })).toBeVisible({ timeout: 60_000 });
+  expect(await ys()).toEqual(edited);
+  await studio.getByRole('tab', { name: 'Breaks' }).click();
   await expect(studio.getByRole('button', { name: 'Reset breaks' })).toBeEnabled();
   await studio.getByRole('button', { name: 'Reset breaks' }).click();
   expect(await ys()).toEqual(before);

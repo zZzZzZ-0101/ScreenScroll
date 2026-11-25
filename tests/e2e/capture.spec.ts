@@ -373,6 +373,42 @@ test('capture survives the service worker losing its in-memory state', async ({
   expect(result.frames.length).toBeLessThanOrEqual(Math.ceil(height / 720) + 1);
 });
 
+test('service-worker restart mid-capture recovers an In background (debugger) capture', async ({
+  context,
+  serviceWorker,
+}) => {
+  await serviceWorker.evaluate(async () => {
+    const { settings } = await chrome.storage.local.get('settings');
+    await chrome.storage.local.set({
+      settings: { ...(settings ?? {}), capture: { ...(settings?.capture ?? {}), quiet: true } },
+    });
+  });
+  const page = await context.newPage();
+  const url = `${FIXTURES}/article.html`;
+  await page.goto(url);
+  await page.bringToFront();
+  type RestartHook = {
+    start(id: number): Promise<string>;
+    wait(id: string): Promise<CaptureResult>;
+    forgetMemory(): void;
+  };
+  const id = await serviceWorker.evaluate(async (u) => {
+    const [tab] = await chrome.tabs.query({ active: true, url: u });
+    return (globalThis as unknown as { __spTest: RestartHook }).__spTest.start(tab!.id!);
+  }, url);
+  // Wipe all in-memory maps right away so grabQuiet and finish must hydrate from IndexedDB.
+  await serviceWorker.evaluate(() =>
+    (globalThis as unknown as { __spTest: RestartHook }).__spTest.forgetMemory(),
+  );
+  const result = await serviceWorker.evaluate(
+    (i) => (globalThis as unknown as { __spTest: RestartHook }).__spTest.wait(i),
+    id,
+  );
+  expect(result.done.status).toBe('complete');
+  expect(result.done.warnings).toEqual([]);
+  expect(result.frames.length).toBeGreaterThanOrEqual(3);
+});
+
 test('fixed backgrounds scroll with the page instead of repeating per frame', async ({
   context,
   serviceWorker,

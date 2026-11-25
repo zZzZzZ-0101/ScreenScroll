@@ -65,8 +65,12 @@ export interface OcrCardProps {
   /** Bytes to download for the model. */
   size: number;
   downloading: { done: number; total: number } | null;
+  /** Cached line count when pages have already been read, or null before reading. */
+  readCount: number | null;
+  reading: { done: number; total: number } | null;
   error: string | null;
   onDownload: () => void;
+  onRead: () => void;
 }
 
 const mb = (n: number) => `${(n / 1048576).toFixed(1)} MB`;
@@ -90,9 +94,27 @@ function OcrCard({ o }: { o: OcrCardProps }) {
       </p>
       <p className="text-[12px] text-neutral-600 dark:text-neutral-300">Pages {list}.</p>
       {o.ready ? (
-        <p className="pt-1 text-[12px]">
-          {t('Their text is read when you save, so the PDF can be searched.')}
-        </p>
+        <>
+          <p className="pt-1 text-[12px]">
+            {t('Their text is read when you save, so the PDF can be searched.')}
+          </p>
+          {o.reading ? (
+            <p className="pt-1 text-[12px] text-neutral-600 dark:text-neutral-300">
+              {t('Reading page {a} of {b}…', { a: o.reading.done, b: o.reading.total })}
+            </p>
+          ) : (
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              {o.readCount !== null && (
+                <span className="text-[12px] text-neutral-600 dark:text-neutral-300">
+                  {t('Read: {n} lines.', { n: o.readCount })}
+                </span>
+              )}
+              <button type="button" onClick={o.onRead} className={button}>
+                {o.readCount !== null ? t('Read again') : t('Read pages now')}
+              </button>
+            </div>
+          )}
+        </>
       ) : o.downloading ? (
         <div className="pt-1">
           <progress
@@ -188,16 +210,13 @@ function SheetsCard(props: SheetsCardProps) {
   // The found pages: the gaps reading has no grid of its own, it *is* the automatic result,
   // so it isn't listed twice.
   const autoReading = p.detected ? p.readings.find((r) => !r.grid) : confidentReading(p.readings);
-  const auto = p.detected
-    ? t('found from the gaps')
-    : autoReading
-      ? t(autoReading.label)
-      : null;
+  const auto = p.detected ? t('found from the gaps') : autoReading ? t(autoReading.label) : null;
   const others = p.readings.filter((r) => r.grid);
   // Pages set by hand stay one click away after choosing something else.
   const handGrid = p.grid && !p.readings.some((r) => sameGrid(r.grid, p.grid)) ? p.grid : null;
   const fromAuto = (): SheetGrid | null =>
-    p.grid ?? (p.detected ? gridOf(p.detected) : (autoReading?.grid ?? p.readings[0]?.grid ?? null));
+    p.grid ??
+    (p.detected ? gridOf(p.detected) : (autoReading?.grid ?? p.readings[0]?.grid ?? null));
   const fromScratch = (): SheetGrid => ({
     x0: 0,
     x1: p.width,
@@ -210,7 +229,11 @@ function SheetsCard(props: SheetsCardProps) {
     return found ? (
       <p className="mb-2 text-[12px] text-neutral-500" data-testid="sheets-hidden">
         {t('Document pages found, suggestion hidden.')}{' '}
-        <button type="button" className="underline hover:text-accent" onClick={() => p.onHints(true)}>
+        <button
+          type="button"
+          className="underline hover:text-accent"
+          onClick={() => p.onHints(true)}
+        >
           {t('Show')}
         </button>
       </p>
@@ -388,7 +411,9 @@ function SheetsCard(props: SheetsCardProps) {
       {p.mode !== 'original' && p.running.length > 0 && (
         <div className="pt-1 text-neutral-600 dark:text-neutral-300" data-testid="running-lines">
           <p className="truncate text-[12px]" title={p.running.join('\n')}>
-            {t('Repeated on every page: {text}', { text: p.running.map((r) => `“${r}”`).join(', ') })}
+            {t('Repeated on every page: {text}', {
+              text: p.running.map((r) => `“${r}”`).join(', '),
+            })}
           </p>
           <label className="flex items-center gap-2">
             <input
@@ -843,7 +868,9 @@ export function BreaksPanel(p: BreaksProps) {
           )}
         </p>
         <p className="pt-2 text-[12px] text-neutral-500">
-          {t('To place breaks yourself instead, turn off “One PDF page per document page” in Pages.')}
+          {t(
+            'To place breaks yourself instead, turn off “One PDF page per document page” in Pages.',
+          )}
         </p>
       </aside>
     );
