@@ -1,4 +1,4 @@
-import { intersect, type Rect } from '@screenscroll/core';
+import { intersect, type Rect, type Region } from '@screenscroll/core';
 
 /** Something that scrolls vertically: the document or an inner element (CAPTURE §3). */
 export interface Target {
@@ -15,6 +15,50 @@ export function isScroller(el: Element): boolean {
   if (el.scrollHeight <= el.clientHeight + 2) return false;
   const oy = getComputedStyle(el).overflowY;
   return oy === 'auto' || oy === 'scroll' || oy === 'overlay';
+}
+
+/** True when an element is visible and clips wide content behind a horizontal scrollbar. */
+export function isHorizontalClipper(el: Element): boolean {
+  if (el.scrollWidth <= el.clientWidth + 2 || el.clientWidth < 2 || el.clientHeight < 2) {
+    return false;
+  }
+  const cs = getComputedStyle(el);
+  if (cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) === 0) {
+    return false;
+  }
+  const ox = cs.overflowX;
+  return ox === 'auto' || ox === 'scroll' || ox === 'overlay';
+}
+
+/**
+ * Counts visible horizontally-scrolling containers inside the capture area that clip wide
+ * content (CAPTURE §3: nested scrollers that clip content emit a warning).
+ */
+export function countHorizontalClippers(
+  root: Element,
+  region?: Region,
+  targetBox?: Rect,
+  scrollOffset = 0,
+): number {
+  let count = 0;
+  const candidates: Element[] = [];
+  if (root !== document.body && root !== document.documentElement) candidates.push(root);
+  for (const el of root.querySelectorAll('*')) candidates.push(el);
+  for (const el of candidates) {
+    if (el.closest('[data-screenscroll]')) continue;
+    if (!isHorizontalClipper(el)) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) continue;
+    if (region && targetBox) {
+      const top = r.top - targetBox.y + scrollOffset;
+      const bottom = r.bottom - targetBox.y + scrollOffset;
+      if (r.right <= region.x0 || r.left >= region.x1 || bottom <= region.y0 || top >= region.y1) {
+        continue;
+      }
+    }
+    count++;
+  }
+  return count;
 }
 
 /** The closest scrolling ancestor (or the element itself), or null for the document. */

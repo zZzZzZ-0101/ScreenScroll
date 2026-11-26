@@ -84,7 +84,7 @@ Legend: `[ ]` todo · `(L#)` = lesson from `docs/product/PRIOR_ART.md` §7 · `�
 ## M6 — Beyond FireShot (pick in order; ~4 h+)
 
 - [x] **Capture at width W** (temporary window resize + restore) for legible A4 (L6). → CAPTURE §8
-- [ ] **Clean (reader) capture** via Readability + print-like stylesheet; optional "real text PDF via print". → CAPTURE §12
+- [x] **Clean (reader) capture** via Readability + print-like stylesheet (2026-11-26: `@mozilla/readability`, sanitized & reversible `MutationLog` mount; optional real-text `window.print()` left for later). → CAPTURE §12
 - [x] **Overlay killer**: one click hides modals/cookie banners/chat bubbles, then recapture.
 - [x] **Auto-redact**: detect emails/phones/card numbers in DOM text → checklist → blur.
 - [x] Table header repetition across pages. → PAGINATION §7
@@ -99,8 +99,8 @@ Legend: `[ ]` todo · `(L#)` = lesson from `docs/product/PRIOR_ART.md` §7 · `�
 Goal: the most capable screen capture tool available, that still looks simple. Automate first; make every automatic decision editable; ask the user only where confidence is low.
 
 **Highest resolution**
-- [ ] Capture at up to 2–3× the screen's pixel density (temporary device-scale override via `chrome.debugger` `Emulation.setDeviceMetricsOverride`, or browser zoom + restore). *Verify: debugger banner, memory per frame, rate limits.* Setting: Standard / High / Maximum.
-- [ ] Never downscale on export unless asked; show the effective DPI per page.
+- [x] Capture at up to 2–3× the screen's pixel density (temporary device-scale override via `chrome.debugger` `Emulation.setDeviceMetricsOverride`, or browser zoom + restore). Setting: Standard / High / Maximum. (2026-11-26: production `debugger` permission fixed and verified.)
+- [x] Never downscale on export unless asked; show the effective DPI per page. (2026-11-26: effective DPI shown beside PDF quality and in Details; Best/Lossless keep every pixel.)
 
 **Smarter automation (less hand-editing)**
 - [x] Confidence per break: highlight only the breaks that "need a look"; jump between them.
@@ -123,10 +123,10 @@ Goal: the most capable screen capture tool available, that still looks simple. A
 - [ ] Timed series (every N seconds) and whole-window capture.
 
 **Editing**
-- [ ] Resize and rotate handles, multi-select, align and snap, layers order.
+- [x] Resize and crop handles, arrow/line endpoint handles, arrow-key nudge (2026-11-26; rotate handles, multi-select, align/snap, layers order left for later).
 - [ ] Shapes with fill and opacity, callouts, text with background, stamps, zoom-in inset (magnified detail).
-- [ ] Brush blur, find-text-and-redact, redact-all-matches.
-- [ ] Page tools: reorder, delete, duplicate, insert blank, split one page, per-page crop.
+- [x] Find-text-and-redact, redact-all-matches, in-Studio `Ctrl+F` search & OCR bridge (2026-11-26; brush blur left for later).
+- [x] Page tools: reversible exclude/restore & reorder in Thumbnails across preview, export and merge (2026-11-26; duplicate, insert blank, split one page, per-page crop left for later).
 - [ ] Combine captures side by side or stacked; compare two captures (visual diff).
 
 **Interface**
@@ -134,7 +134,7 @@ Goal: the most capable screen capture tool available, that still looks simple. A
 - [x] Export/import of saved captures and settings as a backup file.
 
 **Output**
-- [ ] Markdown/HTML with images, SVG, PDF/A; presets ("Print A4", "Share small", "Archive").
+- [x] Output presets ("Print A4", "Share small", "Archive") with inline Undo and Copy text (2026-11-26; Markdown/HTML with images, SVG, PDF/A left for later).
 
 ## M8 — Pages you can trust, and new outputs (user choice, 2026-10-31: 1, 2, 5 first, the rest later)
 

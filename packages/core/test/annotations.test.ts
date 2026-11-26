@@ -11,12 +11,18 @@ import {
   emptyHistory,
   hitTest,
   moveBy,
+  moveByClamped,
+  moveEndpoint,
+  moveRegion,
   nextStepNumber,
   redactions,
   redo,
+  resizeAnnotation,
+  resizeRegion,
   undo,
   type Annotation,
   type AnnotationCtx,
+  type ResizeHandle,
 } from '../src/annotations.js';
 
 const s = DEFAULT_STYLE;
@@ -159,5 +165,149 @@ describe('drawAnnotations', () => {
     const { ctx, calls } = recorder();
     drawAnnotations(ctx, [rect], { x0: 50, y0: 80, x1: 800, y1: 1000 }, 1);
     expect(calls).toContain('translate(-50,-80)');
+  });
+});
+
+describe('resizeAnnotation', () => {
+  const doc = { width: 800, height: 600 };
+
+  it('resizes every box kind cleanly across all 8 handles', () => {
+    const base: Annotation = { id: 'r1', kind: 'rect', style: s, x: 100, y: 100, w: 200, h: 100 };
+    const cases: Array<[ResizeHandle, number, number, { x: number; y: number; w: number; h: number }]> = [
+      ['nw', -20, -10, { x: 80, y: 90, w: 220, h: 110 }],
+      ['n', 99, -25, { x: 100, y: 75, w: 200, h: 125 }],
+      ['ne', 30, -15, { x: 100, y: 85, w: 230, h: 115 }],
+      ['e', 40, 99, { x: 100, y: 100, w: 240, h: 100 }],
+      ['se', 25, 35, { x: 100, y: 100, w: 225, h: 135 }],
+      ['s', 99, 50, { x: 100, y: 100, w: 200, h: 150 }],
+      ['sw', -30, 20, { x: 70, y: 100, w: 230, h: 120 }],
+      ['w', -40, 99, { x: 60, y: 100, w: 240, h: 100 }],
+    ];
+    for (const [handle, dx, dy, expected] of cases) {
+      const out = resizeAnnotation(base, handle, dx, dy, doc);
+      expect(out.kind).toBe('rect');
+      if (out.kind === 'rect') {
+        expect({ x: out.x, y: out.y, w: out.w, h: out.h }).toEqual(expected);
+      }
+    }
+
+    for (const kind of ['ellipse', 'blur', 'pixelate'] as const) {
+      const box: Annotation = { id: kind, kind, style: s, x: 50, y: 60, w: 100, h: 80 };
+      const out = resizeAnnotation(box, 'se', 20, -10, doc);
+      expect(bounds(out)).toEqual({ x: 50, y: 60, width: 120, height: 70 });
+    }
+  });
+
+  it('flips edges cleanly when dragged past the opposite edge', () => {
+    const base: Annotation = { id: 'r1', kind: 'rect', style: s, x: 100, y: 100, w: 100, h: 80 };
+    // Drag east edge past west edge (x=100) to x=40 -> [40, 100].
+    const flipE = resizeAnnotation(base, 'e', -160, 0, doc);
+    expect(bounds(flipE)).toEqual({ x: 40, y: 100, width: 60, height: 80 });
+    // Drag west edge past east edge (x=200) to x=250 -> [200, 250].
+    const flipW = resizeAnnotation(base, 'w', 150, 0, doc);
+    expect(bounds(flipW)).toEqual({ x: 200, y: 100, width: 50, height: 80 });
+    // Diagonal flip via nw past se (200, 180) to (260, 230).
+    const flipNW = resizeAnnotation(base, 'nw', 160, 130, doc);
+    expect(bounds(flipNW)).toEqual({ x: 200, y: 180, width: 60, height: 50 });
+  });
+
+  it('clamps strictly within document bounds and enforces minimum size >= 4', () => {
+    const base: Annotation = { id: 'r1', kind: 'blur', style: s, x: 100, y: 100, w: 100, h: 100 };
+    // Drag beyond all document edges.
+    const pastMin = resizeAnnotation(base, 'nw', -500, -500, doc);
+    expect(bounds(pastMin)).toEqual({ x: 0, y: 0, width: 200, height: 200 });
+    const pastMax = resizeAnnotation(base, 'se', 1500, 1500, doc);
+    expect(bounds(pastMax)).toEqual({ x: 100, y: 100, width: 700, height: 500 });
+
+    // Attempt to collapse to 0 or 1 px: minimum 4 px enforced.
+    const tiny = resizeAnnotation(base, 'e', -99, 0, doc);
+    expect(bounds(tiny)).toEqual({ x: 100, y: 100, width: 4, height: 100 });
+    const tinyFlip = resizeAnnotation(base, 'e', -101, 0, doc);
+    expect(bounds(tinyFlip)).toEqual({ x: 96, y: 100, width: 4, height: 100 });
+
+    // Near boundary x = 0: stays inside [0, width] with w = 4.
+    const atEdge: Annotation = { id: 'e0', kind: 'rect', style: s, x: 0, y: 0, w: 20, h: 20 };
+    const clampedEdge = resizeAnnotation(atEdge, 'e', -50, -50, doc);
+    expect(bounds(clampedEdge)).toEqual({ x: 0, y: 0, width: 4, height: 20 });
+
+    // Non-box annotations are returned unchanged.
+    expect(resizeAnnotation(arrow, 'se', 50, 50, doc)).toBe(arrow);
+    expect(resizeAnnotation(pen, 'se', 50, 50, doc)).toBe(pen);
+  });
+});
+
+describe('moveEndpoint', () => {
+  const doc = { width: 800, height: 600 };
+
+  it('moves start and end points of arrows and lines and clamps to document bounds', () => {
+    const movedStart = moveEndpoint(arrow, 'start', 20, 30, doc);
+    expect(movedStart.kind === 'arrow' && [movedStart.x1, movedStart.y1, movedStart.x2, movedStart.y2]).toEqual([
+      20, 30, 100, 100,
+    ]);
+    const movedEnd = moveEndpoint(arrow, 'end', 999, -20, doc);
+    expect(movedEnd.kind === 'arrow' && [movedEnd.x1, movedEnd.y1, movedEnd.x2, movedEnd.y2]).toEqual([
+      0, 0, 800, 0,
+    ]);
+
+    const line: Annotation = { id: 'l1', kind: 'line', style: s, x1: 10, y1: 10, x2: 50, y2: 50 };
+    const lineEnd = moveEndpoint(line, 'start', -100, 700, doc);
+    expect(lineEnd.kind === 'line' && [lineEnd.x1, lineEnd.y1]).toEqual([0, 600]);
+
+    // Non-line/arrow unchanged.
+    expect(moveEndpoint(rect, 'end', 50, 50, doc)).toBe(rect);
+  });
+});
+
+describe('resizeRegion and moveRegion', () => {
+  const doc = { width: 1000, height: 800 };
+  const crop = { x0: 100, x1: 500, y0: 100, y1: 400 };
+
+  it('resizes across all 8 handles, normalizes flipped drags, clamps, and enforces minSize', () => {
+    expect(resizeRegion(crop, 'nw', -50, -20, doc)).toEqual({ x0: 50, x1: 500, y0: 80, y1: 400 });
+    expect(resizeRegion(crop, 'se', 100, 50, doc)).toEqual({ x0: 100, x1: 600, y0: 100, y1: 450 });
+    expect(resizeRegion(crop, 'n', 99, 50, doc)).toEqual({ x0: 100, x1: 500, y0: 150, y1: 400 });
+    expect(resizeRegion(crop, 's', 99, -50, doc)).toEqual({ x0: 100, x1: 500, y0: 100, y1: 350 });
+    expect(resizeRegion(crop, 'w', 50, 99, doc)).toEqual({ x0: 150, x1: 500, y0: 100, y1: 400 });
+    expect(resizeRegion(crop, 'e', -50, 99, doc)).toEqual({ x0: 100, x1: 450, y0: 100, y1: 400 });
+    expect(resizeRegion(crop, 'ne', 1000, -500, doc)).toEqual({ x0: 100, x1: 1000, y0: 0, y1: 400 });
+    expect(resizeRegion(crop, 'sw', -500, 1000, doc)).toEqual({ x0: 0, x1: 500, y0: 100, y1: 800 });
+
+    // Flip east edge past west edge.
+    expect(resizeRegion(crop, 'e', -450, 0, doc)).toEqual({ x0: 50, x1: 100, y0: 100, y1: 400 });
+
+    // Default minSize = 20 enforced.
+    const minClamped = resizeRegion(crop, 'e', -395, 0, doc);
+    expect(minClamped.x1 - minClamped.x0).toBe(20);
+    expect(minClamped).toEqual({ x0: 100, x1: 120, y0: 100, y1: 400 });
+
+    // Custom minSize.
+    const customMin = resizeRegion(crop, 's', -290, 0, doc, 40);
+    expect(customMin.y1 - customMin.y0).toBe(300); // s ignores dx
+    const customMinY = resizeRegion(crop, 's', 0, -290, doc, 40);
+    expect(customMinY.y1 - customMinY.y0).toBe(40);
+  });
+
+  it('moves a crop region preserving size and clamping within document bounds', () => {
+    expect(moveRegion(crop, 50, -30, doc)).toEqual({ x0: 150, x1: 550, y0: 70, y1: 370 });
+    expect(moveRegion(crop, -500, -500, doc)).toEqual({ x0: 0, x1: 400, y0: 0, y1: 300 });
+    expect(moveRegion(crop, 900, 900, doc)).toEqual({ x0: 600, x1: 1000, y0: 500, y1: 800 });
+  });
+});
+
+describe('moveByClamped', () => {
+  const doc = { width: 400, height: 300 };
+
+  it('nudges annotations and clamps cleanly against document edges', () => {
+    const r: Annotation = { id: 'r', kind: 'rect', style: s, x: 5, y: 10, w: 100, h: 50 };
+    expect(bounds(moveByClamped(r, -10, -10, doc))).toEqual({ x: 0, y: 0, width: 100, height: 50 });
+    expect(bounds(moveByClamped(r, 1000, 1000, doc))).toEqual({
+      x: 300,
+      y: 250,
+      width: 100,
+      height: 50,
+    });
+    // Already against edge -> returns identical reference.
+    const atZero: Annotation = { ...r, x: 0, y: 0 };
+    expect(moveByClamped(atZero, -1, 0, doc)).toBe(atZero);
   });
 });

@@ -2,7 +2,14 @@ import type { Lang } from './i18n';
 import type { Annotation, CaptureLimits, DomHints, Rect, Region } from '@screenscroll/core';
 
 /** CAPTURE §14. Selection, element and scroll-area modes start with an in-page picker. */
-export type CaptureMode = 'full' | 'visible' | 'selection' | 'lines' | 'element' | 'pick-scroller';
+export type CaptureMode =
+  | 'full'
+  | 'visible'
+  | 'selection'
+  | 'lines'
+  | 'element'
+  | 'pick-scroller'
+  | 'reader';
 
 /** Background → content script. */
 export interface StartCapture {
@@ -61,6 +68,10 @@ export interface CaptureDone {
   output?: 'studio' | 'pdf' | 'copy';
   /** Area mode: marks drawn before capturing, in capture coordinates. */
   annotations?: Annotation[];
+  /** Document-space region captured, so Overlay Killer recapture replays it without re-picking. */
+  region?: Region;
+  /** Clean (reader) mode: extracted article title, kept alongside the source URL. */
+  title?: string;
 }
 
 /** Studio → background → page: a short message on the captured page (e.g. "Copied"). */
@@ -71,10 +82,34 @@ export interface PageNotice {
   tabId?: number;
 }
 
-/** Background/panel → content script: the pill's two buttons, from the toolbar panel. */
+/** Background/panel → content script: the pill's stop/cancel actions, from the toolbar panel. */
 export interface CaptureControl {
   type: 'sp:control';
   action: 'stop' | 'cancel';
+}
+
+/** Panel/background → content script: pause a running capture between frames. */
+export interface CapturePause {
+  type: 'sp:pause';
+  sessionId: string;
+}
+
+/** Panel/background → content script: resume a paused capture. */
+export interface CaptureResume {
+  type: 'sp:resume';
+  sessionId: string;
+}
+
+/** Batch page → background: stop the running batch and skip remaining items. */
+export interface BatchCancel {
+  type: 'sp:batch-cancel';
+}
+
+/** Content script → background: background capture could not apply; detach quiet debugger and
+ * switch to sharp capture if 2×/3× was requested. */
+export interface QuietFallback {
+  type: 'sp:quiet-fallback';
+  sessionId: string;
 }
 
 /** Grab refused because the capturing tab is not in front; the page waits and retries. */
@@ -90,5 +125,5 @@ export interface Recapture {
 export const OVERLAY_WARNING =
   'A pop-up or overlay was covering the page and appears in the capture. Hide pop-ups and capture again to remove it.';
 
-export type ToBackground = GrabFrame | CaptureDone;
+export type ToBackground = GrabFrame | CaptureDone | QuietFallback;
 export type GrabResult = { ok: true } | { ok: false; error: string };

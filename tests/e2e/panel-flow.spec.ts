@@ -146,8 +146,8 @@ test('panel: speed, sharpness and page width are one click, and the window narro
     chrome.permissions.request = async () => false;
   });
   await radio('Sharpness', '3×').click();
-  await expect(panel.getByRole('alert')).toHaveText(
-    'Sharp capture needs the permission; it stays at Standard.',
-  );
+  await expect(
+    panel.getByRole('alert').filter({ hasText: 'Sharp capture needs the permission' }),
+  ).toHaveText('Sharp capture needs the permission; it stays at Standard.');
   await expect(radio('Sharpness', '1×')).toBeChecked();
 });

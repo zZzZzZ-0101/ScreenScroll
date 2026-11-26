@@ -1,6 +1,7 @@
 import { blockedReason, PAPERS, type PaperId } from '@screenscroll/core';
 import {
   AppWindow,
+  BookOpen,
   Crosshair,
   Archive,
   Layers,
@@ -16,10 +17,19 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { lastSession, storageSummary, type SessionRecord } from '@/shared/db';
-import type { CaptureMode } from '@/shared/messages';
+import type { CaptureMode, CapturePause, CaptureResume } from '@/shared/messages';
 import { loadSettings, saveSettings, type Settings } from '@/shared/settings';
 import { ThemeSwitch } from '@/shared/ThemeSwitch';
 import { t } from '@/shared/i18n';
+
+/** Verifies debugger permission (resolves immediately when declared in manifest.permissions). */
+async function ensureDebuggerPermission(): Promise<boolean> {
+  try {
+    return await chrome.permissions.request({ permissions: ['debugger'] });
+  } catch {
+    return chrome.permissions.contains({ permissions: ['debugger'] }).catch(() => false);
+  }
+}
 
 /**
  * UI §1: the small panel under the toolbar icon. One main action, every other way to
@@ -51,8 +61,15 @@ const MODES: Array<[CaptureMode, string, typeof Monitor, string]> = [
     PanelTop,
     'Click a panel that scrolls by itself: a mail list, a document viewer',
   ],
+  ['reader', 'Clean page', BookOpen, 'Article text and images without sidebars or ads'],
 ];
 const DELAYS = [0, 3, 5, 10];
+
+interface RunningCapture {
+  sessionId: string;
+  tabId: number;
+  paused: boolean;
+}
 
 export function App() {
   const [error, setError] = useState<string | null>(null);
@@ -62,7 +79,7 @@ export function App() {
   const [stored, setStored] = useState<{ count: number; bytes: number } | null>(null);
   const [delay, setDelay] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [running, setRunning] = useState(false);
+  const [running, setRunning] = useState<RunningCapture | null>(null);
 
   useEffect(() => {
     void loadSettings().then(setSettings);
@@ -75,8 +92,8 @@ export function App() {
     // A capture already running here (perhaps started by accident): offer the way out first.
     void chrome.runtime
       .sendMessage({ type: 'sp:running' })
-      .then((r: unknown) => setRunning(!!r))
-      .catch(() => setRunning(false));
+      .then((r: RunningCapture | null | undefined) => setRunning(r ?? null))
+      .catch(() => setRunning(null));
     // Say up front when this page can't be captured, instead of after a click.
     void (async () => {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -96,7 +113,7 @@ export function App() {
     setBusy(true);
     setError(null);
     // The timer is for menus and tooltips; the pickers wait for the user anyway.
-    const delayMs = mode === 'full' || mode === 'visible' ? delay * 1000 : 0;
+    const delayMs = mode === 'full' || mode === 'visible' || mode === 'reader' ? delay * 1000 : 0;
     const res = (await chrome.runtime
       .sendMessage({ type: 'sp:popup-capture', mode, delayMs })
       .catch((e: unknown) => ({ ok: false, error: String(e) }))) as { ok: boolean; error?: string };
@@ -114,7 +131,24 @@ export function App() {
     if (r.ok) window.close();
     else {
       // Nothing was running after all (an interrupted capture's leftover): back to normal.
-      setRunning(false);
+      setRunning(null);
+      setError(t('No capture was running on this tab. You can capture it now.'));
+    }
+  };
+
+  const togglePause = async () => {
+    if (!running) return;
+    const nextPaused = !running.paused;
+    const msg: CapturePause | CaptureResume = nextPaused
+      ? { type: 'sp:pause', sessionId: running.sessionId }
+      : { type: 'sp:resume', sessionId: running.sessionId };
+    const r = (await chrome.runtime.sendMessage(msg).catch(() => ({ ok: false }))) as {
+      ok: boolean;
+    };
+    if (r.ok) {
+      setRunning((cur) => cur && { ...cur, paused: nextPaused });
+    } else {
+      setRunning(null);
       setError(t('No capture was running on this tab. You can capture it now.'));
     }
   };
@@ -124,7 +158,7 @@ export function App() {
     window.close();
   };
 
-  const disabled = busy || !!blocked || running;
+  const disabled = busy || !!blocked || !!running;
   const segment = (on: boolean) =>
     `rounded px-2 py-0.5 focus-visible:outline-2 focus-visible:outline-accent ${on ? 'bg-neutral-200 font-medium dark:bg-neutral-700' : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'}`;
   const row = 'flex items-center justify-between gap-2 py-1';
@@ -169,11 +203,19 @@ export function App() {
           className="mb-2 rounded-lg border border-accent bg-accent/10 p-2"
         >
           <p className="mb-2">
-            {t('Capturing this page. On the page, press')}{' '}
+            {running.paused ? t('Capture paused. On the page, press') : t('Capturing this page. On the page, press')}{' '}
             <kbd className="rounded border border-neutral-400 px-1 font-sans text-[11px]">Esc</kbd>{' '}
             {t('to cancel, or:')}
           </p>
-          <div className="flex gap-2">
+          <div className="flex gap-1.5">
+            <button
+              type="button"
+              onClick={() => void togglePause()}
+              title={running.paused ? t('Resume capture') : t('Pause capture')}
+              className="rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:border-neutral-600 dark:hover:bg-neutral-800"
+            >
+              {running.paused ? t('Resume') : t('Pause')}
+            </button>
             <button
               type="button"
               onClick={() => void control('stop')}
@@ -186,7 +228,7 @@ export function App() {
               type="button"
               onClick={() => void control('cancel')}
               title={t('Stop and keep nothing')}
-              className="flex-1 rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:border-neutral-600 dark:hover:bg-neutral-800"
+              className="rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:border-neutral-600 dark:hover:bg-neutral-800"
             >
               {t('Cancel')}
             </button>
@@ -297,11 +339,8 @@ export function App() {
               ]}
               onChange={(v) => {
                 void (async () => {
-                  // Asked while the click still counts as a user gesture.
                   if (v === 'quiet') {
-                    const ok = await chrome.permissions
-                      .request({ permissions: ['debugger'] })
-                      .catch(() => false);
+                    const ok = await ensureDebuggerPermission();
                     if (!ok) {
                       setError(
                         t('Capturing in the background needs the permission; it stays on screen.'),
@@ -328,11 +367,8 @@ export function App() {
               ]}
               onChange={(resolution) => {
                 void (async () => {
-                  // Asked while the click still counts as a user gesture.
                   if (resolution !== 'standard') {
-                    const ok = await chrome.permissions
-                      .request({ permissions: ['debugger'] })
-                      .catch(() => false);
+                    const ok = await ensureDebuggerPermission();
                     if (!ok) {
                       setError(t('Sharp capture needs the permission; it stays at Standard.'));
                       return;

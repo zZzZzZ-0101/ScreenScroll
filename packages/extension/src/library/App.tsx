@@ -1,6 +1,24 @@
-import { ArchiveRestore, Download, ExternalLink, Files, FolderOpen, ImageUp, Search, Trash2 } from 'lucide-react';
+import {
+  ArchiveRestore,
+  Check,
+  Download,
+  ExternalLink,
+  Files,
+  FolderOpen,
+  ImageUp,
+  Pencil,
+  Search,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { deleteCapture, deleteOlderThan, listCaptures, type StoredCapture } from '@/shared/db';
+import {
+  deleteCapture,
+  deleteOlderThan,
+  listCaptures,
+  renameCapture,
+  type StoredCapture,
+} from '@/shared/db';
 import { loadSettings, saveSettings } from '@/shared/settings';
 import { backupCaptures, restoreCaptures } from '@/shared/backup';
 import { importImage } from '@/shared/import-image';
@@ -29,7 +47,7 @@ export function App() {
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
-  /** Deleting several at once asks once more, in place: "Delete 5 captures?". */
+  /** Deleting captures asks once more, in place: "Delete N for good". */
   const [confirm, setConfirm] = useState<string[] | null>(null);
   const [note, setNote] = useState<string | null>(null);
   /** Captures being merged, in the list's order (oldest first, the usual reading order). */
@@ -138,6 +156,18 @@ export function App() {
     }
   };
 
+  const rename = async (id: string, title: string) => {
+    const clean = title.trim();
+    if (!clean) return;
+    try {
+      await renameCapture(id, clean);
+      await refresh();
+      setNote(t('Capture renamed.'));
+    } catch (e) {
+      setNote(t('Could not rename: {why}', { why: e instanceof Error ? e.message : String(e) }));
+    }
+  };
+
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return (items ?? []).filter(
@@ -232,17 +262,25 @@ export function App() {
           onClick={() => {
             const ids = [...selected];
             setNote('Writing the backup…');
-            void backupCaptures(ids).then((blob) => {
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `screenscroll-captures-${new Date().toISOString().slice(0, 10)}.ssbackup`;
-              a.click();
-              setTimeout(() => URL.revokeObjectURL(url), 60_000);
-              setNote(
-                `Backup of ${ids.length || items!.length} ${(ids.length || items!.length) === 1 ? 'capture' : 'captures'} saved (${(blob.size / 1048576).toFixed(1)} MB).`,
+            void backupCaptures(ids)
+              .then((blob) => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `screenscroll-captures-${new Date().toISOString().slice(0, 10)}.ssbackup`;
+                a.click();
+                setTimeout(() => URL.revokeObjectURL(url), 60_000);
+                setNote(
+                  `Backup of ${ids.length || items!.length} ${(ids.length || items!.length) === 1 ? 'capture' : 'captures'} saved (${(blob.size / 1048576).toFixed(1)} MB).`,
+                );
+              })
+              .catch((err: unknown) =>
+                setNote(
+                  t('Could not write backup: {why}', {
+                    why: err instanceof Error ? err.message : String(err),
+                  }),
+                ),
               );
-            });
           }}
         >
           <Download aria-hidden size={15} /> Back up{selected.size ? ` (${selected.size})` : ''}
@@ -403,7 +441,8 @@ export function App() {
                 return n;
               })
             }
-            onDelete={() => void remove([c.session.id])}
+            onDelete={() => setConfirm([c.session.id])}
+            onRename={(title) => void rename(c.session.id, title)}
             busy={busy}
             query={query}
           />
@@ -418,12 +457,15 @@ function Row(p: {
   checked: boolean;
   onCheck: (on: boolean) => void;
   onDelete: () => void;
+  onRename: (title: string) => void;
   busy: boolean;
   query: string;
 }) {
   const { session, bytes, preview, text } = p.item;
   const hit = snippet(text, p.query, `${session.title} ${session.url}`);
   const [src, setSrc] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(session.title);
   useEffect(() => {
     if (!preview) return;
     const url = URL.createObjectURL(preview);
@@ -444,6 +486,11 @@ function Row(p: {
   } catch {
     /* not a web address */
   }
+  const commitRename = () => {
+    const clean = draft.trim();
+    setEditing(false);
+    if (clean && clean !== session.title) p.onRename(clean);
+  };
   return (
     <li className="flex items-center gap-3 p-2" data-testid="capture-row">
       <input
@@ -459,9 +506,54 @@ function Row(p: {
         )}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate font-medium" title={title}>
-          {title}
-        </p>
+        {editing ? (
+          <div className="flex items-center gap-1">
+            <input
+              type="text"
+              autoFocus
+              aria-label={t('Capture title')}
+              data-testid="rename-input"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  commitRename();
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setEditing(false);
+                  setDraft(session.title);
+                }
+              }}
+              className="min-w-0 flex-1 rounded border border-accent bg-white px-1.5 py-0.5 text-[13px] outline-none dark:bg-neutral-950"
+            />
+            <button
+              type="button"
+              aria-label={t('Save name')}
+              title={t('Save name')}
+              onClick={commitRename}
+              className="rounded p-1 text-accent hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            >
+              <Check aria-hidden size={14} />
+            </button>
+            <button
+              type="button"
+              aria-label={t('Cancel')}
+              title={t('Cancel')}
+              onClick={() => {
+                setEditing(false);
+                setDraft(session.title);
+              }}
+              className="rounded p-1 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            >
+              <X aria-hidden size={14} />
+            </button>
+          </div>
+        ) : (
+          <p className="truncate font-medium" title={title}>
+            {title}
+          </p>
+        )}
         <p className="truncate text-neutral-500">
           {[site, when, formatBytes(bytes), session.status !== 'complete' ? 'incomplete' : '']
             .filter(Boolean)
@@ -475,6 +567,20 @@ function Row(p: {
           </p>
         )}
       </div>
+      <button
+        type="button"
+        aria-label={t('Rename')}
+        title={t('Rename')}
+        data-testid="rename-capture"
+        disabled={p.busy}
+        onClick={() => {
+          setDraft(session.title || title);
+          setEditing(true);
+        }}
+        className="rounded-md p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-white"
+      >
+        <Pencil aria-hidden size={15} />
+      </button>
       <button
         type="button"
         disabled={!session.frameCount}

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  estimateScreens,
   isStuck,
   nextStep,
   type LoopState,
@@ -171,5 +172,32 @@ describe('isStuck', () => {
     expect(isStuck(1600, 800, 800)).toBe(true);
     expect(isStuck(1600, 1600, 800)).toBe(false);
     expect(isStuck(0, 0, null)).toBe(false);
+  });
+});
+
+describe('estimateScreens', () => {
+  it('computes ceiling of totalHeight / stepHeight', () => {
+    expect(estimateScreens(2000, 800)).toBe(3);
+    expect(estimateScreens(1600, 800)).toBe(2);
+    expect(estimateScreens(600, 800)).toBe(1);
+    expect(estimateScreens(2000, 744)).toBe(3);
+  });
+
+  it('respects minScreens floor and clamps invalid minScreens to 1', () => {
+    expect(estimateScreens(1200, 800, 5)).toBe(5);
+    expect(estimateScreens(2000, 800, 0)).toBe(3);
+    expect(estimateScreens(2000, 800, NaN)).toBe(3);
+    expect(estimateScreens(0, 800, 3.8)).toBe(3);
+  });
+
+  it('handles zero, negative, NaN, and Infinity safely with at least 1', () => {
+    expect(estimateScreens(0, 800)).toBe(1);
+    expect(estimateScreens(-500, 800)).toBe(1);
+    expect(estimateScreens(2000, 0)).toBe(1);
+    expect(estimateScreens(2000, -100)).toBe(1);
+    expect(estimateScreens(NaN, 800)).toBe(1);
+    expect(estimateScreens(2000, NaN)).toBe(1);
+    expect(estimateScreens(Infinity, 800)).toBe(1);
+    expect(estimateScreens(2000, Infinity)).toBe(1);
   });
 });

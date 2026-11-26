@@ -32,14 +32,13 @@ export default defineConfig({
       'downloads',
       'clipboardWrite',
       'contextMenus',
-      ...(env.mode === 'e2e' ? ['debugger'] : []),
+      // Sharp capture (2×/3×) and In-background capture use chrome.debugger. Chrome MV3
+      // does not allow 'debugger' in optional_permissions, so it must be declared here.
+      'debugger',
     ],
     // captureVisibleTab accepts only <all_urls> or an activeTab grant, so the e2e build
     // (which cannot click the toolbar) needs <all_urls>. Production asks for nothing.
     host_permissions: env.mode === 'e2e' ? ['<all_urls>'] : [],
-    // Sharp capture (Settings → Sharpness) renders the page at 2–3× through the debugger. It
-    // is asked for only when the user picks High or Maximum; the e2e build has it granted.
-    optional_permissions: env.mode === 'e2e' ? [] : ['debugger'],
     // Capture several pages (batch) needs every site, asked for only when the user starts one.
     optional_host_permissions: env.mode === 'e2e' ? [] : ['<all_urls>'],
     // The icon opens the small panel in entrypoints/popup (UI §1).

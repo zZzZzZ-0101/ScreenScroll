@@ -17,6 +17,7 @@ import {
 import type { Analysis } from './analysis';
 import { DEFAULT_ENGINE, MIN_CONFIDENCE } from '@screenscroll/core/ocr';
 import { RESOLUTION_SCALE, SPEED_TIMING, type Settings } from '../../shared/settings';
+import { allTextRuns } from './plan';
 import type { LoadedSession } from './session';
 
 /**
@@ -62,8 +63,12 @@ export interface DetailsInput {
   /** Pages follow a document viewer's own pages. */
   sheets: boolean;
   estimate: number | null;
-  /** Pages (0-based) text recognition will read, and whether its model is here. */
-  ocr: { pages: number[]; ready: boolean };
+  /** Pages (0-based) text recognition will read, whether its model is here, and cached lines. */
+  ocr: { pages: number[]; ready: boolean; cachedLines?: number | null };
+  /** Seam alignment status and counts from frame analysis. */
+  seams?: { adjustedPx: number; unverified: number; count: number; rawSeams: boolean };
+  /** Count of pages hidden via reversible page exclusion. */
+  excludedPages?: number;
   /** What page detection read, and its ranked readings (M8 diagnostics). */
   detection?: { evidence: Analysis['evidence']; readings: SheetCandidate[] };
 }
@@ -93,7 +98,8 @@ export function buildDetails(i: DetailsInput): Details {
   const spec = QUALITY[st.exportPreset];
   const scale = exportScale(s.dpr, L.s, spec);
   const outDpi = dpi * scale;
-  const fontPx = medianFontPx(s.hints.textRuns.map((t) => t.fontSizePx));
+  const runs = allTextRuns(s, { slices, filter: st.pdf.filter, ocrPageCount: i.ocr.pages.length });
+  const fontPx = medianFontPx(runs.map((t) => t.fontSizePx));
   const filter = FILTERS.find((x) => x.id === st.pdf.filter) ?? FILTERS[0]!;
   const weights = sliderWeights(st.breakStyle);
   const timing = SPEED_TIMING[st.capture.speed];
@@ -104,6 +110,30 @@ export function buildDetails(i: DetailsInput): Details {
     : [];
   const band = (b: { left: string; center: string; right: string }) =>
     [b.left, b.center, b.right].filter((t) => t.trim()).join(' | ') || 'none';
+
+  const seamRow: Row[] = i.seams
+    ? [
+        {
+          label: 'Seam alignment',
+          value: i.seams.rawSeams
+            ? 'off (original offsets)'
+            : i.seams.adjustedPx > 0 || i.seams.unverified > 0
+              ? [
+                  i.seams.adjustedPx > 0 ? `realigned ${f(i.seams.adjustedPx, 0)} px` : '',
+                  i.seams.unverified > 0 ? `${f(i.seams.unverified, 0)} unverified` : '',
+                ]
+                  .filter(Boolean)
+                  .join(', ')
+              : 'automatic (no shifts)',
+          how: i.seams.rawSeams
+            ? 'automatic pixel seam matching turned off for this capture'
+            : `${f(i.seams.count, 0)} flagged seam${i.seams.count === 1 ? '' : 's'}`,
+        },
+      ]
+    : [];
+
+  const cachedOcrSuffix =
+    typeof i.ocr.cachedLines === 'number' ? ` · ${f(i.ocr.cachedLines, 0)} cached lines` : '';
 
   const sections: Section[] = [
     {
@@ -137,6 +167,7 @@ export function buildDetails(i: DetailsInput): Details {
           label: 'Read from the page',
           value: `${f(s.hints.textRuns.length, 0)} text runs, ${f(s.hints.links.length, 0)} links, ${f(s.hints.headings.length, 0)} headings`,
         },
+        ...seamRow,
         { label: 'Notes', value: String(rec.warnings.length) },
       ],
     },
@@ -212,6 +243,15 @@ export function buildDetails(i: DetailsInput): Details {
               },
             ]),
         { label: 'Pages', value: String(slices.length) },
+        ...(i.excludedPages && i.excludedPages > 0
+          ? [
+              {
+                label: 'Excluded pages',
+                value: String(i.excludedPages),
+                how: 'hidden from preview and export; reversible in Thumbnails',
+              },
+            ]
+          : []),
         {
           label: 'Forced cuts',
           value: String(forced),
@@ -248,7 +288,7 @@ export function buildDetails(i: DetailsInput): Details {
         { label: 'Searchable text', value: on(st.pdf.textLayer) },
         {
           label: 'Text recognition',
-          value: `${st.ocr} · ${i.ocr.pages.length ? `pages ${i.ocr.pages.map((n) => n + 1).join(', ')}` : 'no pages'} · model ${i.ocr.ready ? 'ready' : 'not downloaded'}`,
+          value: `${st.ocr} · ${i.ocr.pages.length ? `pages ${i.ocr.pages.map((n) => n + 1).join(', ')}` : 'no pages'} · model ${i.ocr.ready ? 'ready' : 'not downloaded'}${cachedOcrSuffix}`,
           how: `${DEFAULT_ENGINE.name}: DB detection (threshold ${DEFAULT_ENGINE.det.threshold}, box ${DEFAULT_ENGINE.det.boxThreshold}, unclip ${DEFAULT_ENGINE.det.unclipRatio}, tiles ${DEFAULT_ENGINE.det.tileSide}/${DEFAULT_ENGINE.det.overlap} px, ×2 below 1.5 px per CSS px), CTC recognition at ${DEFAULT_ENGINE.rec.height} px high; lines under ${MIN_CONFIDENCE} confidence left out; auto = pages with < 20 characters of their own text`,
         },
         { label: 'Links', value: on(st.pdf.links) },

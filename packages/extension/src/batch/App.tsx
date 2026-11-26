@@ -3,12 +3,14 @@ import { CheckCircle2, CircleDashed, Loader2, MinusCircle, XCircle } from 'lucid
 import { useEffect, useMemo, useState } from 'react';
 import {
   BATCH_KEY,
+  failedTargets,
   parseUrls,
   type BatchItem,
   type BatchStart,
   type BatchState,
   type BatchTarget,
 } from '@/shared/batch';
+import type { BatchCancel } from '@/shared/messages';
 import { listCaptures, type StoredCapture } from '@/shared/db';
 import { MergeSheet } from '@/library/MergeSheet';
 import { t } from '@/shared/i18n';
@@ -35,6 +37,7 @@ export function App() {
   const [state, setState] = useState<BatchState | null>(null);
   const [merging, setMerging] = useState<StoredCapture[] | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [stopping, setStopping] = useState(false);
 
   const readTabs = async () => {
     const me = await chrome.tabs.getCurrent();
@@ -63,8 +66,11 @@ export function App() {
       if (stored) setState(stored);
     })();
     const onChange = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
-      if (area === 'session' && changes[BATCH_KEY])
-        setState(changes[BATCH_KEY].newValue as BatchState);
+      if (area === 'session' && changes[BATCH_KEY]) {
+        const next = changes[BATCH_KEY].newValue as BatchState;
+        setState(next);
+        if (!next.running) setStopping(false);
+      }
     };
     chrome.storage.onChanged.addListener(onChange);
     return () => chrome.storage.onChanged.removeListener(onChange);
@@ -80,15 +86,23 @@ export function App() {
   const start = async (targets: BatchTarget[]) => {
     setNote(null);
     setMerging(null);
+    setStopping(false);
     const me = await chrome.tabs.getCurrent();
     if (!me?.id) return;
     const msg: BatchStart = { type: 'sp:batch-start', targets, windowId: me.windowId, homeTabId: me.id };
     await chrome.runtime.sendMessage(msg);
   };
 
+  const stopBatch = async () => {
+    if (stopping) return;
+    setStopping(true);
+    await chrome.runtime.sendMessage({ type: 'sp:batch-cancel' } satisfies BatchCancel).catch(() => undefined);
+  };
+
   const parsed = useMemo(() => parseUrls(text), [text]);
   const running = !!state?.running;
   const captured = (state?.items ?? []).filter((i) => i.status === 'done' && i.sessionId);
+  const retryable = useMemo(() => failedTargets(state?.items ?? []), [state]);
 
   const mergeAll = async () => {
     const ids = captured.map((i) => i.sessionId!);
@@ -204,18 +218,30 @@ export function App() {
 
       {state && state.items.length > 0 && (
         <section aria-label={t('Progress')} className={`${card} mt-4`}>
-          <h2 className="pb-1 font-medium">
-            {running
-              ? `Capturing ${state.items.filter((i) => i.status !== 'waiting' && i.status !== 'capturing').length + 1} of ${state.items.length}`
-              : `Done: ${captured.length} of ${state.items.length} captured`}
-          </h2>
+          <div className="flex items-center justify-between gap-2 pb-1">
+            <h2 className="font-medium">
+              {running
+                ? `Capturing ${state.items.filter((i) => i.status !== 'waiting' && i.status !== 'capturing').length + 1} of ${state.items.length}`
+                : `Done: ${captured.length} of ${state.items.length} captured`}
+            </h2>
+            {running && (
+              <button
+                type="button"
+                className={button}
+                disabled={stopping}
+                onClick={() => void stopBatch()}
+              >
+                {stopping ? t('Stopping…') : t('Stop batch')}
+              </button>
+            )}
+          </div>
           <ol className="divide-y divide-neutral-100 dark:divide-neutral-800">
             {state.items.map((item, i) => (
               <ItemRow key={i} item={item} />
             ))}
           </ol>
           {!running && (
-            <div className="mt-2 flex items-center gap-2">
+            <div className="mt-2 flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 className={primary}
@@ -224,6 +250,15 @@ export function App() {
               >
                 {t('Merge into one PDF')}
               </button>
+              {retryable.length > 0 && (
+                <button
+                  type="button"
+                  className={button}
+                  onClick={() => void start(retryable)}
+                >
+                  {t('Retry failed')} ({retryable.length})
+                </button>
+              )}
               <button
                 type="button"
                 className={button}

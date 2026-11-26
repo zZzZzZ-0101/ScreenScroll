@@ -28,11 +28,16 @@ import { useState, type ReactNode } from 'react';
 import {
   DEFAULT_PRESETS,
   MAX_PRESETS,
+  OUTPUT_PRESETS,
+  OUTPUT_PRESET_IDS,
+  applyOutputPreset,
   labelName,
+  type OutputPresetId,
   type Presets,
   type Settings,
 } from '@/shared/settings';
 import { ThemeSwitch } from '@/shared/ThemeSwitch';
+import type { SeamInfo } from '@/studio/engine/analysis';
 import type { Edits } from '../App';
 import { t, t as tr } from '@/shared/i18n';
 
@@ -53,6 +58,8 @@ interface PagesProps {
   sheets: SheetsCardProps;
   /** Median text size of the page (px) and the content width, for the printed size. */
   text: { fontPx: number; contentWidth: number } | null;
+  /** Raw and effective (after quality cap) DPI on paper. */
+  dpi: { raw: number; effective: number } | null;
   /** Estimated PDF size in bytes, or null while it is computed. */
   estimate: number | null;
   ocr: OcrCardProps;
@@ -71,6 +78,7 @@ export interface OcrCardProps {
   error: string | null;
   onDownload: () => void;
   onRead: () => void;
+  onCopyText?: () => void;
 }
 
 const mb = (n: number) => `${(n / 1048576).toFixed(1)} MB`;
@@ -112,6 +120,11 @@ function OcrCard({ o }: { o: OcrCardProps }) {
               <button type="button" onClick={o.onRead} className={button}>
                 {o.readCount !== null ? t('Read again') : t('Read pages now')}
               </button>
+              {o.readCount !== null && o.readCount > 0 && o.onCopyText && (
+                <button type="button" onClick={o.onCopyText} className={button}>
+                  {t('Copy recognized text')}
+                </button>
+              )}
             </div>
           )}
         </>
@@ -641,12 +654,64 @@ export function PagesPanel(p: PagesProps) {
   const paperId = typeof page.paper === 'string' ? page.paper : 'custom';
   const margin = page.marginsMm.top;
   const [more, setMore] = useState(() => readFlag('sp-more-options'));
+  const [presetUndo, setPresetUndo] = useState<{
+    id: OutputPresetId;
+    before: Pick<Settings, 'page' | 'exportPreset' | 'pdf'>;
+  } | null>(null);
+
+  const choosePreset = (id: OutputPresetId) => {
+    setPresetUndo({
+      id,
+      before: { page: p.settings.page, exportPreset: p.settings.exportPreset, pdf: p.settings.pdf },
+    });
+    p.onSettings(applyOutputPreset(p.settings, id));
+  };
 
   return (
     <aside className={aside} aria-label={t('Page setup')}>
       <OcrCard o={p.ocr} />
       <SheetsCard {...p.sheets} />
       {p.text && <TextSizeCard {...p.text} settings={p.settings} onSettings={p.onSettings} />}
+      <div className="mb-2" data-testid="output-presets">
+        <div className="flex items-center justify-between pb-1">
+          <span className="text-[12px] text-neutral-500">{t('Presets')}</span>
+          {presetUndo && (
+            <button
+              type="button"
+              data-testid="preset-undo"
+              className="text-[12px] text-accent underline decoration-dotted hover:text-accent-strong"
+              onClick={() => {
+                p.onSettings(presetUndo.before);
+                setPresetUndo(null);
+              }}
+            >
+              {t('Undo')}
+            </button>
+          )}
+        </div>
+        <div role="group" aria-label={t('Output presets')} className="flex flex-wrap gap-1">
+          {OUTPUT_PRESET_IDS.map((id) => {
+            const spec = OUTPUT_PRESETS[id];
+            const active = presetUndo?.id === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                data-preset={id}
+                title={t(spec.summary)}
+                onClick={() => choosePreset(id)}
+                className={`rounded-md border px-2 py-0.5 text-[12px] focus-visible:outline-2 focus-visible:outline-accent ${
+                  active
+                    ? 'border-accent bg-accent/10 font-medium text-accent'
+                    : 'border-neutral-300 hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800'
+                }`}
+              >
+                {t(spec.label)}
+              </button>
+            );
+          })}
+        </div>
+      </div>
       <label className={field}>
         {t('Paper')}
         <select
@@ -795,7 +860,24 @@ export function PagesPanel(p: PagesProps) {
             </p>
           )}
           <label className={field}>
-            {t('PDF quality')}
+            <span>
+              {t('PDF quality')}
+              {p.dpi && (
+                <span
+                  data-testid="effective-dpi"
+                  className="ml-1.5 text-[11px] font-normal text-neutral-500"
+                  title={
+                    p.dpi.effective < p.dpi.raw - 1
+                      ? t('Scaled down from {raw} dpi by the quality cap.', {
+                          raw: Math.round(p.dpi.raw),
+                        })
+                      : undefined
+                  }
+                >
+                  {t('{dpi} dpi on paper', { dpi: Math.round(p.dpi.effective) })}
+                </span>
+              )}
+            </span>
             <select
               className={control}
               value={p.settings.exportPreset}
@@ -840,6 +922,16 @@ export function PagesPanel(p: PagesProps) {
   );
 }
 
+export interface SeamsCardProps {
+  adjustedPx: number;
+  unverified: number;
+  rawSeams: boolean;
+  busy: boolean;
+  items: SeamInfo[];
+  onToggleRaw: () => void;
+  onJumpY: (y: number) => void;
+}
+
 interface BreaksProps {
   edits: Edits;
   onReset: () => void;
@@ -849,6 +941,69 @@ interface BreaksProps {
   onJump: (index: number) => void;
   /** Breaks follow a document's own pages. */
   locked: boolean;
+  /** Seam alignment controls when seams were adjusted, unverified, or turned off. */
+  seams?: SeamsCardProps;
+}
+
+function SeamsCard({ s }: { s?: SeamsCardProps }) {
+  if (!s || (!s.adjustedPx && !s.unverified && !s.rawSeams)) return null;
+  return (
+    <div
+      className="mb-3 rounded-md border border-neutral-200 p-2 text-[12px] dark:border-neutral-700"
+      data-testid="seams-card"
+    >
+      <p className="font-medium text-neutral-800 dark:text-neutral-200">{t('Screen seams')}</p>
+      {s.rawSeams ? (
+        <p className="pt-0.5 text-neutral-500">
+          {t('Automatic seam alignment is turned off for this capture.')}
+        </p>
+      ) : (
+        <div className="pt-0.5 text-neutral-600 dark:text-neutral-300">
+          {s.adjustedPx > 0 && (
+            <p>{t('Screen seams were realigned by {px} px using image matching.', { px: s.adjustedPx })}</p>
+          )}
+          {s.unverified > 0 && (
+            <p>
+              {s.unverified === 1
+                ? t('1 screen seam could not be verified (content changed while capturing).')
+                : t('{n} screen seams could not be verified (content changed while capturing).', {
+                    n: s.unverified,
+                  })}
+            </p>
+          )}
+        </div>
+      )}
+      {!s.rawSeams && s.items.length > 0 && (
+        <ul className="mt-1 max-h-28 overflow-y-auto">
+          {s.items.map((seam) => (
+            <li key={`${seam.frame}-${seam.kind}`}>
+              <button
+                type="button"
+                onClick={() => s.onJumpY(seam.y)}
+                className="w-full rounded px-1 py-0.5 text-left hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:hover:bg-neutral-800"
+              >
+                {seam.kind === 'adjusted'
+                  ? t('Seam {n}: realigned {px} px', { n: seam.frame, px: Math.abs(seam.delta) })
+                  : t('Seam {n}: could not be verified', { n: seam.frame })}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <button
+        type="button"
+        disabled={s.busy}
+        onClick={s.onToggleRaw}
+        className={`${button} mt-1.5 w-full`}
+      >
+        {s.busy
+          ? t('Updating seam alignment…')
+          : s.rawSeams
+            ? t('Realign seams automatically')
+            : t('Use original offsets')}
+      </button>
+    </div>
+  );
 }
 
 /** Breaks mode: how to edit, and one way back to the automatic result. */
@@ -867,11 +1022,12 @@ export function BreaksPanel(p: BreaksProps) {
             'The breaks follow the document’s own pages, outlined on the strip. Drag a page’s top or bottom edge to set the page height and gap, its sides to set the width; the magnifier shows the exact row.',
           )}
         </p>
-        <p className="pt-2 text-[12px] text-neutral-500">
+        <p className="pt-2 pb-3 text-[12px] text-neutral-500">
           {t(
-            'To place breaks yourself instead, turn off “One PDF page per document page” in Pages.',
+            'To place breaks yourself instead, choose “Everything I captured” in Pages.',
           )}
         </p>
+        <SeamsCard s={p.seams} />
       </aside>
     );
   return (
@@ -885,6 +1041,7 @@ export function BreaksPanel(p: BreaksProps) {
         ))}
       </ul>
       <ChecksCard checks={p.checks} page={p.page} onJump={p.onJump} />
+      <SeamsCard s={p.seams} />
       <button type="button" className={`${button} w-full`} onClick={p.onReset} disabled={!edited}>
         {t('Reset breaks')}
       </button>

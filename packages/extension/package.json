@@ -21,6 +21,7 @@
     "wxt": "^0.21.5"
   },
   "dependencies": {
+    "@mozilla/readability": "^0.6.0",
     "@screenscroll/core": "workspace:*",
     "fflate": "^0.8.3",
     "idb": "^8.0.4",

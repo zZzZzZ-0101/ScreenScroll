@@ -112,6 +112,24 @@ export function isStuck(requested: Px, measured: Px, previous: Px | null): boole
 export const STUCK_WARNING =
   'The page stopped scrolling before the end. The capture may be incomplete.';
 
+/**
+ * Estimates total screens needed for a capture of `totalHeight` with `stepHeight` per
+ * screen. Safe for 0, negative, or non-finite inputs, and always at least `minScreens`
+ * (default 1).
+ */
+export function estimateScreens(totalHeight: number, stepHeight: number, minScreens = 1): number {
+  const floor = Number.isFinite(minScreens) && minScreens >= 1 ? Math.floor(minScreens) : 1;
+  if (
+    !Number.isFinite(totalHeight) ||
+    !Number.isFinite(stepHeight) ||
+    totalHeight <= 0 ||
+    stepHeight <= 0
+  ) {
+    return floor;
+  }
+  return Math.max(floor, Math.ceil(totalHeight / stepHeight));
+}
+
 function truncated(frames: number, grew: boolean): string {
   return grew
     ? `Page kept loading more content; captured the first ${frames} screens.`

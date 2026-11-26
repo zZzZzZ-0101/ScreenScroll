@@ -12,6 +12,8 @@ export interface BatchItem {
   /** Why it was skipped or failed, or a note on a done capture. */
   reason?: string;
   sessionId?: string;
+  /** Original batch target, so failed items can be retried accurately. */
+  target?: BatchTarget;
 }
 
 export interface BatchState {
@@ -28,6 +30,33 @@ export interface BatchStart {
   windowId: number;
   /** The batch page's tab, brought back to the front at the end. */
   homeTabId: number;
+}
+
+/** Marks waiting or in-flight batch items as skipped when a batch is stopped, preserving finished ones. */
+export function cancelRemainingItems(
+  items: readonly BatchItem[],
+  reason = 'Cancelled.',
+): BatchItem[] {
+  return items.map((item) =>
+    item.status === 'waiting' || item.status === 'capturing'
+      ? { ...item, status: 'skipped', reason }
+      : item,
+  );
+}
+
+/** Extracts retryable targets for items that failed in a completed batch. */
+export function failedTargets(items: readonly BatchItem[]): BatchTarget[] {
+  const targets: BatchTarget[] = [];
+  for (const item of items) {
+    if (item.status !== 'failed') continue;
+    if (item.target) {
+      targets.push(item.target);
+    } else if (item.url) {
+      const { urls } = parseUrls(item.url);
+      if (urls[0]) targets.push({ kind: 'url', url: urls[0] });
+    }
+  }
+  return targets;
 }
 
 /** Addresses from pasted text: one per line (or separated by spaces), http(s) and file only. */

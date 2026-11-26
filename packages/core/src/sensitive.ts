@@ -1,4 +1,5 @@
 import type { Rect } from './geometry.js';
+import type { TextRun } from './hints.js';
 
 /**
  * Auto-redact (M6): personal data in the page's own text, offered as a checklist to blur.
@@ -14,6 +15,12 @@ export interface SensitiveMatch {
   run: number;
   start: number;
   end: number;
+}
+
+export interface TextMatch {
+  text: string;
+  rect: Rect;
+  runIndex: number;
 }
 
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
@@ -89,4 +96,50 @@ export function matchRect(
   const x0 = Math.max(run.rect.x, run.rect.x + at(m.start) - pad);
   const x1 = Math.min(run.rect.x + run.rect.width, run.rect.x + at(m.end) + pad);
   return { x: x0, y: run.rect.y - 2, width: x1 - x0, height: run.rect.height + 4 };
+}
+
+function isValidRect(r: Rect): boolean {
+  return (
+    Number.isFinite(r.x) &&
+    Number.isFinite(r.y) &&
+    Number.isFinite(r.width) &&
+    Number.isFinite(r.height) &&
+    r.width > 0 &&
+    r.height > 0
+  );
+}
+
+/**
+ * Finds all case-insensitive occurrences of `query` across DOM/OCR `TextRun`s and returns
+ * each match with its padded bounding rect (reusing `matchRect`).
+ */
+export function findTextMatches(
+  runs: readonly TextRun[],
+  query: string,
+  opts?: { wholeWord?: boolean; measure?: (fontSizePx: number) => (text: string) => number },
+): TextMatch[] {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+  const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  let pattern = escaped;
+  if (opts?.wholeWord) {
+    const startWord = /^[\p{L}\p{N}_]/u.test(trimmed);
+    const endWord = /[\p{L}\p{N}_]$/u.test(trimmed);
+    pattern = `${startWord ? '(?<![\\p{L}\\p{N}_])' : ''}${escaped}${endWord ? '(?![\\p{L}\\p{N}_])' : ''}`;
+  }
+  const re = new RegExp(pattern, 'giu');
+  const out: TextMatch[] = [];
+  for (let runIndex = 0; runIndex < runs.length; runIndex++) {
+    const run = runs[runIndex]!;
+    if (!run.text || !isValidRect(run.rect)) continue;
+    const measure = opts?.measure ? opts.measure(run.fontSizePx) : undefined;
+    for (const m of run.text.matchAll(re)) {
+      const start = m.index;
+      const end = start + m[0].length;
+      const rect = matchRect(run, { start, end }, measure);
+      if (!isValidRect(rect)) continue;
+      out.push({ text: m[0], rect, runIndex });
+    }
+  }
+  return out;
 }

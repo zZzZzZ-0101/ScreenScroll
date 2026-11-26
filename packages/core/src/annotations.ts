@@ -1,5 +1,6 @@
 import type { Px, Rect } from './geometry.js';
 import type { Forbidden } from './hints.js';
+import type { Region } from './region.js';
 
 /**
  * Annotations (UI §3 Annotate tab) live in document coordinates, so they survive
@@ -232,6 +233,198 @@ export function moveBy(a: Annotation, dx: Px, dy: Px): Annotation {
     default:
       return { ...a, x: a.x + dx, y: a.y + dy };
   }
+}
+
+export type ResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
+
+function clampVal(v: number, lo: number, hi: number): number {
+  if (!Number.isFinite(v)) return lo;
+  return Math.max(lo, Math.min(hi, v));
+}
+
+function resizeAxis(
+  start: number,
+  end: number,
+  moveStart: boolean,
+  moveEnd: boolean,
+  delta: number,
+  max: number,
+  minSize: number,
+): [number, number] {
+  const bound = Math.max(0, Number.isFinite(max) ? max : 0);
+  const effMin = Math.min(Math.max(0, Number.isFinite(minSize) ? minSize : 0), bound);
+  const d = Number.isFinite(delta) ? delta : 0;
+  if (!moveStart && !moveEnd) {
+    let lo = clampVal(Math.min(start, end), 0, bound);
+    let hi = clampVal(Math.max(start, end), 0, bound);
+    if (hi - lo < effMin) {
+      lo = Math.min(lo, bound - effMin);
+      hi = lo + effMin;
+    }
+    return [lo, hi];
+  }
+  if (moveStart) {
+    const anchor = clampVal(end, 0, bound);
+    const moved = clampVal(start + d, 0, bound);
+    if (moved <= anchor) {
+      let lo = Math.min(moved, anchor - effMin);
+      let hi = anchor;
+      if (lo < 0) {
+        lo = 0;
+        hi = Math.max(anchor, effMin);
+      }
+      return [lo, hi];
+    }
+    let lo = anchor;
+    let hi = Math.max(moved, anchor + effMin);
+    if (hi > bound) {
+      hi = bound;
+      lo = Math.min(anchor, bound - effMin);
+    }
+    return [lo, hi];
+  }
+  const anchor = clampVal(start, 0, bound);
+  const moved = clampVal(end + d, 0, bound);
+  if (moved >= anchor) {
+    let lo = anchor;
+    let hi = Math.max(moved, anchor + effMin);
+    if (hi > bound) {
+      hi = bound;
+      lo = Math.min(anchor, bound - effMin);
+    }
+    return [lo, hi];
+  }
+  let lo = Math.min(moved, anchor - effMin);
+  let hi = anchor;
+  if (lo < 0) {
+    lo = 0;
+    hi = Math.max(anchor, effMin);
+  }
+  return [lo, hi];
+}
+
+/**
+ * Resizes a rectangular/box annotation (`rect`, `ellipse`, `blur`, `pixelate`, `cover`) by
+ * dragging one of the 8 edge/corner handles. Flips cleanly across the opposite edge, clamps
+ * strictly within `[0, bounds.width] × [0, bounds.height]`, and keeps size >= `minSize`.
+ */
+export function resizeAnnotation(
+  a: Annotation,
+  handle: ResizeHandle,
+  dx: number,
+  dy: number,
+  docBounds: { width: number; height: number },
+  minSize = 4,
+): Annotation {
+  if (
+    a.kind !== 'rect' &&
+    a.kind !== 'ellipse' &&
+    a.kind !== 'blur' &&
+    a.kind !== 'pixelate' &&
+    a.kind !== 'cover'
+  ) {
+    return a;
+  }
+  const [x0, x1] = resizeAxis(
+    a.x,
+    a.x + a.w,
+    handle.includes('w'),
+    handle.includes('e'),
+    dx,
+    docBounds.width,
+    minSize,
+  );
+  const [y0, y1] = resizeAxis(
+    a.y,
+    a.y + a.h,
+    handle.includes('n'),
+    handle.includes('s'),
+    dy,
+    docBounds.height,
+    minSize,
+  );
+  return { ...a, x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+/** Moves the start or end point of a `line` or `arrow`, clamped within document bounds. */
+export function moveEndpoint(
+  a: Annotation,
+  end: 'start' | 'end',
+  x: number,
+  y: number,
+  docBounds: { width: number; height: number },
+): Annotation {
+  if (a.kind !== 'line' && a.kind !== 'arrow') return a;
+  const nx = clampVal(x, 0, Math.max(0, docBounds.width));
+  const ny = clampVal(y, 0, Math.max(0, docBounds.height));
+  return end === 'start' ? { ...a, x1: nx, y1: ny } : { ...a, x2: nx, y2: ny };
+}
+
+/**
+ * Resizes a crop `Region` by dragging one of the 8 handles. Flips cleanly across the opposite
+ * edge, clamps within `[0, bounds.width] × [0, bounds.height]`, and enforces `minSize`.
+ */
+export function resizeRegion(
+  r: Region,
+  handle: ResizeHandle,
+  dx: number,
+  dy: number,
+  docBounds: { width: number; height: number },
+  minSize = 20,
+): Region {
+  const [x0, x1] = resizeAxis(
+    r.x0,
+    r.x1,
+    handle.includes('w'),
+    handle.includes('e'),
+    dx,
+    docBounds.width,
+    minSize,
+  );
+  const [y0, y1] = resizeAxis(
+    r.y0,
+    r.y1,
+    handle.includes('n'),
+    handle.includes('s'),
+    dy,
+    docBounds.height,
+    minSize,
+  );
+  return { x0, x1, y0, y1 };
+}
+
+/** Moves a crop `Region` by `(dx, dy)` while keeping its size and staying inside document bounds. */
+export function moveRegion(
+  r: Region,
+  dx: number,
+  dy: number,
+  docBounds: { width: number; height: number },
+): Region {
+  const maxW = Math.max(0, Number.isFinite(docBounds.width) ? docBounds.width : 0);
+  const maxH = Math.max(0, Number.isFinite(docBounds.height) ? docBounds.height : 0);
+  const w = Math.min(Math.max(0, r.x1 - r.x0), maxW);
+  const h = Math.min(Math.max(0, r.y1 - r.y0), maxH);
+  const x0 = clampVal(r.x0 + (Number.isFinite(dx) ? dx : 0), 0, Math.max(0, maxW - w));
+  const y0 = clampVal(r.y0 + (Number.isFinite(dy) ? dy : 0), 0, Math.max(0, maxH - h));
+  return { x0, x1: x0 + w, y0, y1: y0 + h };
+}
+
+/** Moves an annotation by `(dx, dy)`, clamping its bounding box within document bounds. */
+export function moveByClamped(
+  a: Annotation,
+  dx: Px,
+  dy: Px,
+  docBounds: { width: number; height: number },
+): Annotation {
+  const b = bounds(a);
+  const maxW = Math.max(0, Number.isFinite(docBounds.width) ? docBounds.width : 0);
+  const maxH = Math.max(0, Number.isFinite(docBounds.height) ? docBounds.height : 0);
+  const targetX = clampVal(b.x + dx, 0, Math.max(0, maxW - b.width));
+  const targetY = clampVal(b.y + dy, 0, Math.max(0, maxH - b.height));
+  const tx = targetX - b.x;
+  const ty = targetY - b.y;
+  if (tx === 0 && ty === 0) return a;
+  return moveBy(a, tx, ty);
 }
 
 /** Unlimited undo/redo over immutable snapshots (the annotations, plus the crop). */

@@ -39,6 +39,14 @@ export interface RawStripPart {
   y1: number;
 }
 
+export interface SeamInfo {
+  frame: number;
+  y: number;
+  kind: 'adjusted' | 'unverified';
+  delta: number;
+  score: number;
+}
+
 export interface RawAnalysis {
   rows: RowProfile;
   strip: RawStripPart[];
@@ -48,6 +56,9 @@ export interface RawAnalysis {
   evidence: ReturnType<typeof evidenceSummary> | null;
   geoms: FrameGeom[];
   height: number;
+  seams: SeamInfo[];
+  adjustedSeamPx: number;
+  unverifiedSeams: number;
   seamAdjusted: boolean;
   seamWarnings: string[];
 }
@@ -75,6 +86,7 @@ export async function analyzeFrames(
   let prevTail: GreyImage | null = null;
   let totalSeamPx = 0;
   let unverifiedCount = 0;
+  const seams: SeamInfo[] = [];
 
   for (let i = 0; i < inputs.length; i++) {
     const { blob, geom: rawG, anchored } = inputs[i]!;
@@ -116,9 +128,24 @@ export async function analyzeFrames(
           if (seam.kind === 'adjusted' && !anchored) {
             cumulativeShift += seam.delta;
             docY -= seam.delta;
-            totalSeamPx += Math.abs(Math.round(seam.delta));
+            const deltaPx = Math.round(seam.delta);
+            totalSeamPx += Math.abs(deltaPx);
+            seams.push({
+              frame: i,
+              y: Math.max(0, docY),
+              kind: 'adjusted',
+              delta: deltaPx,
+              score: seam.score,
+            });
           } else if (seam.kind === 'unverified') {
             unverifiedCount++;
+            seams.push({
+              frame: i,
+              y: Math.max(0, docY),
+              kind: 'unverified',
+              delta: 0,
+              score: seam.score,
+            });
           }
         }
       }
@@ -226,6 +253,9 @@ export async function analyzeFrames(
     evidence,
     geoms,
     height,
+    seams,
+    adjustedSeamPx: totalSeamPx,
+    unverifiedSeams: unverifiedCount,
     seamAdjusted: totalSeamPx > 0,
     seamWarnings,
   };

@@ -5,6 +5,7 @@ import {
   type FilterId,
   type PageLayout,
   type PageSlice,
+  type Rect,
   type Watermark,
 } from '@screenscroll/core';
 import { useEffect, useRef, useState } from 'react';
@@ -35,13 +36,100 @@ export function PagesView(p: {
   filter: FilterId;
   /** Reports the scale shown (share of actual size), for the zoom control's label. */
   onEffective: (scale: number) => void;
+  /** Active search/redaction match to scroll to and highlight. */
+  highlight?: { rect: Rect; seq: number } | null;
 }) {
   const refs = useRef<Array<HTMLDivElement | null>>([]);
+  const highlightEl = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const [avail, setAvail] = useState({ w: 800, h: 600 });
+  const fromScroll = useRef(false);
+  const programmaticUntil = useRef(0);
+  const visibleHeights = useRef<Map<number, number>>(new Map());
+  const latestPage = useRef(p.page);
+  latestPage.current = p.page;
+  const latestOnSelect = useRef(p.onSelect);
+  latestOnSelect.current = p.onSelect;
+
   useEffect(() => {
+    if (fromScroll.current) {
+      fromScroll.current = false;
+      return;
+    }
+    programmaticUntil.current = performance.now() + 600;
     refs.current[p.page]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [p.page]);
+
+  useEffect(() => {
+    if (!p.highlight) return;
+    const cy = p.highlight.rect.y + p.highlight.rect.height / 2;
+    const idx = p.slices.findIndex((s) => cy >= s.y0 && cy < s.y1);
+    if (idx >= 0 && idx !== latestPage.current) {
+      programmaticUntil.current = performance.now() + 600;
+      latestOnSelect.current(idx);
+    }
+    requestAnimationFrame(() => {
+      if (highlightEl.current) {
+        programmaticUntil.current = performance.now() + 600;
+        highlightEl.current.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+      } else if (idx >= 0) {
+        refs.current[idx]?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    });
+  }, [p.highlight, p.slices]);
+
+  // Manual user scroll cancels any programmatic scroll suppression right away.
+  useEffect(() => {
+    const el = scroller.current!;
+    const clearSuppression = () => {
+      programmaticUntil.current = 0;
+    };
+    el.addEventListener('wheel', clearSuppression, { passive: true });
+    el.addEventListener('pointerdown', clearSuppression, { passive: true });
+    return () => {
+      el.removeEventListener('wheel', clearSuppression);
+      el.removeEventListener('pointerdown', clearSuppression);
+    };
+  }, []);
+
+  // Scroll-spy: highlight the most visible page in Thumbnails as the user scrolls.
+  useEffect(() => {
+    const root = scroller.current;
+    if (!root) return;
+    refs.current.length = p.slices.length;
+    visibleHeights.current.clear();
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const raw = (entry.target as HTMLElement).dataset.pageIndex;
+          const idx = raw !== undefined ? Number(raw) : -1;
+          if (idx >= 0) {
+            visibleHeights.current.set(idx, entry.isIntersecting ? entry.intersectionRect.height : 0);
+          }
+        }
+        if (performance.now() < programmaticUntil.current) return;
+        let bestIdx: number | null = null;
+        let bestHeight = 0;
+        for (const [idx, h] of visibleHeights.current) {
+          if (h > bestHeight) {
+            bestHeight = h;
+            bestIdx = idx;
+          }
+        }
+        if (bestIdx !== null && bestIdx !== latestPage.current) {
+          fromScroll.current = true;
+          latestOnSelect.current(bestIdx);
+        }
+      },
+      { root, threshold: [0, 0.1, 0.25, 0.5, 0.75, 1] },
+    );
+    for (let i = 0; i < p.slices.length; i++) {
+      const node = refs.current[i];
+      if (node) io.observe(node);
+    }
+    return () => io.disconnect();
+  }, [p.slices]);
+
   useEffect(() => {
     const el = scroller.current!;
     const ro = new ResizeObserver(() =>
@@ -77,6 +165,11 @@ export function PagesView(p: {
     return () => el.removeEventListener('wheel', onWheel);
   }, []);
 
+  const k = pageW / p.layout.paperW;
+  const cssScale = p.layout.s * k;
+  const hlRect = p.highlight?.rect ?? null;
+  const hlCy = hlRect ? hlRect.y + hlRect.height / 2 : -1;
+
   return (
     <div
       ref={scroller}
@@ -85,44 +178,62 @@ export function PagesView(p: {
       data-testid="pages-view"
     >
       <div className="mx-auto flex w-fit flex-col items-center gap-6">
-        {p.slices.map((s, i) => (
-          <div
-            key={`${s.y0}-${s.y1}`}
-            ref={(el) => {
-              refs.current[i] = el;
-            }}
-            onClick={() => p.onSelect(i)}
-            className={`relative bg-white shadow-sm ring-1 ${i === p.page ? 'ring-accent ring-2' : 'ring-neutral-300 dark:ring-neutral-700'}`}
-            style={{ width: pageW, height: pageW * ratio }}
-          >
-            <PageCanvas
-              session={p.session}
-              frames={p.frames}
-              analysis={p.analysis}
-              slice={s}
-              layout={p.layout}
-              annotations={p.annotations}
-              filter={p.filter}
-              pageW={pageW}
-            />
-            <span className="absolute bottom-1 right-2 text-[11px] text-neutral-400">{i + 1}</span>
-            {watermarkOn(p.watermark, i + 1, p.slices.length) && (
-              <span
-                aria-hidden
-                data-testid="watermark-preview"
-                className="pointer-events-none absolute top-1/2 left-1/2 font-[Helvetica,Arial,sans-serif] whitespace-nowrap"
-                style={{
-                  color: p.watermark.color,
-                  opacity: p.watermark.opacity,
-                  fontSize: p.watermark.sizePt * (pageW / p.layout.paperW),
-                  transform: `translate(-50%, -50%) rotate(${-p.watermark.angle}deg)`,
-                }}
-              >
-                {p.watermark.text}
-              </span>
-            )}
-          </div>
-        ))}
+        {p.slices.map((s, i) => {
+          const hasHighlight = hlRect !== null && hlCy >= s.y0 && hlCy < s.y1;
+          return (
+            <div
+              key={`${s.y0}-${s.y1}`}
+              data-page-index={i}
+              ref={(el) => {
+                refs.current[i] = el;
+              }}
+              onClick={() => p.onSelect(i)}
+              className={`relative bg-white shadow-sm ring-1 ${i === p.page ? 'ring-accent ring-2' : 'ring-neutral-300 dark:ring-neutral-700'}`}
+              style={{ width: pageW, height: pageW * ratio }}
+            >
+              <PageCanvas
+                session={p.session}
+                frames={p.frames}
+                analysis={p.analysis}
+                slice={s}
+                layout={p.layout}
+                annotations={p.annotations}
+                filter={p.filter}
+                pageW={pageW}
+              />
+              {hasHighlight && hlRect && (
+                <div
+                  ref={highlightEl}
+                  data-testid="search-highlight"
+                  aria-hidden
+                  className="pointer-events-none absolute rounded-sm border-2 border-amber-500 bg-amber-300/30 ring-2 ring-amber-400/50"
+                  style={{
+                    left: p.layout.box.x * k + (hlRect.x - s.x0) * cssScale,
+                    top: p.layout.box.y * k + (repeatHeight(s) + (hlRect.y - s.y0)) * cssScale,
+                    width: Math.max(8, hlRect.width * cssScale),
+                    height: Math.max(8, hlRect.height * cssScale),
+                  }}
+                />
+              )}
+              <span className="absolute bottom-1 right-2 text-[11px] text-neutral-400">{i + 1}</span>
+              {watermarkOn(p.watermark, i + 1, p.slices.length) && (
+                <span
+                  aria-hidden
+                  data-testid="watermark-preview"
+                  className="pointer-events-none absolute top-1/2 left-1/2 font-[Helvetica,Arial,sans-serif] whitespace-nowrap"
+                  style={{
+                    color: p.watermark.color,
+                    opacity: p.watermark.opacity,
+                    fontSize: p.watermark.sizePt * (pageW / p.layout.paperW),
+                    transform: `translate(-50%, -50%) rotate(${-p.watermark.angle}deg)`,
+                  }}
+                >
+                  {p.watermark.text}
+                </span>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

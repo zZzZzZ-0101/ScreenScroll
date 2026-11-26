@@ -16,13 +16,15 @@ import {
   sheetSlices,
   sliderWeights,
   type Annotation,
+  type FilterId,
   type PageLayout,
+  type PageSlice,
   type PaginationDebug,
   type Region,
   type SheetGrid,
   type TextRun,
 } from '@screenscroll/core';
-import type { Project } from '../../shared/db';
+import type { OcrMeta, Project } from '../../shared/db';
 import { bandHeight, type Settings } from '../../shared/settings';
 import type { Analysis } from './analysis';
 import type { LoadedSession } from './session';
@@ -170,13 +172,59 @@ export function planPages(
   return { ok: true, sheets: false, crop, layout, debug };
 }
 
-/** Every text run known for the capture: DOM text plus any cached OCR text. */
+/**
+ * Whether `session.ocrMeta` validly covers `slices` (order-independent min/max y range)
+ * for `filter` and at least `pageCount` OCR pages.
+ */
+export function hasValidCachedOcr(
+  session: { height: number; ocrMeta?: OcrMeta },
+  slices: readonly PageSlice[],
+  filter: FilterId,
+  pageCount = 0,
+): boolean {
+  const m = session.ocrMeta;
+  if (!m || m.filter !== filter || m.count < pageCount) return false;
+  let y0 = 0;
+  let y1 = session.height;
+  if (slices.length > 0) {
+    y0 = slices[0]!.y0;
+    y1 = slices[0]!.y1;
+    for (let i = 1; i < slices.length; i++) {
+      const sl = slices[i]!;
+      if (sl.y0 < y0) y0 = sl.y0;
+      if (sl.y1 > y1) y1 = sl.y1;
+    }
+  }
+  return m.y0 <= y0 + 1 && m.y1 >= y1 - 1;
+}
+
+/**
+ * Every text run known for the capture: DOM text plus valid cached OCR text.
+ * When `opts.filter` and `opts.slices` are given, cached OCR runs are included only if
+ * `hasValidCachedOcr` holds, so stale runs after a filter or range change never leak in.
+ */
 export function allTextRuns(
-  session: Pick<LoadedSession, 'hints'> & { ocrRuns?: readonly TextRun[] },
+  session: Pick<LoadedSession, 'hints'> & {
+    height?: number;
+    ocrRuns?: readonly TextRun[];
+    ocrMeta?: OcrMeta;
+  },
+  opts?: { slices?: readonly PageSlice[]; filter?: FilterId; ocrPageCount?: number },
 ): TextRun[] {
-  return session.ocrRuns?.length
-    ? [...session.hints.textRuns, ...session.ocrRuns]
-    : [...session.hints.textRuns];
+  if (!session.ocrRuns?.length) return [...session.hints.textRuns];
+  if (opts?.filter !== undefined && opts.slices !== undefined) {
+    if (
+      !hasValidCachedOcr(
+        { height: session.height ?? 0, ocrMeta: session.ocrMeta },
+        opts.slices,
+        opts.filter,
+        opts.ocrPageCount ?? 0,
+      )
+    ) {
+      return [...session.hints.textRuns];
+    }
+  }
+  return [...session.hints.textRuns, ...session.ocrRuns];
 }
 
 /**
@@ -184,13 +232,18 @@ export function allTextRuns(
  * and renumbering for a document's own page numbers and running headers/footers.
  */
 export function effectiveAnnotations(
-  session: Pick<LoadedSession, 'hints'> & { ocrRuns?: readonly TextRun[] },
+  session: Pick<LoadedSession, 'hints'> & {
+    height?: number;
+    ocrRuns?: readonly TextRun[];
+    ocrMeta?: OcrMeta;
+  },
   result: PageResult | null,
   project: Pick<Project, 'annotations' | 'pageNumbers'>,
+  filter?: FilterId,
 ): Annotation[] {
   if (!result?.ok || !result.sheets) return [...project.annotations];
   const slices = result.debug.slices;
-  const runs = allTextRuns(session);
+  const runs = allTextRuns(session, filter !== undefined ? { slices, filter } : undefined);
   const numbers = findPageNumbers(slices, runs);
   const running = findRunningLines(slices, runs);
   return [
@@ -205,4 +258,67 @@ export function pdfFor(settings: Settings, result: PageResult | null): Settings[
   return result?.ok && result.original
     ? { ...settings.pdf, header: EMPTY_BAND, footer: EMPTY_BAND }
     : settings.pdf;
+}
+
+export interface PageSelection {
+  activeSlices: PageSlice[];
+  /** 0-based original slice indices of active (included) pages, in display/export order. */
+  activeIndices: number[];
+  /** 0-based original slice indices of all pages (active + excluded), in display order. */
+  orderedIndices: number[];
+  /** 0-based original slice indices currently excluded. */
+  excludedSet: Set<number>;
+  totalSlices: number;
+}
+
+/**
+ * Applies reversible per-page exclusion and ordering from `project` to `slices`.
+ * - Out-of-range, non-integer, and duplicate indices are ignored safely.
+ * - Any remaining original indices (e.g. after re-pagination adds pages) are appended in order.
+ * - When `slices.length > 0`, at least one page always stays active (falling back to `orderedIndices[0]`).
+ */
+export function applyPageSelection(
+  slices: readonly PageSlice[],
+  project: Pick<Project, 'excludedPages' | 'pageOrder'>,
+): PageSelection {
+  const totalSlices = slices.length;
+  if (totalSlices === 0) {
+    return {
+      activeSlices: [],
+      activeIndices: [],
+      orderedIndices: [],
+      excludedSet: new Set(),
+      totalSlices: 0,
+    };
+  }
+  const seen = new Set<number>();
+  const orderedIndices: number[] = [];
+  for (const idx of project.pageOrder ?? []) {
+    if (Number.isInteger(idx) && idx >= 0 && idx < totalSlices && !seen.has(idx)) {
+      seen.add(idx);
+      orderedIndices.push(idx);
+    }
+  }
+  for (let i = 0; i < totalSlices; i++) {
+    if (!seen.has(i)) orderedIndices.push(i);
+  }
+  const excludedSet = new Set<number>();
+  for (const idx of project.excludedPages ?? []) {
+    if (Number.isInteger(idx) && idx >= 0 && idx < totalSlices) {
+      excludedSet.add(idx);
+    }
+  }
+  const activeIndices = orderedIndices.filter((i) => !excludedSet.has(i));
+  if (activeIndices.length === 0) {
+    const first = orderedIndices[0]!;
+    excludedSet.delete(first);
+    activeIndices.push(first);
+  }
+  const activeSlices = activeIndices.map((i) => slices[i]!);
+  return { activeSlices, activeIndices, orderedIndices, excludedSet, totalSlices };
+}
+
+/** True when `orderedIndices` is the natural `[0, 1, ..., n - 1]` order. */
+export function isNaturalOrder(orderedIndices: readonly number[]): boolean {
+  return orderedIndices.every((idx, pos) => idx === pos);
 }

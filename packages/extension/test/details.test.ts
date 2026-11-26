@@ -101,4 +101,56 @@ describe('Details panel numbers', () => {
     expect(bytes(2048)).toBe('2 KB');
     expect(bytes(3 * 1048576)).toBe('3 MB');
   });
+
+  it('surfaces seam alignment, excluded pages, cached OCR lines and OCR-backed text size', () => {
+    const layout = computeLayout(DEFAULT_SETTINGS.page, 800);
+    const ocrSession = {
+      ...session,
+      hints: { textRuns: [], links: [], headings: [], forbidden: [] },
+      ocrRuns: [
+        { text: 'Line 1', rect: { x: 20, y: 100, width: 100, height: 20 }, fontSizePx: 20 },
+        { text: 'Line 2', rect: { x: 20, y: 140, width: 100, height: 20 }, fontSizePx: 20 },
+      ],
+      ocrMeta: { filter: 'original' as const, y0: 0, y1: 3000, count: 1 },
+    } as unknown as LoadedSession;
+
+    const slices = [slice(0, 1100), slice(1100, 2200)];
+    const d = buildDetails({
+      session: ocrSession,
+      settings: DEFAULT_SETTINGS,
+      layout,
+      crop: { x0: 0, x1: 800, cropped: false },
+      slices,
+      sheets: false,
+      estimate: 512_000,
+      ocr: { pages: [0], ready: true, cachedLines: 2 },
+      seams: { adjustedPx: 14, unverified: 1, count: 2, rawSeams: false },
+      excludedPages: 1,
+    });
+
+    expect(row(d, 'Seam alignment').value).toBe('realigned 14 px, 1 unverified');
+    expect(row(d, 'Excluded pages').value).toBe('1');
+    expect(row(d, 'Text recognition').value).toContain('2 cached lines');
+    // Body text uses valid cached OCR runs when DOM has no text.
+    expect(row(d, 'Body text on paper').value).toBe(`${(20 * layout.s).toFixed(1)} pt`);
+
+    // When filter changes, stale cached OCR runs are excluded from fontPx.
+    const stale = buildDetails({
+      session: ocrSession,
+      settings: { ...DEFAULT_SETTINGS, pdf: { ...DEFAULT_SETTINGS.pdf, filter: 'bw' } },
+      layout,
+      crop: { x0: 0, x1: 800, cropped: false },
+      slices,
+      sheets: false,
+      estimate: 512_000,
+      ocr: { pages: [0], ready: true, cachedLines: null },
+      seams: { adjustedPx: 0, unverified: 0, count: 0, rawSeams: true },
+    });
+    expect(row(stale, 'Seam alignment').value).toBe('off (original offsets)');
+    expect(row(stale, 'Body text on paper').value).toBe('–');
+    expect(d.sections.flatMap((s) => s.rows).find((r) => r.label === 'Excluded pages')).toBeDefined();
+    expect(
+      stale.sections.flatMap((s) => s.rows).find((r) => r.label === 'Excluded pages'),
+    ).toBeUndefined();
+  });
 });
