@@ -1,6 +1,24 @@
-import { ArchiveRestore, Download, ExternalLink, Files, FolderOpen, ImageUp, Search, Trash2 } from 'lucide-react';
+import {
+  ArchiveRestore,
+  Check,
+  Download,
+  ExternalLink,
+  Files,
+  FolderOpen,
+  ImageUp,
+  Pencil,
+  Search,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { deleteCapture, deleteOlderThan, listCaptures, type StoredCapture } from '@/shared/db';
+import {
+  deleteCapture,
+  deleteOlderThan,
+  listCaptures,
+  renameCapture,
+  type StoredCapture,
+} from '@/shared/db';
 import { loadSettings, saveSettings } from '@/shared/settings';
 import { backupCaptures, restoreCaptures } from '@/shared/backup';
 import { importImage } from '@/shared/import-image';
@@ -29,7 +47,7 @@ export function App() {
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
-  /** Deleting several at once asks once more, in place: "Delete 5 captures?". */
+  /** Deleting captures asks once more, in place: "Delete N for good". */
   const [confirm, setConfirm] = useState<string[] | null>(null);
   const [note, setNote] = useState<string | null>(null);
   /** Captures being merged, in the list's order (oldest first, the usual reading order). */
@@ -106,7 +124,7 @@ export function App() {
   };
 
   useEffect(() => {
-    document.title = 'Saved captures · ScreenScroll';
+    document.title = `${t('Saved captures')} · ScreenScroll`;
     void (async () => {
       const s = await loadSettings();
       setKeepDays(s.keepDays);
@@ -114,7 +132,9 @@ export function App() {
         const n = await deleteOlderThan(s.keepDays);
         if (n)
           setNote(
-            `${n} capture${n === 1 ? '' : 's'} older than ${s.keepDays} days ${n === 1 ? 'was' : 'were'} deleted.`,
+            n === 1
+              ? t('1 capture older than {days} days was deleted.', { days: s.keepDays })
+              : t('{n} captures older than {days} days were deleted.', { n, days: s.keepDays }),
           );
       }
       await refresh();
@@ -129,12 +149,28 @@ export function App() {
     try {
       for (const id of ids) await deleteCapture(id);
       setSelected(new Set());
-      setNote(ids.length === 1 ? 'Capture deleted.' : `${ids.length} captures deleted.`);
+      setNote(
+        ids.length === 1
+          ? t('Capture deleted.')
+          : t('{n} captures deleted.', { n: ids.length }),
+      );
     } catch (e) {
-      setNote(`Could not delete: ${e instanceof Error ? e.message : String(e)}`);
+      setNote(t('Could not delete: {why}', { why: e instanceof Error ? e.message : String(e) }));
     } finally {
       await refresh();
       setBusy(false);
+    }
+  };
+
+  const rename = async (id: string, title: string) => {
+    const clean = title.trim();
+    if (!clean) return;
+    try {
+      await renameCapture(id, clean);
+      await refresh();
+      setNote(t('Capture renamed.'));
+    } catch (e) {
+      setNote(t('Could not rename: {why}', { why: e instanceof Error ? e.message : String(e) }));
     }
   };
 
@@ -149,26 +185,30 @@ export function App() {
 
   return (
     <main className="mx-auto max-w-4xl p-6 text-[13px] text-neutral-900 dark:text-neutral-100">
-      <h1 className="text-lg font-semibold">Saved captures</h1>
+      <h1 className="text-lg font-semibold">{t('Saved captures')}</h1>
       <p className="text-neutral-500">
         {t('Kept only on this computer, never uploaded. Open one to edit or export it again.')}
       </p>
 
       <section aria-label={t('Storage')} className="mt-4 grid gap-3 sm:grid-cols-2">
         <div className="rounded-lg border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900">
-          <h2 className="font-medium">Space used</h2>
+          <h2 className="font-medium">{t('Space used')}</h2>
           <p className="text-neutral-500" data-testid="space">
             {items === null
-              ? 'Measuring'
-              : `${items.length} ${items.length === 1 ? 'capture' : 'captures'} · ${formatBytes(total)}`}
+              ? t('Measuring')
+              : items.length === 1
+                ? t('1 capture · {size}', { size: formatBytes(total) })
+                : t('{n} captures · {size}', { n: items.length, size: formatBytes(total) })}
             {quota &&
               quota.quota > 0 &&
-              ` · ${formatBytes(quota.quota - quota.usage)} free for ScreenScroll`}
+              ` · ${t('{size} free for ScreenScroll', { size: formatBytes(quota.quota - quota.usage) })}`}
           </p>
         </div>
         <label className="rounded-lg border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900">
-          <span className="block font-medium">Keep captures</span>
-          <span className="block pb-1 text-neutral-500">Older ones are deleted automatically.</span>
+          <span className="block font-medium">{t('Keep captures')}</span>
+          <span className="block pb-1 text-neutral-500">
+            {t('Older ones are deleted automatically.')}
+          </span>
           <select
             value={keepDays}
             onChange={(e) => {
@@ -180,7 +220,7 @@ export function App() {
           >
             {KEEP.map(([d, label]) => (
               <option key={d} value={d}>
-                {label}
+                {t(label)}
               </option>
             ))}
           </select>
@@ -231,27 +271,40 @@ export function App() {
           title={t('Save captures, images included, to one file (the selected ones, or all)')}
           onClick={() => {
             const ids = [...selected];
-            setNote('Writing the backup…');
-            void backupCaptures(ids).then((blob) => {
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `screenscroll-captures-${new Date().toISOString().slice(0, 10)}.ssbackup`;
-              a.click();
-              setTimeout(() => URL.revokeObjectURL(url), 60_000);
-              setNote(
-                `Backup of ${ids.length || items!.length} ${(ids.length || items!.length) === 1 ? 'capture' : 'captures'} saved (${(blob.size / 1048576).toFixed(1)} MB).`,
+            setNote(t('Writing the backup…'));
+            void backupCaptures(ids)
+              .then((blob) => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `screenscroll-captures-${new Date().toISOString().slice(0, 10)}.ssbackup`;
+                a.click();
+                setTimeout(() => URL.revokeObjectURL(url), 60_000);
+                const count = ids.length || items!.length;
+                const size = `${(blob.size / 1048576).toFixed(1)} MB`;
+                setNote(
+                  count === 1
+                    ? t('Backup of 1 capture saved ({size}).', { size })
+                    : t('Backup of {n} captures saved ({size}).', { n: count, size }),
+                );
+              })
+              .catch((err: unknown) =>
+                setNote(
+                  t('Could not write backup: {why}', {
+                    why: err instanceof Error ? err.message : String(err),
+                  }),
+                ),
               );
-            });
           }}
         >
-          <Download aria-hidden size={15} /> Back up{selected.size ? ` (${selected.size})` : ''}
+          <Download aria-hidden size={15} /> {t('Back up')}
+          {selected.size ? ` (${selected.size})` : ''}
         </button>
         <label
           className="flex cursor-pointer items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 focus-within:outline-2 focus-within:outline-accent dark:border-neutral-700 dark:hover:bg-neutral-800"
           title={t('Add the captures from a backup file')}
         >
-          <ArchiveRestore aria-hidden size={15} /> Restore
+          <ArchiveRestore aria-hidden size={15} /> {t('Restore')}
           <input
             type="file"
             accept=".ssbackup"
@@ -261,13 +314,23 @@ export function App() {
               const file = e.target.files?.[0];
               e.target.value = '';
               if (!file) return;
-              setNote(`Restoring ${file.name}…`);
+              setNote(t('Restoring {name}…', { name: file.name }));
               restoreCaptures(file).then(
                 ({ added, skipped }) => {
                   void refresh();
                   setNote(
-                    `${added} ${added === 1 ? 'capture' : 'captures'} restored` +
-                      (skipped ? `; ${skipped} already here, left as they are.` : '.'),
+                    skipped
+                      ? added === 1
+                        ? t('1 capture restored; {skipped} already here, left as they are.', {
+                            skipped,
+                          })
+                        : t(
+                            '{added} captures restored; {skipped} already here, left as they are.',
+                            { added, skipped },
+                          )
+                      : added === 1
+                        ? t('1 capture restored.')
+                        : t('{added} captures restored.', { added }),
                   );
                 },
                 (err: unknown) => setNote(err instanceof Error ? err.message : String(err)),
@@ -294,7 +357,7 @@ export function App() {
               onClick={() => void remove(confirm)}
               className="rounded-md bg-red-700 px-2 py-1 font-medium text-white hover:bg-red-800 disabled:opacity-50"
             >
-              Delete {confirm.length} for good
+              {t('Delete {n} for good', { n: confirm.length })}
             </button>
             <button
               type="button"
@@ -331,7 +394,7 @@ export function App() {
             }
             className="flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
           >
-            <Files aria-hidden size={15} /> Merge into one PDF
+            <Files aria-hidden size={15} /> {t('Merge into one PDF')}
             {selected.size > 1 ? ` (${selected.size})` : ''}
           </button>
           <button
@@ -340,7 +403,7 @@ export function App() {
             onClick={() => setConfirm([...selected])}
             className="flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
           >
-            <Trash2 aria-hidden size={15} /> Delete selected
+            <Trash2 aria-hidden size={15} /> {t('Delete selected')}
             {selected.size ? ` (${selected.size})` : ''}
           </button>
           </>
@@ -369,7 +432,7 @@ export function App() {
               }
               className="accent-[#0e7c7b]"
             />
-            Select all{query ? ' shown' : ''} ({visible.length})
+            {query ? t('Select all shown') : t('Select all')} ({visible.length})
           </label>
           {!confirm && (items?.length ?? 0) > 0 && (
             <button
@@ -387,7 +450,7 @@ export function App() {
       <ul className="mt-2 divide-y divide-neutral-200 rounded-lg border border-neutral-200 bg-white dark:divide-neutral-800 dark:border-neutral-800 dark:bg-neutral-900">
         {items !== null && !visible.length && (
           <li className="p-4 text-neutral-500">
-            {query ? 'No capture matches.' : 'No saved captures.'}
+            {query ? t('No capture matches.') : t('No saved captures.')}
           </li>
         )}
         {visible.map((c) => (
@@ -403,7 +466,8 @@ export function App() {
                 return n;
               })
             }
-            onDelete={() => void remove([c.session.id])}
+            onDelete={() => setConfirm([c.session.id])}
+            onRename={(title) => void rename(c.session.id, title)}
             busy={busy}
             query={query}
           />
@@ -418,19 +482,22 @@ function Row(p: {
   checked: boolean;
   onCheck: (on: boolean) => void;
   onDelete: () => void;
+  onRename: (title: string) => void;
   busy: boolean;
   query: string;
 }) {
   const { session, bytes, preview, text } = p.item;
   const hit = snippet(text, p.query, `${session.title} ${session.url}`);
   const [src, setSrc] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(session.title);
   useEffect(() => {
     if (!preview) return;
     const url = URL.createObjectURL(preview);
     setSrc(url);
     return () => URL.revokeObjectURL(url);
   }, [preview]);
-  const title = session.title || session.url || 'Untitled capture';
+  const title = session.title || session.url || t('Untitled capture');
   const when = new Date(session.capturedAt).toLocaleString(undefined, {
     day: 'numeric',
     month: 'short',
@@ -444,11 +511,16 @@ function Row(p: {
   } catch {
     /* not a web address */
   }
+  const commitRename = () => {
+    const clean = draft.trim();
+    setEditing(false);
+    if (clean && clean !== session.title) p.onRename(clean);
+  };
   return (
     <li className="flex items-center gap-3 p-2" data-testid="capture-row">
       <input
         type="checkbox"
-        aria-label={`Select ${title}`}
+        aria-label={t('Select {title}', { title })}
         checked={p.checked}
         onChange={(e) => p.onCheck(e.target.checked)}
         className="accent-[#0e7c7b]"
@@ -459,11 +531,56 @@ function Row(p: {
         )}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate font-medium" title={title}>
-          {title}
-        </p>
+        {editing ? (
+          <div className="flex items-center gap-1">
+            <input
+              type="text"
+              autoFocus
+              aria-label={t('Capture title')}
+              data-testid="rename-input"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  commitRename();
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setEditing(false);
+                  setDraft(session.title);
+                }
+              }}
+              className="min-w-0 flex-1 rounded border border-accent bg-white px-1.5 py-0.5 text-[13px] outline-none dark:bg-neutral-950"
+            />
+            <button
+              type="button"
+              aria-label={t('Save name')}
+              title={t('Save name')}
+              onClick={commitRename}
+              className="rounded p-1 text-accent hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            >
+              <Check aria-hidden size={14} />
+            </button>
+            <button
+              type="button"
+              aria-label={t('Cancel')}
+              title={t('Cancel')}
+              onClick={() => {
+                setEditing(false);
+                setDraft(session.title);
+              }}
+              className="rounded p-1 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            >
+              <X aria-hidden size={14} />
+            </button>
+          </div>
+        ) : (
+          <p className="truncate font-medium" title={title}>
+            {title}
+          </p>
+        )}
         <p className="truncate text-neutral-500">
-          {[site, when, formatBytes(bytes), session.status !== 'complete' ? 'incomplete' : '']
+          {[site, when, formatBytes(bytes), session.status !== 'complete' ? t('incomplete') : '']
             .filter(Boolean)
             .join(' · ')}
         </p>
@@ -477,6 +594,20 @@ function Row(p: {
       </div>
       <button
         type="button"
+        aria-label={t('Rename')}
+        title={t('Rename')}
+        data-testid="rename-capture"
+        disabled={p.busy}
+        onClick={() => {
+          setDraft(session.title || title);
+          setEditing(true);
+        }}
+        className="rounded-md p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-white"
+      >
+        <Pencil aria-hidden size={15} />
+      </button>
+      <button
+        type="button"
         disabled={!session.frameCount}
         onClick={() =>
           void chrome.tabs.create({
@@ -485,11 +616,11 @@ function Row(p: {
         }
         className="flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
       >
-        <ExternalLink aria-hidden size={14} /> Open
+        <ExternalLink aria-hidden size={14} /> {t('Open')}
       </button>
       <button
         type="button"
-        aria-label={`Delete ${title}`}
+        aria-label={t('Delete {title}', { title })}
         title={t('Delete for good')}
         disabled={p.busy}
         onClick={p.onDelete}

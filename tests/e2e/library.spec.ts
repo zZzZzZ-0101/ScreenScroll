@@ -67,9 +67,18 @@ test('saved captures: size, search, open, delete for good, auto-clean', async ({
   await rows.first().getByRole('button', { name: 'Open' }).click();
   await (await studio).close();
 
-  // One click deletes at once, for good: the record and every frame.
+  // Single-row trash opens the safe confirmation bar: Cancel keeps it, confirming deletes for good.
   const framesBefore = await count(serviceWorker, 'frames');
   await lib.getByRole('button', { name: 'Delete Tiny' }).click();
+  const confirmBar = lib.getByRole('group', { name: 'Confirm deletion' });
+  await expect(confirmBar).toBeVisible();
+  await confirmBar.getByRole('button', { name: 'Cancel' }).click();
+  await expect(confirmBar).toHaveCount(0);
+  await expect(rows).toHaveCount(2);
+  expect(await count(serviceWorker, 'sessions')).toBe(2);
+
+  await lib.getByRole('button', { name: 'Delete Tiny' }).click();
+  await lib.getByRole('button', { name: 'Delete 1 for good' }).click();
   await expect(rows).toHaveCount(1);
   await expect(lib.getByRole('status')).toHaveText('Capture deleted.');
   expect(await count(serviceWorker, 'sessions')).toBe(1);
@@ -110,9 +119,12 @@ test('saved captures: deleting one after another never brings one back; batch an
   const rows = lib.getByTestId('capture-row');
   await expect(rows).toHaveCount(4);
 
-  // Two quick deletions in a row: both stay deleted.
+  // Two sequential single-row deletions with confirmation: both stay deleted.
   await lib.getByRole('button', { name: 'Delete Tiny' }).click();
+  await lib.getByRole('button', { name: 'Delete 1 for good' }).click();
+  await expect(rows).toHaveCount(3);
   await lib.getByRole('button', { name: 'Delete Overlay viewer' }).click();
+  await lib.getByRole('button', { name: 'Delete 1 for good' }).click();
   await expect(rows).toHaveCount(2);
   await lib.waitForTimeout(1000);
   await expect(rows).toHaveCount(2);
@@ -126,6 +138,47 @@ test('saved captures: deleting one after another never brings one back; batch an
   expect(await count(serviceWorker, 'sessions')).toBe(0);
   expect(await count(serviceWorker, 'frames')).toBe(0);
   await expect(lib.getByTestId('space')).toHaveText(/^0 captures · 0 KB/);
+});
+
+test('saved captures: inline rename persists across reload and Escape cancels', async ({
+  context,
+  serviceWorker,
+  extensionId,
+}) => {
+  const page = await context.newPage();
+  await page.goto(`${FIXTURES}/tiny.html`);
+  await page.bringToFront();
+  await serviceWorker.evaluate(async (url) => {
+    const [tab] = await chrome.tabs.query({ active: true, url });
+    await (globalThis as unknown as { __spTest: Hook }).__spTest.capture(tab!.id!);
+  }, `${FIXTURES}/tiny.html`);
+  await page.close();
+
+  const lib = await context.newPage();
+  await lib.goto(`chrome-extension://${extensionId}/captures.html`);
+  const row = lib.getByTestId('capture-row').first();
+  await expect(row).toContainText('Tiny');
+
+  // Opening inline rename and pressing Escape discards edits.
+  await row.getByTestId('rename-capture').click();
+  const input = row.getByTestId('rename-input');
+  await expect(input).toBeVisible();
+  await input.fill('Should not save');
+  await input.press('Escape');
+  await expect(input).toHaveCount(0);
+  await expect(row).toContainText('Tiny');
+
+  // Renaming and pressing Enter saves to IndexedDB and survives reload.
+  await row.getByTestId('rename-capture').click();
+  await expect(input).toBeVisible();
+  await input.fill('Quarterly Summary Report');
+  await input.press('Enter');
+  await expect(lib.getByRole('status')).toHaveText('Capture renamed.');
+  await expect(row).toContainText('Quarterly Summary Report');
+
+  await lib.reload();
+  const reloadedRow = lib.getByTestId('capture-row').first();
+  await expect(reloadedRow).toContainText('Quarterly Summary Report');
 });
 
 test('merge: chosen captures, reordered, with a page range, saved as one PDF', async ({

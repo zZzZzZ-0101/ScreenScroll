@@ -48,6 +48,8 @@ export interface SessionRecord {
   };
   /** How it was captured, so it can be captured again the same way. */
   mode?: CaptureMode;
+  /** Document-space region captured, so recapture can replay it without re-picking. */
+  region?: Region;
   /** The Studio's edits (TODO M4: projects are re-editable later). */
   project?: Project;
 }
@@ -76,6 +78,10 @@ export interface Project {
   pageNumbers?: { hide?: boolean; renumber?: boolean; hideRunning?: boolean };
   /** True when the user turns off automatic pixel seam alignment for this capture. */
   rawSeams?: boolean;
+  /** 0-based original slice indices excluded from output (reversible). */
+  excludedPages?: number[];
+  /** Custom order of 0-based original slice indices (permutation). */
+  pageOrder?: number[];
 }
 
 export const EMPTY_PROJECT: Project = { annotations: [], crop: null };
@@ -233,6 +239,17 @@ export async function listCaptures(): Promise<StoredCapture[]> {
     out.push({ session: updated, bytes: summary.bytes, preview, text: summary.searchText });
   }
   return out.sort((a, b) => b.session.capturedAt.localeCompare(a.session.capturedAt));
+}
+
+/** Renames a saved capture in IndexedDB (trimmed; no-op when blank). */
+export async function renameCapture(id: string, title: string): Promise<void> {
+  const clean = title.trim();
+  if (!clean) return;
+  const d = await db();
+  const tx = d.transaction('sessions', 'readwrite');
+  const session = await tx.store.get(id);
+  if (session) await tx.store.put({ ...session, title: clean });
+  await tx.done;
 }
 
 /** Deletes a capture and all its frames. */

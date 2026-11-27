@@ -5,6 +5,7 @@ import {
   MutationLog,
   STUCK_WARNING,
   chooseScrollTarget,
+  estimateScreens,
   isPlaceholderSrc,
   isStuck,
   nextStep,
@@ -22,15 +23,25 @@ import {
   TAB_HIDDEN,
   type CaptureControl,
   type CaptureDone,
+  type CapturePause,
+  type CaptureResume,
   type GrabFrame,
-  type PageNotice,
   type GrabResult,
+  type PageNotice,
+  type QuietFallback,
   type StartCapture,
 } from '@/shared/messages';
 import { pickArea, type AreaOutput } from '@/content/area-picker';
 import { elementRegion, pickElement, pickLines, pickScrollArea } from '@/content/page-ui';
 import { makePill, type Pill } from '@/content/pill';
-import { documentTarget, elementTarget, isScroller, type Target } from '@/content/targets';
+import { extractArticle, mountReaderView } from '@/content/reader';
+import {
+  countHorizontalClippers,
+  documentTarget,
+  elementTarget,
+  isScroller,
+  type Target,
+} from '@/content/targets';
 import { setLang, t as tr } from '@/shared/i18n';
 
 // Injected on demand into the page (CAPTURE §2). All page changes go through `log` so they
@@ -41,23 +52,37 @@ export default defineUnlistedScript(() => {
   w.__spCaptureLoaded = true;
 
   chrome.runtime.onMessage.addListener(
-    (msg: StartCapture | CaptureControl | PageNotice | { type: 'sp:status' }, _sender, reply) => {
-    // Is a capture really running here? (A record can say so after a reload or crash.)
-    if (msg.type === 'sp:status') {
-      reply({ sessionId: control?.sessionId ?? null });
+    (
+      msg:
+        | StartCapture
+        | CaptureControl
+        | CapturePause
+        | CaptureResume
+        | PageNotice
+        | { type: 'sp:status' },
+      _sender,
+      reply,
+    ) => {
+      // Is a capture really running here? (A record can say so after a reload or crash.)
+      if (msg.type === 'sp:status') {
+        reply({ sessionId: control?.sessionId ?? null, paused: control?.isPaused() ?? false });
+        return false;
+      }
+      if (msg.type === 'sp:start') {
+        // The page-side hints speak the user's language (it can't read settings itself).
+        if (msg.lang) setLang(msg.lang);
+        void run(msg);
+      }
+      // From the toolbar panel: the same Stop here / Cancel / Pause / Resume as on the pill.
+      if (msg.type === 'sp:control') control?.[msg.action]();
+      if (msg.type === 'sp:pause' && control && (!msg.sessionId || control.sessionId === msg.sessionId))
+        control.pause();
+      if (msg.type === 'sp:resume' && control && (!msg.sessionId || control.sessionId === msg.sessionId))
+        control.resume();
+      // After a quick output (copy, PDF) finished elsewhere: say so where the user is.
+      if (msg.type === 'sp:notice') makePill().notice(msg.text, 'done', 3000);
       return false;
-    }
-    if (msg.type === 'sp:start') {
-      // The page-side hints speak the user's language (it can't read settings itself).
-      if (msg.lang) setLang(msg.lang);
-      void run(msg);
-    }
-    // From the toolbar panel: the same Stop here / Cancel as on the pill.
-    if (msg.type === 'sp:control') control?.[msg.action]();
-    // After a quick output (copy, PDF) finished elsewhere: say so where the user is.
-    if (msg.type === 'sp:notice') makePill().notice(msg.text, 'done', 3000);
-    return false;
-  },
+    },
   );
 });
 
@@ -86,6 +111,8 @@ async function plan(msg: StartCapture): Promise<Plan | null> {
     case 'visible':
       if (msg.region) return { kind: 'region', target: documentTarget(), region: msg.region };
       return { kind: 'scroll', target: null, visibleOnly: msg.mode === 'visible' };
+    case 'reader':
+      return { kind: 'scroll', target: documentTarget(), visibleOnly: false };
     case 'selection': {
       const sel = msg.region ? { target: documentTarget(), region: msg.region } : await pickArea();
       return sel && { kind: 'region', ...sel };
@@ -95,6 +122,7 @@ async function plan(msg: StartCapture): Promise<Plan | null> {
       return sel && { kind: 'region', ...sel };
     }
     case 'element': {
+      if (msg.region) return { kind: 'region', target: documentTarget(), region: msg.region };
       const el = await pickElement();
       if (!el) return null;
       // An element that scrolls is captured whole, like a page (CAPTURE §14).
@@ -108,28 +136,66 @@ async function plan(msg: StartCapture): Promise<Plan | null> {
   }
 }
 
-/** The running capture's Stop here / Cancel, for messages from the toolbar panel. */
-let control: { stop: () => void; cancel: () => void; sessionId: string } | null = null;
+/** The running capture's Pause/Resume/Stop/Cancel, for messages from the toolbar panel. */
+let control: {
+  stop: () => void;
+  cancel: () => void;
+  pause: () => void;
+  resume: () => void;
+  isPaused: () => boolean;
+  sessionId: string;
+} | null = null;
 
 async function run(msg: StartCapture): Promise<void> {
   const log = new MutationLog();
   const warnings: string[] = [];
   let cancelled = false;
   let stopped = false;
+  let paused = false;
   let picking = false;
+  let resumeWaiters: Array<() => void> = [];
   let status: CaptureDone['status'];
-  let finishWith: Pick<CaptureDone, 'output' | 'annotations'> = {};
+  let finishWith: Pick<CaptureDone, 'output' | 'annotations' | 'region' | 'title'> = {};
   let size = { width: 0, height: 0 };
   /** Why the capture had to end and its frames were thrown away (shown on the page). */
   let abandoned: string | null = null;
+  const wake = () => {
+    const list = resumeWaiters;
+    resumeWaiters = [];
+    for (const fn of list) fn();
+  };
   const cancel = () => {
     cancelled = true;
+    paused = false;
+    pill.setPaused(false);
+    wake();
     // A picker is waiting for the user: Esc is how it ends.
     if (picking) dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
   };
   const stop = () => {
     stopped = true;
+    paused = false;
+    pill.setPaused(false);
+    wake();
     pill.set(tr('Stopping…'));
+  };
+  const pause = () => {
+    if (paused || cancelled || stopped) return;
+    paused = true;
+    pill.setPaused(true);
+    pill.set(tr('Paused'));
+  };
+  const resume = () => {
+    if (!paused) return;
+    paused = false;
+    pill.setPaused(false);
+    pill.set(tr('Resuming…'));
+    wake();
+  };
+  const waitIfPaused = async () => {
+    while (paused && !cancelled && !stopped) {
+      await new Promise<void>((r) => resumeWaiters.push(r));
+    }
   };
   const onKey = (e: KeyboardEvent) => {
     if (e.key === 'Escape') {
@@ -140,10 +206,11 @@ async function run(msg: StartCapture): Promise<void> {
   };
   const onHide = () => {
     cancelled = true;
+    wake();
     log.restore();
   };
-  const pill = makePill({ onStop: stop, onCancel: cancel });
-  control = { stop, cancel, sessionId: msg.sessionId };
+  const pill = makePill({ onPause: pause, onResume: resume, onStop: stop, onCancel: cancel });
+  control = { stop, cancel, pause, resume, isPaused: () => paused, sessionId: msg.sessionId };
   let unguard = () => {};
   // Esc must reach this page even if the user last clicked into an embedded frame.
   const focused = document.activeElement;
@@ -170,7 +237,14 @@ async function run(msg: StartCapture): Promise<void> {
     let p = await plan(msg);
     picking = false;
     if (!p || cancelled) throw new Cancelled();
-    if (p.kind === 'region') finishWith = { output: p.output, annotations: p.annotations };
+    if (p.kind === 'region') {
+      finishWith = {
+        ...finishWith,
+        output: p.output,
+        annotations: p.annotations,
+        ...(!p.target.el ? { region: p.region } : {}),
+      };
+    }
     // A zero-size selection or a hidden element: say so rather than produce nothing.
     if (p.kind === 'region' && (p.region.x1 - p.region.x0 < 1 || p.region.y1 - p.region.y0 < 1))
       throw new Error('The selected area is empty, so nothing was captured.');
@@ -180,10 +254,31 @@ async function run(msg: StartCapture): Promise<void> {
     addEventListener('pagehide', onHide);
     unguard = guardInput(pill);
 
-    let target = p.target ?? pickTarget();
+    // Clean (reader) capture: extract article from a DOM clone and mount a reversible ~720 px view.
+    let readerRoot: HTMLElement | null = null;
+    if (msg.mode === 'reader') {
+      const se = document.scrollingElement ?? document.documentElement;
+      const savedY = se.scrollTop;
+      log.record(() => {
+        se.scrollTop = savedY;
+      });
+      const article = extractArticle(document);
+      if (!article) {
+        throw new Error(
+          tr(
+            'This page does not look like an article, so Clean page could not extract it. Try Capture full page instead.',
+          ),
+        );
+      }
+      if (article.title) finishWith = { ...finishWith, title: article.title };
+      readerRoot = mountReaderView(log, article, location.href);
+    }
+
+    let target = readerRoot ? documentTarget() : (p.target ?? pickTarget());
     // A dialog-style scroll lock (overflow hidden on html/body) leaves nothing to scroll.
     // Only unlock when no inner scroller was found, so app layouts keep their panel.
     if (
+      !readerRoot &&
       p.kind === 'scroll' &&
       !p.target &&
       !target.el &&
@@ -192,11 +287,67 @@ async function run(msg: StartCapture): Promise<void> {
     ) {
       target = pickTarget();
     }
-    const startOffset = target.offset;
+    const startOffset = readerRoot ? 0 : target.offset;
     const t = target;
-    log.record(() => t.scrollTo(startOffset));
-    // Settings → "Where I am now": a full-page capture from the current position to the end.
-    if (msg.startAt === 'here' && p.kind === 'scroll' && !p.visibleOnly && startOffset > 0) {
+    if (!readerRoot) log.record(() => t.scrollTo(startOffset));
+    const startHere =
+      !readerRoot && msg.startAt === 'here' && p.kind === 'scroll' && !p.visibleOnly && startOffset > 0;
+    warnings.push(...prepare(log, target, !!msg.hideOverlays));
+    // Viewers that live in an embedded frame (some document previews) can't be scrolled from
+    // here: say so instead of quietly returning one screen.
+    if (!readerRoot && p.kind === 'scroll' && !target.el && target.maxScroll <= 2) {
+      const front = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
+      if (front instanceof HTMLIFrameElement) {
+        const r = front.getBoundingClientRect();
+        if (r.width * r.height > 0.3 * innerWidth * innerHeight)
+          warnings.push(
+            'The content is inside an embedded frame that ScreenScroll can’t scroll yet, so only the visible screen was captured. Try opening the frame’s content in its own tab.',
+          );
+      }
+    }
+    const iframes = readerRoot ? 0 : unreadableIframes();
+    if (iframes > 0) {
+      warnings.push(
+        `${iframes} embedded frame(s) from other sites were captured as pictures only; their text and links are not readable.`,
+      );
+    }
+    const clippers = countHorizontalClippers(
+      readerRoot ?? target.el ?? document.body,
+      p.kind === 'region' ? p.region : undefined,
+      target.crop,
+      target.offset,
+    );
+    if (clippers === 1) {
+      warnings.push(tr('1 wide area scrolls sideways and is clipped in this capture.'));
+    } else if (clippers > 1) {
+      warnings.push(
+        tr('{n} wide areas scroll sideways and are clipped in this capture.', { n: clippers }),
+      );
+    }
+    eagerLoadImages(log);
+    // In the background: only the page itself (the debugger pictures its layout, not the
+    // inside of a scroll area), and without the look-ahead pass, which scrolls.
+    // A scroll area inside the page is drawn in full for the capture (logged, put back
+    // after), so the debugger can picture it from the layout too.
+    const quiet = !!msg.quiet && !readerRoot && p.kind === 'scroll' && !p.visibleOnly;
+    if (quiet && target.el && !expandForQuiet(log, target)) {
+      warnings.push(
+        'This part scrolls inside the page and could not be drawn in full, so it was captured by scrolling.',
+      );
+    }
+    const quietNow = quiet && (!target.el || expanded.has(target.el));
+    if (msg.quiet && !quietNow) {
+      const fallback = (await chrome.runtime
+        .sendMessage({
+          type: 'sp:quiet-fallback',
+          sessionId: msg.sessionId,
+        } satisfies QuietFallback)
+        .catch(() => ({}))) as { warning?: string } | undefined;
+      if (fallback?.warning) warnings.push(fallback.warning);
+    }
+    // Settings → "Where I am now": capture from current scroll offset to the end.
+    // Quiet mode supports a starting offset directly via CDP clip; on-screen capture uses region mode.
+    if (!quietNow && startHere) {
       p = {
         kind: 'region',
         target,
@@ -208,43 +359,14 @@ async function run(msg: StartCapture): Promise<void> {
         },
       };
     }
-    warnings.push(...prepare(log, target, !!msg.hideOverlays));
-    // Viewers that live in an embedded frame (some document previews) can't be scrolled from
-    // here: say so instead of quietly returning one screen.
-    if (p.kind === 'scroll' && !target.el && target.maxScroll <= 2) {
-      const front = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
-      if (front instanceof HTMLIFrameElement) {
-        const r = front.getBoundingClientRect();
-        if (r.width * r.height > 0.3 * innerWidth * innerHeight)
-          warnings.push(
-            'The content is inside an embedded frame that ScreenScroll can’t scroll yet, so only the visible screen was captured. Try opening the frame’s content in its own tab.',
-          );
-      }
-    }
-    const iframes = unreadableIframes();
-    if (iframes > 0) {
-      warnings.push(
-        `${iframes} embedded frame(s) from other sites were captured as pictures only; their text and links are not readable.`,
-      );
-    }
-    eagerLoadImages(log);
-    // In the background: only the page itself (the debugger pictures its layout, not the
-    // inside of a scroll area), and without the look-ahead pass, which scrolls.
-    // A scroll area inside the page is drawn in full for the capture (logged, put back
-    // after), so the debugger can picture it from the layout too.
-    const quiet = !!msg.quiet && p.kind === 'scroll' && !p.visibleOnly;
-    if (quiet && target.el && !expandForQuiet(log, target)) {
-      warnings.push(
-        'This part scrolls inside the page and could not be drawn in full, so it was captured by scrolling.',
-      );
-    }
-    const quietNow = quiet && (!target.el || expanded.has(target.el));
+    pill.canPause(true);
     if (!quietNow && (p.kind === 'region' || !p.visibleOnly)) {
       const from = p.kind === 'region' ? p.region.y0 : 0;
       const to = p.kind === 'region' ? p.region.y1 : Infinity;
       const preload = await preloadPass(
         target,
         () => cancelled,
+        waitIfPaused,
         Math.min(200, msg.limits?.maxScreens ?? DEFAULT_LIMITS.maxScreens),
         from,
         to,
@@ -263,9 +385,10 @@ async function run(msg: StartCapture): Promise<void> {
       pill,
       cancelled: () => cancelled,
       stopped: () => stopped,
+      waitIfPaused,
       size: { width: innerWidth, height: innerHeight },
       hints: {
-        root: target.el ?? document.body,
+        root: readerRoot ?? target.el ?? document.body,
         crop: target.crop,
         offset: 0,
         seen: new Set<string>(),
@@ -278,7 +401,7 @@ async function run(msg: StartCapture): Promise<void> {
       p.kind === 'region'
         ? await captureRegion(ctx, target, p.region)
         : quietNow
-          ? await captureQuiet(ctx, target)
+          ? await captureQuiet(ctx, target, startHere ? startOffset : 0)
           : await captureScroll(ctx, target, p.visibleOnly);
     status = result.status;
     size = result.size;
@@ -295,6 +418,7 @@ async function run(msg: StartCapture): Promise<void> {
   } finally {
     unguard();
     control = null;
+    wake();
     // Whatever happened is said where the user is looking (never fail silently), and stays
     // long enough to read.
     if (status! === 'error') pill.notice(warnings.at(-1)!.replace(/^Capture failed: /, ''));
@@ -375,6 +499,8 @@ interface LoopContext {
   cancelled: () => boolean;
   /** "Stop here": end now and keep what was captured. */
   stopped: () => boolean;
+  /** Suspends cleanly between frames while paused; wakes immediately on resume, stop, or cancel. */
+  waitIfPaused: () => Promise<void>;
   /** Window size at the start; frames from a different size can't be stitched. */
   size: { width: number; height: number };
   hints: CollectContext;
@@ -399,6 +525,8 @@ async function grabFrame(
     crop: Rect;
     offset: number;
     pill: Extract<NextStep, { kind: 'scroll' }>['pill'];
+    /** Estimated total screens for the HUD progress display, or null when single-screen. */
+    estimate?: number | null;
     /** How far the page's content has moved down since the capture began (measured after
      * settling), taken off docY so every frame stays in the first frame's coordinates. */
     shift?: () => number;
@@ -425,7 +553,18 @@ async function grabFrame(
     ctx.hints.skipTextRuns = true;
     ctx.warnings.push('Page text was too slow to read; the PDF may not be fully searchable.');
   }
-  ctx.pill.set(frame.pill === 'top' ? tr('Finishing') : tr('Capturing · screen {n}', { n: index + 1 }));
+  if (frame.pill === 'top') {
+    ctx.pill.set(tr('Finishing'));
+    ctx.pill.progress(index + 1, index + 1);
+  } else if (frame.estimate && frame.estimate > 1) {
+    ctx.pill.set(
+      tr('Capturing · screen {n} of ~{total}', { n: index + 1, total: frame.estimate }),
+    );
+    ctx.pill.progress(index + 1, frame.estimate);
+  } else {
+    ctx.pill.set(tr('Capturing · screen {n}', { n: index + 1 }));
+    ctx.pill.progress(index + 1, frame.estimate ?? null);
+  }
   ctx.pill.canStop(index > 0);
   if (frame.pill === 'hidden') ctx.pill.hide();
   else ctx.pill.place(frame.pill);
@@ -484,11 +623,15 @@ const stoppedWarning = (frames: number) =>
 
 /**
  * Background capture: the page stays where the user is. Each screen-sized region of the
- * page's layout is read (text, line boxes) and pictured by the debugger in turn, top to
- * bottom; nothing scrolls. Pages that size themselves to the window can look different
- * when pictured this way, so a change in the page's height is reported.
+ * page's layout is read (text, line boxes) and pictured by the debugger in turn, from
+ * `startY` to the bottom; nothing scrolls. Uses timer-safe settling so switching tabs never
+ * stalls on paused `requestAnimationFrame`.
  */
-async function captureQuiet(ctx: LoopContext, target: Target): Promise<LoopResult> {
+async function captureQuiet(
+  ctx: LoopContext,
+  target: Target,
+  startY = 0,
+): Promise<LoopResult> {
   const el = target.el;
   // An expanded scroll area: its content starts at its own top, laid out in full.
   const box = el ? contentBox(el) : target.crop;
@@ -496,10 +639,12 @@ async function captureQuiet(ctx: LoopContext, target: Target): Promise<LoopResul
   // Viewport y of content row 0 (the page's own scroll offset for the document).
   const originY = () => (el ? contentBox(el).y : box.y - target.offset);
   const limits = ctx.msg.limits ?? DEFAULT_LIMITS;
+  if (startY > 0) hideFixedTop(ctx.log);
   const startHeight = height();
-  let y = 0;
+  let y = startY;
   let index = 0;
   for (; ; index++) {
+    await ctx.waitIfPaused();
     if (ctx.cancelled()) throw new Cancelled();
     if (ctx.stopped()) {
       if (index === 0) throw new Cancelled();
@@ -508,32 +653,46 @@ async function captureQuiet(ctx: LoopContext, target: Target): Promise<LoopResul
     }
     const total = height();
     if (y >= total - 0.5) break;
-    if (index >= limits.maxScreens || y >= limits.maxHeight) {
+    const capturedHeight = y - startY;
+    if (index >= limits.maxScreens || capturedHeight >= limits.maxHeight) {
       ctx.warnings.push(
-        `The page is longer than ScreenScroll captures at once; it stopped after ${index} screens (${Math.round(y)} px).`,
+        `The page is longer than ScreenScroll captures at once; it stopped after ${index} screens (${Math.round(capturedHeight)} px).`,
       );
       break;
     }
     const h = Math.min(innerHeight, total - y);
-    const stillLoading = await settle();
+    const bandTop = originY() + y;
+    const stillLoading = await settle(true, { top: bandTop, bottom: bandTop + h });
     if (stillLoading > 0 && !ctx.warnings.includes(IMAGES_WARNING)) ctx.warnings.push(IMAGES_WARNING);
     // The region in viewport coordinates (below the screen is fine: layout boxes exist).
     const crop = { x: box.x, y: originY() + y, width: box.width, height: h };
+    const docY = y - startY;
     ctx.hints.crop = crop;
-    ctx.hints.offset = y;
+    ctx.hints.offset = docY;
     const t0 = performance.now();
     const hints = collectHints(ctx.hints);
     const hintsMs = performance.now() - t0;
-    ctx.pill.set(tr('Capturing in the background · screen {n}', { n: index + 1 }));
+    const est = Math.min(
+      limits.maxScreens,
+      estimateScreens(
+        Math.min(Math.max(0, total - startY), limits.maxHeight),
+        Math.max(1, innerHeight),
+        index + 1,
+      ),
+    );
+    ctx.pill.set(
+      tr('Capturing in the background · screen {n} of ~{total}', { n: index + 1, total: est }),
+    );
+    ctx.pill.progress(index + 1, est);
     ctx.pill.canStop(index > 0);
     // The pill is on the page: it would be pictured where the page is laid out.
     ctx.pill.hide();
-    await frames(1);
+    await nextPaint(true);
     const res = (await chrome.runtime.sendMessage({
       type: 'sp:grab',
       sessionId: ctx.msg.sessionId,
       index,
-      docY: y,
+      docY,
       crop: { x: 0, y: 0, width: box.width, height: h },
       viewportWidth: box.width,
       hints,
@@ -549,7 +708,7 @@ async function captureQuiet(ctx: LoopContext, target: Target): Promise<LoopResul
     ctx.warnings.push(
       'The page changed height while it was captured in the background; if something looks stretched or doubled, capture it on screen instead.',
     );
-  return { status: 'complete', size: { width: box.width, height: y } };
+  return { status: 'complete', size: { width: box.width, height: Math.max(0, y - startY) } };
 }
 
 const expanded = new WeakSet<Element>();
@@ -689,6 +848,35 @@ function inFlow(el: Element, root: Element | null): boolean {
   return true;
 }
 
+/**
+ * Seam check shared by full-page and region captures: content loaded or resized above the
+ * screen (lazy timelines, ads) shifts everything below so scroll offsets no longer match
+ * earlier frames. Anchoring two normal-flow elements in the kept strip lets us measure that
+ * shift and realign subsequent frames.
+ */
+function createShiftTracker(target: Target, box: Rect) {
+  let shift = 0;
+  let anchors: Array<{ el: Element; y: number }> = [];
+  const absTop = (el: Element) => el.getBoundingClientRect().top - box.y + target.offset;
+  return {
+    measure: () => {
+      if (anchors.length === 2 && anchors.every((a) => a.el.isConnected)) {
+        const [d1, d2] = anchors.map((a) => absTop(a.el) - a.y) as [number, number];
+        // Both moved, the same way: content above changed size. Anything else (a recycled
+        // row, one element resized) is not a reason to move the frame.
+        if (Math.abs(d1) >= 1 && Math.abs(d1 - d2) <= 1) shift += d1;
+      }
+      return shift;
+    },
+    update: (top: number, bottom: number, xBox: Rect = box) => {
+      anchors = pickAnchors(target.el, xBox, top, bottom, absTop);
+    },
+    get total() {
+      return shift;
+    },
+  };
+}
+
 /** Full page or visible area of a scroll target (CAPTURE §2, §9). */
 async function captureScroll(
   ctx: LoopContext,
@@ -702,23 +890,10 @@ async function captureScroll(
   const start = visibleOnly ? target.offset : 0;
   let covered: number | null = null;
   let lastOffset: number | null = null;
-  // Seam check: content loaded or resized above the screen (lazy timelines, ads) moves
-  // everything below, and the browser's scroll anchoring follows it, so scroll offsets no
-  // longer match what was captured before. An element at the last frame's bottom edge is
-  // the anchor: how far it moved is how far this frame must be moved back.
-  let shift = 0;
-  let anchors: Array<{ el: Element; y: number }> = [];
-  const absTop = (el: Element) => el.getBoundingClientRect().top - box.y + target.offset;
-  const measureShift = () => {
-    if (anchors.length === 2 && anchors.every((a) => a.el.isConnected)) {
-      const [d1, d2] = anchors.map((a) => absTop(a.el) - a.y) as [number, number];
-      // Both moved, the same way: content above changed size. Anything else (a recycled
-      // row, one element resized) is not a reason to move the frame.
-      if (Math.abs(d1) >= 1 && Math.abs(d1 - d2) <= 1) shift += d1;
-    }
-    return shift;
-  };
+  const limits = ctx.msg.limits ?? DEFAULT_LIMITS;
+  const tracker = createShiftTracker(target, box);
   for (let index = 0; ; index++) {
+    await ctx.waitIfPaused();
     if (ctx.cancelled()) throw new Cancelled();
     if (ctx.stopped()) {
       if (index === 0) throw new Cancelled();
@@ -753,24 +928,32 @@ async function captureScroll(
       break;
     }
     const { top, bottom } = step.keep;
+    const usableStep = Math.max(1, box.height - (step.pill === 'hidden' ? 0 : reserve.bottom));
+    const estimate = visibleOnly
+      ? 1
+      : Math.min(
+          limits.maxScreens,
+          estimateScreens(Math.min(end - start, limits.maxHeight), usableStep, index + 1),
+        );
     await grabFrame(ctx, target, index, {
       docY: measured + top,
       crop: { x: box.x, y: box.y + top, width: box.width, height: bottom - top },
       offset: measured,
       pill: step.pill,
-      shift: visibleOnly ? undefined : measureShift,
+      estimate,
+      shift: visibleOnly ? undefined : tracker.measure,
     });
     covered = Math.max(covered ?? 0, measured + bottom);
     lastOffset = measured;
-    if (!visibleOnly) anchors = pickAnchors(target.el, box, top, bottom, absTop);
+    if (!visibleOnly) tracker.update(top, bottom);
   }
-  if (Math.round(shift) !== 0)
+  if (Math.round(tracker.total) !== 0)
     ctx.warnings.push(
-      `The page moved by ${Math.round(Math.abs(shift))} px while capturing (something above loaded or changed size); the screens were lined up again at the seams.`,
+      `The page moved by ${Math.round(Math.abs(tracker.total))} px while capturing (something above loaded or changed size); the screens were lined up again at the seams.`,
     );
   return {
     status: 'complete',
-    size: { width: box.width, height: target.scrollHeight - shift },
+    size: { width: box.width, height: target.scrollHeight - tracker.total },
   };
 }
 
@@ -783,26 +966,35 @@ async function captureRegion(
   const size = { width: region.x1 - region.x0, height: region.y1 - region.y0 };
   const box = target.crop;
   const reserve = pillReserve(ctx.pill, box, region.x0, region.x1);
+  const limits = ctx.msg.limits ?? DEFAULT_LIMITS;
   // A fixed header would cover the region's top in every frame unless the region starts at
   // the very top of the page, where the header is part of what was selected.
   if (region.y0 > 0) hideFixedTop(ctx.log);
   let covered: number | null = null;
+  const tracker = createShiftTracker(target, box);
   for (let index = 0; ; index++) {
+    await ctx.waitIfPaused();
     if (ctx.cancelled()) throw new Cancelled();
     if (ctx.stopped()) {
       if (index === 0) throw new Cancelled();
       ctx.warnings.push(stoppedWarning(index));
       break;
     }
+    const prevShift = tracker.total;
+    const shiftedRegion: Region = {
+      ...region,
+      y0: region.y0 + prevShift,
+      y1: region.y1 + prevShift,
+    };
     const step = nextStep(
       {
         viewportHeight: box.height,
-        scrollHeight: region.y1,
+        scrollHeight: shiftedRegion.y1,
         maxScroll: target.maxScroll,
-        start: region.y0,
+        start: shiftedRegion.y0,
         coveredTo: covered,
         framesTaken: index,
-        initialScrollHeight: region.y1,
+        initialScrollHeight: shiftedRegion.y1,
       },
       ctx.msg.limits,
       reserve,
@@ -819,14 +1011,37 @@ async function captureRegion(
     const offset = target.offset;
     const { top, bottom } = step.keep;
     const view = { ...box, y: box.y + top, height: bottom - top };
-    const f = regionFrame(region, view, offset + top, covered ?? region.y0);
+    const f = regionFrame(shiftedRegion, view, offset + top, covered ?? shiftedRegion.y0);
     if (!f) {
       ctx.warnings.push(STUCK_WARNING);
       break;
     }
-    await grabFrame(ctx, target, index, { docY: f.docY, crop: f.crop, offset, pill: step.pill });
+    const usableStep = Math.max(1, box.height - (step.pill === 'hidden' ? 0 : reserve.bottom));
+    const estimate = Math.min(
+      limits.maxScreens,
+      estimateScreens(Math.min(size.height, limits.maxHeight), usableStep, index + 1),
+    );
+    // `f.docY + prevShift` is the unshifted region-relative y; `grabFrame` subtracts the
+    // settled `tracker.measure()` total so mid-capture shifts realign the seam cleanly.
+    await grabFrame(ctx, target, index, {
+      docY: f.docY + prevShift,
+      crop: f.crop,
+      offset,
+      pill: step.pill,
+      estimate,
+      shift: tracker.measure,
+    });
     covered = f.coveredTo;
+    tracker.update(f.crop.y - box.y, f.crop.y - box.y + f.crop.height, {
+      ...box,
+      x: f.crop.x,
+      width: f.crop.width,
+    });
   }
+  if (Math.round(tracker.total) !== 0)
+    ctx.warnings.push(
+      `The page moved by ${Math.round(Math.abs(tracker.total))} px while capturing (something above loaded or changed size); the screens were lined up again at the seams.`,
+    );
   return { status: 'complete', size };
 }
 
@@ -986,6 +1201,7 @@ function eagerLoadImages(log: MutationLog): void {
 async function preloadPass(
   target: Target,
   cancelled: () => boolean,
+  waitIfPaused: () => Promise<void>,
   maxScreens: number,
   from = 0,
   to = Infinity,
@@ -993,6 +1209,7 @@ async function preloadPass(
   const started = performance.now();
   const step = Math.max(1, Math.floor(target.crop.height * 0.9));
   for (let y = from, screens = 0; ; y += step, screens++) {
+    await waitIfPaused();
     if (cancelled()) return null;
     if (y >= target.scrollHeight - target.crop.height || y >= to) return null;
     if (screens >= maxScreens) return null;
@@ -1045,19 +1262,42 @@ function hideFixedTop(log: MutationLog): void {
 /**
  * CAPTURE §7: two frames, visible images loaded and decoded (1.5 s cap), then a short dwell.
  * Returns how many visible images were still incomplete, so the caller can warn.
+ * When `allowHidden` is true (background/quiet capture), uses a timer fallback so switching
+ * tabs never stalls on paused `requestAnimationFrame`.
  */
 /** Settings → Capture speed (set when a capture starts). */
 let timing = { settleMs: 150, frameImageWaitMs: 1500, pageImageWaitMs: 5000 };
 
-async function settle(): Promise<number> {
-  await frames(2);
+async function settle(
+  allowHidden = false,
+  band: { top: number; bottom: number } = { top: 0, bottom: innerHeight },
+): Promise<number> {
+  if (allowHidden) {
+    if (document.hidden) await sleep(32);
+    else await Promise.race([frames(2), sleep(80)]);
+  } else {
+    await frames(2);
+  }
   const visible = [...document.images].filter((img) => {
     const r = img.getBoundingClientRect();
-    return r.bottom > 0 && r.top < innerHeight && r.width > 0;
+    return r.bottom > band.top && r.top < band.bottom && r.width > 0;
   });
   const pending = await waitForImages(visible, timing.frameImageWaitMs);
   await sleep(timing.settleMs);
   return pending;
+}
+
+/** Waits for one paint when visible, or a short timer when the tab is hidden. */
+async function nextPaint(allowHidden = false): Promise<void> {
+  if (!allowHidden) {
+    await frames(1);
+    return;
+  }
+  if (document.hidden) {
+    await sleep(20);
+    return;
+  }
+  await Promise.race([frames(1), sleep(50)]);
 }
 
 /** Waits until the images are loaded and decoded or the timeout passes; returns how many are not. */

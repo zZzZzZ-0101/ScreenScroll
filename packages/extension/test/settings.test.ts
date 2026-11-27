@@ -123,3 +123,55 @@ describe('settings file (backup)', () => {
     expect(odd.capture.width).toBe(0);
   });
 });
+
+describe('output presets', () => {
+  it('defines print-a4, share-small and archive presets with coordinated settings', async () => {
+    const { OUTPUT_PRESETS, OUTPUT_PRESET_IDS, applyOutputPreset } = await import(
+      '../src/shared/settings'
+    );
+    expect(OUTPUT_PRESET_IDS).toEqual(['print-a4', 'share-small', 'archive']);
+
+    const base = {
+      ...DEFAULT_SETTINGS,
+      page: {
+        ...DEFAULT_SETTINGS.page,
+        paper: 'Letter' as const,
+        orientation: 'landscape' as const,
+        marginsMm: { top: 20, right: 20, bottom: 20, left: 20 },
+      },
+      exportPreset: 'best' as const,
+      pdf: {
+        ...DEFAULT_SETTINGS.pdf,
+        filter: 'bw' as const,
+        perSheet: '2up' as const,
+        watermark: { ...DEFAULT_SETTINGS.pdf.watermark, text: 'DRAFT' },
+      },
+    };
+
+    const printA4 = applyOutputPreset(base, 'print-a4');
+    expect(printA4.page.paper).toBe('A4');
+    expect(printA4.page.orientation).toBe('portrait');
+    expect(printA4.page.marginsMm).toEqual({ top: 10, right: 10, bottom: 10, left: 10 });
+    expect(printA4.exportPreset).toBe('balanced');
+    expect(printA4.pdf.perSheet).toBe('single');
+    expect(printA4.pdf.watermark.text).toBe('DRAFT');
+
+    const shareSmall = applyOutputPreset(base, 'share-small');
+    expect(shareSmall.page.paper).toBe('A4');
+    expect(shareSmall.exportPreset).toBe('compact');
+    expect(shareSmall.pdf.textLayer).toBe(true);
+    expect(shareSmall.pdf.watermark.text).toBe('DRAFT');
+
+    const archive = applyOutputPreset(base, 'archive');
+    expect(archive.exportPreset).toBe('lossless');
+    expect(archive.pdf.filter).toBe('original');
+    expect(archive.page.marginsMm).toEqual({ top: 10, right: 10, bottom: 10, left: 10 });
+    expect(archive.pdf.outline).toBe(true);
+    expect(archive.pdf.watermark.text).toBe('DRAFT');
+
+    for (const id of OUTPUT_PRESET_IDS) {
+      expect(OUTPUT_PRESETS[id].label.length).toBeGreaterThan(0);
+      expect(OUTPUT_PRESETS[id].summary.length).toBeGreaterThan(0);
+    }
+  });
+});

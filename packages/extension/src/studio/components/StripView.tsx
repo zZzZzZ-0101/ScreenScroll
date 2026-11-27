@@ -12,6 +12,7 @@ import type { Analysis } from '@/studio/engine/analysis';
 import { composePage } from '@/studio/engine/compose';
 import type { FrameCache, LoadedSession } from '@/studio/engine/session';
 import type { Edits } from '../App';
+import { stepZoom, type Zoom } from './ZoomControl';
 import { t } from '@/shared/i18n';
 
 /** Plain-language names for the break kinds (colours stay as the visual cue). */
@@ -27,8 +28,9 @@ const KIND_TITLES: Record<BreakKind, string> = {
   end: 'End',
 };
 
-/** CSS zoom applied to the ≤ 320 px thumbnail strip. */
-const ZOOM = 1.5;
+/** Default CSS zoom applied to the ≤ 320 px thumbnail strip at 100%. */
+const BASE_ZOOM = 1.5;
+const PAD = 24;
 /** Breaks snap to a candidate within this many CSS px unless Alt is held (UI §3). */
 const SNAP = 12;
 const MAG_W = 640;
@@ -49,13 +51,52 @@ interface Props {
   checks?: BreakCheck[];
   /** Document pages: drawn over the strip with edges to drag (the page grid follows). */
   sheetGrid?: { grid: SheetGrid; onGrid: (g: SheetGrid) => void };
+  zoom: Zoom;
+  onZoom: (z: Zoom) => void;
+  onEffective: (scale: number) => void;
+  /** Optional y position to scroll directly to (e.g. clicking a seam). */
+  jumpY?: { y: number; seq: number } | null;
 }
 
 export function StripView(p: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
-  const k = p.analysis.stripScale * ZOOM; // display px per CSS px
-  const width = (p.crop.x1 - p.crop.x0) * k;
+  const [avail, setAvail] = useState(800);
+
+  useEffect(() => {
+    const el = scroller.current!;
+    const ro = new ResizeObserver(() => setAvail(Math.max(120, el.clientWidth - 2 * PAD)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const cropW = Math.max(1, p.crop.x1 - p.crop.x0);
+  const baseK = p.analysis.stripScale * BASE_ZOOM;
+  const naturalW = cropW * baseK;
+  const effective =
+    typeof p.zoom === 'number'
+      ? p.zoom
+      : p.zoom === 'width'
+        ? Math.max(0.25, Math.min(1, avail / naturalW))
+        : 1;
+  const { onEffective } = p;
+  useEffect(() => onEffective(effective), [effective, onEffective]);
+
+  const latest = useRef({ effective, onZoom: p.onZoom });
+  latest.current = { effective, onZoom: p.onZoom };
+  useEffect(() => {
+    const el = scroller.current!;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      latest.current.onZoom(stepZoom(latest.current.effective, e.deltaY < 0 ? 1 : -1));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
+  const k = baseK * effective; // display px per CSS px
+  const width = cropW * k;
   const breaks = p.debug.slices.slice(0, -1).map((s) => ({
     y: s.y1,
     kind: s.breakKind,
@@ -68,6 +109,16 @@ export function StripView(p: Props) {
     const s = p.debug.slices[p.page];
     if (s && scroller.current) scroller.current.scrollTo({ top: s.y0 * k, behavior: 'smooth' });
   }, [p.page, p.debug.slices, k]);
+
+  useEffect(() => {
+    if (!p.jumpY || !scroller.current) return;
+    const el = scroller.current;
+    el.scrollTo({
+      top: Math.max(0, p.jumpY.y * k - el.clientHeight / 3),
+      behavior: 'smooth',
+    });
+    setFocusY(p.jumpY.y);
+  }, [p.jumpY, k]);
 
   const docY = useCallback(
     (clientY: number) => {
@@ -109,7 +160,7 @@ export function StripView(p: Props) {
     <div className="relative flex min-h-0 flex-1">
       <div
         ref={scroller}
-        className="flex-1 overflow-y-auto bg-neutral-100 p-6 dark:bg-neutral-950"
+        className="flex-1 overflow-auto bg-neutral-100 p-6 dark:bg-neutral-950"
         data-testid="strip-view"
       >
         <div
@@ -132,6 +183,35 @@ export function StripView(p: Props) {
               offsetX={-p.crop.x0 * k}
               fullWidth={p.session.width * k}
             />
+          ))}
+          {p.analysis.seams.map((seam) => (
+            <div
+              key={`seam-${seam.frame}`}
+              data-testid="seam-marker"
+              data-seam-kind={seam.kind}
+              title={
+                seam.kind === 'adjusted'
+                  ? t('Screen seam realigned by {px} px', { px: Math.abs(seam.delta) })
+                  : t('Unverified screen seam')
+              }
+              onPointerEnter={() => !drag && setFocusY(seam.y)}
+              onPointerLeave={() => !drag && setFocusY(null)}
+              className="absolute left-0 right-0 z-[5] -mt-[3px] h-[6px]"
+              style={{ top: seam.y * k }}
+            >
+              <div
+                className={`absolute left-0 right-0 top-[2px] border-t border-dotted ${
+                  seam.kind === 'unverified' ? 'border-amber-500' : 'border-sky-500/80'
+                }`}
+              />
+              <span
+                className={`absolute -right-6 -top-1.5 rounded px-1 text-[9px] font-medium text-white ${
+                  seam.kind === 'unverified' ? 'bg-amber-500' : 'bg-sky-600/90'
+                }`}
+              >
+                {seam.kind === 'unverified' ? '?' : `${seam.delta > 0 ? '+' : ''}${seam.delta}`}
+              </span>
+            </div>
           ))}
           {p.sheetGrid && (
             <SheetOverlay
@@ -280,7 +360,7 @@ function Magnifier(p: {
     return () => cancelAnimationFrame(frame);
   }, [p.session, p.frames, p.crop.x0, p.crop.x1, p.y]);
   return (
-    <div className="pointer-events-none absolute bottom-4 right-4 rounded-md border border-neutral-300 bg-white p-1 shadow-sm dark:border-neutral-700 dark:bg-neutral-900">
+    <div className="pointer-events-none absolute bottom-14 right-4 rounded-md border border-neutral-300 bg-white p-1 shadow-sm dark:border-neutral-700 dark:bg-neutral-900">
       <canvas
         ref={ref}
         style={{ width: MAG_W }}

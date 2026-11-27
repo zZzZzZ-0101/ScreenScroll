@@ -6,7 +6,7 @@ export type ExportFormat = 'pdf' | 'pdf-long' | 'png' | 'jpeg' | 'webp' | 'long-
 
 type Item =
   | { kind: 'format'; format: ExportFormat; label: string }
-  | { kind: 'action'; id: 'copy' | 'print'; label: string; keys: string };
+  | { kind: 'action'; id: 'copy' | 'copy-text' | 'print'; label: string; keys: string };
 
 const ITEMS: Item[] = [
   { kind: 'format', format: 'pdf-long', label: 'PDF as one long page' },
@@ -16,6 +16,7 @@ const ITEMS: Item[] = [
   { kind: 'format', format: 'long-png', label: 'One long image (PNG)' },
   { kind: 'format', format: 'md', label: 'Text (Markdown)' },
   { kind: 'format', format: 'docx', label: 'Text (Word .docx)' },
+  { kind: 'action', id: 'copy-text', label: 'Copy text', keys: '' },
   { kind: 'action', id: 'copy', label: 'Copy this page', keys: 'Ctrl+Shift+C' },
   { kind: 'action', id: 'print', label: 'Print', keys: 'Ctrl+P' },
 ];
@@ -28,6 +29,7 @@ export function SaveMenu(p: {
   disabled: boolean;
   onExport: (f: ExportFormat) => void;
   onCopy: () => void;
+  onCopyText: () => void;
   onPrint: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -48,6 +50,7 @@ export function SaveMenu(p: {
     setOpen(false);
     if (item.kind === 'format') p.onExport(item.format);
     else if (item.id === 'copy') p.onCopy();
+    else if (item.id === 'copy-text') p.onCopyText();
     else p.onPrint();
   };
 

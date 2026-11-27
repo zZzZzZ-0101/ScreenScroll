@@ -13,11 +13,12 @@ import {
   STRIP_WIDTH,
   type FrameInput,
   type RawAnalysis,
+  type SeamInfo,
 } from './analysis-core';
 import type { FromAnalysisWorker, ToAnalysisWorker } from './analysis-worker';
 import type { FrameCache, LoadedSession } from './session';
 
-export { ANALYSIS_WIDTH, STRIP_WIDTH };
+export { ANALYSIS_WIDTH, STRIP_WIDTH, type SeamInfo };
 
 export interface Analysis {
   rows: RowProfile;
@@ -34,6 +35,12 @@ export interface Analysis {
   geoms: FrameGeom[];
   /** Total height in CSS px after optional pixel seam alignment. */
   height: number;
+  /** Structured per-seam alignment and verification results. */
+  seams: SeamInfo[];
+  /** Sum of absolute pixel shifts applied across adjusted seams. */
+  adjustedSeamPx: number;
+  /** Number of seams that could not be verified by image matching. */
+  unverifiedSeams: number;
   /** True when one or more unanchored frame seams were shifted by image matching. */
   seamAdjusted: boolean;
   /** Explicit notes when seams were realigned or could not be verified. */
@@ -57,6 +64,33 @@ type WorkerReq = ToAnalysisWorker extends infer T
     : never
   : never;
 
+function failWorker(message: string): void {
+  workerFailed = true;
+  const dead = worker;
+  worker = null;
+  try {
+    dead?.terminate();
+  } catch {
+    /* ignore */
+  }
+  const err = new Error(message);
+  const inflight = [...pending.values()];
+  pending.clear();
+  for (const p of inflight) p.reject(err);
+}
+
+/** Resets worker singleton state (used by unit tests verifying crash fallback). */
+export function _resetAnalysisWorkerForTest(): void {
+  try {
+    worker?.terminate();
+  } catch {
+    /* ignore */
+  }
+  worker = null;
+  workerFailed = false;
+  pending.clear();
+}
+
 function getWorker(): Worker | null {
   if (workerFailed || typeof Worker === 'undefined') return null;
   if (!worker) {
@@ -73,10 +107,8 @@ function getWorker(): Worker | null {
           else p.reject(new Error(m.message));
         }
       };
-      worker.onerror = () => {
-        workerFailed = true;
-        worker = null;
-      };
+      worker.onerror = () => failWorker('Analysis worker crashed.');
+      worker.onmessageerror = () => failWorker('Analysis worker returned an unreadable message.');
     } catch {
       workerFailed = true;
       return null;
@@ -95,13 +127,19 @@ function callWorker<T>(
   const id = ++seq;
   return new Promise<T>((resolve, reject) => {
     pending.set(id, { resolve: resolve as (v: unknown) => void, reject, onProgress });
-    w.postMessage({ ...msg, id } as ToAnalysisWorker, transfer);
+    try {
+      w.postMessage({ ...msg, id } as ToAnalysisWorker, transfer);
+    } catch (e) {
+      pending.delete(id);
+      failWorker(e instanceof Error ? e.message : String(e));
+      reject(e instanceof Error ? e : new Error(String(e)));
+    }
   });
 }
 
 /**
  * Streams every frame's rows through the row/sheet analyzers and pixel seam verifier off the
- * main thread (falling back inline when Workers are unavailable), building the ≤ 320 px strip.
+ * main thread (falling back inline when Workers are unavailable or fail), building the ≤ 320 px strip.
  */
 export async function analyze(
   s: LoadedSession,
@@ -115,22 +153,29 @@ export async function analyze(
     anchored: f.hints.textRuns.length > 0 || f.hints.blockEnds.length > 0,
   }));
   const buildStrip = opts.buildStrip !== false && typeof document !== 'undefined';
-  const raw =
-    (await callWorker<RawAnalysis>(
-      {
-        type: 'analyze',
-        frames: inputs,
-        width: s.width,
-        buildStrip,
-        alignSeams: opts.alignSeams,
-      },
-      onProgress,
-    )) ??
-    (await analyzeFrames(inputs, s.width, {
+  let raw: RawAnalysis | null = null;
+  const workerReq = callWorker<RawAnalysis>(
+    {
+      type: 'analyze',
+      frames: inputs,
+      width: s.width,
       buildStrip,
       alignSeams: opts.alignSeams,
-      onProgress,
-    }));
+    },
+    onProgress,
+  );
+  if (workerReq) {
+    try {
+      raw = await workerReq;
+    } catch {
+      raw = null;
+    }
+  }
+  raw ??= await analyzeFrames(inputs, s.width, {
+    buildStrip,
+    alignSeams: opts.alignSeams,
+    onProgress,
+  });
 
   const strip = raw.strip.map(({ bitmap, y0, y1 }) => {
     const c = document.createElement('canvas');
@@ -150,6 +195,9 @@ export async function analyze(
     evidence: raw.evidence,
     geoms: raw.geoms,
     height: raw.height,
+    seams: raw.seams,
+    adjustedSeamPx: raw.adjustedSeamPx,
+    unverifiedSeams: raw.unverifiedSeams,
     seamAdjusted: raw.seamAdjusted,
     seamWarnings: raw.seamWarnings,
   };
@@ -164,7 +212,7 @@ export async function filterPixelsAsync(
   if (filter === 'original') return img;
   if (img.width * img.height >= 200_000) {
     const copy = img.data.slice().buffer;
-    const out = await callWorker<ArrayBuffer>(
+    const workerReq = callWorker<ArrayBuffer>(
       {
         type: 'filter',
         filter,
@@ -176,7 +224,14 @@ export async function filterPixelsAsync(
       undefined,
       [copy],
     );
-    if (out) return new ImageData(new Uint8ClampedArray(out), img.width, img.height);
+    if (workerReq) {
+      try {
+        const out = await workerReq;
+        return new ImageData(new Uint8ClampedArray(out), img.width, img.height);
+      } catch {
+        // Worker failed: fall through and run the filter inline on the untouched input buffer.
+      }
+    }
   }
   applyFilter(filter, img, pxPerCss);
   return img;

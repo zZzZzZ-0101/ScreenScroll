@@ -29,6 +29,7 @@ import { zipSync } from 'fflate';
 import { saveOcrRuns, type OcrMeta } from '../../shared/db';
 import type { PdfSettings } from '../../shared/settings';
 import { composePage, encodePage, paintWatermark } from './compose';
+import { hasValidCachedOcr } from './plan';
 import { renderBandText } from './render-text';
 import type { FrameCache, LoadedSession } from './session';
 
@@ -43,6 +44,18 @@ export interface PageOcr {
   onCached?: (runs: TextRun[], meta: OcrMeta) => void;
 }
 
+function sliceRange(slices: readonly PageSlice[], fallbackHeight: number): { y0: number; y1: number } {
+  if (!slices.length) return { y0: 0, y1: fallbackHeight };
+  let y0 = slices[0]!.y0;
+  let y1 = slices[0]!.y1;
+  for (let i = 1; i < slices.length; i++) {
+    const sl = slices[i]!;
+    if (sl.y0 < y0) y0 = sl.y0;
+    if (sl.y1 > y1) y1 = sl.y1;
+  }
+  return { y0, y1 };
+}
+
 /** Whether `s.ocrRuns` already covers `slices` and `ocrPages` for `filter`. */
 export function hasCachedOcr(
   s: LoadedSession,
@@ -50,11 +63,7 @@ export function hasCachedOcr(
   filter: FilterId,
   pageCount: number,
 ): boolean {
-  const m = s.ocrMeta;
-  if (!m || m.filter !== filter || m.count < pageCount) return false;
-  const y0 = slices[0]?.y0 ?? 0;
-  const y1 = slices.at(-1)?.y1 ?? s.height;
-  return m.y0 <= y0 + 1 && m.y1 >= y1 - 1;
+  return hasValidCachedOcr(s, slices, filter, pageCount);
 }
 
 /**
@@ -86,12 +95,8 @@ export async function readPagesOcr(
     collected.push(...ocrRuns(lines, slice, pxPerCss, s.hints.textRuns));
     onProgress?.(k + 1, pageIndices.length);
   }
-  const meta: OcrMeta = {
-    filter,
-    y0: slices[0]?.y0 ?? 0,
-    y1: slices.at(-1)?.y1 ?? s.height,
-    count: pageIndices.length,
-  };
+  const { y0, y1 } = sliceRange(slices, s.height);
+  const meta: OcrMeta = { filter, y0, y1, count: pageIndices.length };
   await saveOcrRuns(s.session.id, collected, meta);
   return { runs: collected, meta };
 }
@@ -133,12 +138,8 @@ export async function* pageImages(
     onProgress?.(i + 1, slices.length);
   }
   if (ocr?.pages.size) {
-    const meta: OcrMeta = {
-      filter,
-      y0: slices[0]?.y0 ?? 0,
-      y1: slices.at(-1)?.y1 ?? s.height,
-      count: ocr.pages.size,
-    };
+    const { y0, y1 } = sliceRange(slices, s.height);
+    const meta: OcrMeta = { filter, y0, y1, count: ocr.pages.size };
     await saveOcrRuns(s.session.id, collected, meta).catch(() => undefined);
     ocr.onCached?.(collected, meta);
   }
@@ -421,13 +422,13 @@ export async function exportText(
   as: 'md' | 'docx' = 'md',
   filter: FilterId = 'original',
 ): Promise<Uint8Array> {
-  const y0 = slices[0]?.y0 ?? 0;
-  const y1 = slices.at(-1)?.y1 ?? s.height;
   const hidden = redactions(annotations);
   const inside = (r: { rect: { x: number; y: number; width: number; height: number } }) => {
     const cy = r.rect.y + r.rect.height / 2;
+    const onActiveSlice =
+      slices.length > 0 ? slices.some((sl) => cy >= sl.y0 && cy < sl.y1) : cy >= 0 && cy < s.height;
     // Text under a blur, mosaic or cover stays out, as it does in the PDF.
-    return cy >= y0 && cy < y1 && !hidden.some((h) => overlaps(h, r.rect));
+    return onActiveSlice && !hidden.some((h) => overlaps(h, r.rect));
   };
   const runs = s.hints.textRuns.filter(inside);
   if (ocr?.pages.size) {
@@ -452,6 +453,23 @@ export async function exportText(
   if (as === 'docx')
     return blocksToDocx(textBlocks(runs, s.hints.headings, pages), s.session.title);
   return new TextEncoder().encode(textToMarkdown(runs, s.hints.headings, pages));
+}
+
+/** Formats given `TextRun`s over active `slices` as Markdown/plain text, omitting redacted runs. */
+export function extractRunsText(
+  sourceRuns: readonly TextRun[],
+  headings: LoadedSession['hints']['headings'],
+  slices: readonly PageSlice[],
+  documentPages: boolean,
+  annotations: readonly Annotation[] = [],
+): string {
+  const hidden = redactions(annotations);
+  const runs = sourceRuns.filter((r) => {
+    const cy = r.rect.y + r.rect.height / 2;
+    const onActiveSlice = slices.length > 0 ? slices.some((sl) => cy >= sl.y0 && cy < sl.y1) : true;
+    return onActiveSlice && !hidden.some((h) => overlaps(h, r.rect));
+  });
+  return textToMarkdown(runs, headings, documentPages ? [...slices] : []);
 }
 
 function overlaps(

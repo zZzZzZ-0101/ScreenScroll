@@ -12,7 +12,7 @@ import {
   type PageOcr,
   type Progress,
 } from './export';
-import { effectiveAnnotations, planPages } from './plan';
+import { applyPageSelection, effectiveAnnotations, planPages } from './plan';
 import { FrameCache, loadSession } from './session';
 
 /** One capture in a merge: which pages, as "all" or a list like "1-3, 5". */
@@ -75,11 +75,11 @@ export async function exportMerged(
       const plan = planPages(s, a, settings, s.project);
       const name = s.session.title || s.session.url;
       if (!plan.ok) throw new Error(`${name}: ${plan.error}`);
-      const all = plan.debug.slices;
+      const all = applyPageSelection(plan.debug.slices, s.project).activeSlices;
       const picked = pickPages(item.pages, all.length);
       if (!picked.length) throw new Error(`${name}: no pages match “${item.pages}”.`);
       const slices: PageSlice[] = picked.map((n) => all[n - 1]!);
-      const anns = effectiveAnnotations(s, plan, s.project);
+      const anns = effectiveAnnotations(s, plan, s.project, settings.pdf.filter);
       const needed = ocr ? pagesNeedingOcr(ocr.mode, slices, s.hints.textRuns) : [];
       const cached =
         needed.length > 0 && hasCachedOcr(s, slices, settings.pdf.filter, needed.length);

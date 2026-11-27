@@ -106,6 +106,97 @@ export function labelName(b: BandTemplate): string {
     .join(' | ');
 }
 
+export type OutputPresetId = 'print-a4' | 'share-small' | 'archive';
+
+export interface OutputPresetSpec {
+  id: OutputPresetId;
+  label: string;
+  summary: string;
+  page: Partial<PageSettings>;
+  exportPreset: ExportPreset;
+  pdf: Partial<PdfSettings>;
+}
+
+/** One-click coordinated page, quality and PDF output presets for PagesPanel. */
+export const OUTPUT_PRESETS: Record<OutputPresetId, OutputPresetSpec> = {
+  'print-a4': {
+    id: 'print-a4',
+    label: 'Print A4',
+    summary: 'A4 portrait, 10 mm margins, Balanced (300 dpi), searchable text and links.',
+    page: {
+      paper: 'A4',
+      orientation: 'portrait',
+      marginsMm: { top: 10, right: 10, bottom: 10, left: 10 },
+      scale: 'fit',
+    },
+    exportPreset: 'balanced',
+    pdf: {
+      textLayer: true,
+      links: true,
+      outline: true,
+      perSheet: 'single',
+    },
+  },
+  'share-small': {
+    id: 'share-small',
+    label: 'Share small',
+    summary: 'A4 fit, Compact (150 dpi), searchable text and links for smaller files.',
+    page: {
+      paper: 'A4',
+      marginsMm: { top: 8, right: 8, bottom: 8, left: 8 },
+      scale: 'fit',
+    },
+    exportPreset: 'compact',
+    pdf: {
+      textLayer: true,
+      links: true,
+      outline: true,
+      perSheet: 'single',
+    },
+  },
+  archive: {
+    id: 'archive',
+    label: 'Archive',
+    summary: 'Lossless PNG, original filter, 10 mm margins, searchable text, links and bookmarks.',
+    page: {
+      marginsMm: { top: 10, right: 10, bottom: 10, left: 10 },
+      scale: 'fit',
+    },
+    exportPreset: 'lossless',
+    pdf: {
+      filter: 'original',
+      textLayer: true,
+      links: true,
+      outline: true,
+      perSheet: 'single',
+    },
+  },
+};
+
+export const OUTPUT_PRESET_IDS: readonly OutputPresetId[] = ['print-a4', 'share-small', 'archive'];
+
+/** Returns a partial Settings patch applying `id` while preserving unrelated PDF fields. */
+export function applyOutputPreset(
+  current: Settings,
+  id: OutputPresetId,
+): Pick<Settings, 'page' | 'exportPreset' | 'pdf'> {
+  const preset = OUTPUT_PRESETS[id];
+  return {
+    page: {
+      ...current.page,
+      ...preset.page,
+      marginsMm: preset.page.marginsMm
+        ? { ...preset.page.marginsMm }
+        : { ...current.page.marginsMm },
+    },
+    exportPreset: preset.exportPreset,
+    pdf: {
+      ...current.pdf,
+      ...preset.pdf,
+    },
+  };
+}
+
 export interface PdfSettings {
   textLayer: boolean;
   links: boolean;

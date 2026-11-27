@@ -16,16 +16,26 @@ import {
 } from '@/shared/db';
 import {
   TAB_HIDDEN,
+  type BatchCancel,
   type CaptureControl,
   type CaptureDone,
   type CaptureMode,
+  type CapturePause,
+  type CaptureResume,
   type GrabFrame,
   type GrabResult,
   type PageNotice,
   type Recapture,
   type ToBackground,
 } from '@/shared/messages';
-import { BATCH_KEY, type BatchItem, type BatchStart, type BatchState } from '@/shared/batch';
+import {
+  BATCH_KEY,
+  cancelRemainingItems,
+  type BatchItem,
+  type BatchStart,
+  type BatchState,
+} from '@/shared/batch';
+import { actionApi, hasDebugger, isFileAccessAllowed } from '@/shared/capabilities';
 import { dataUrlToBlob, pngSize } from '@/shared/png';
 import { resolveLang } from '@/shared/i18n';
 import { loadSettings, RESOLUTION_SCALE, SPEED_TIMING } from '@/shared/settings';
@@ -43,6 +53,10 @@ export default defineBackground(() => {
   const waiters = new Map<string, (done: CaptureDone) => void>();
   // Captures of a batch: saved without opening a Studio tab each.
   const silent = new Set<string>();
+  // Batch cancellation state for the currently running batch (if any).
+  let batchCancelled = false;
+  let batchCurrentTabId: number | null = null;
+  let batchCancelWake: (() => void) | null = null;
   // e2e only: finished sessions (a test may wait after the capture already ended) and an
   // injected grab failure, to exercise the error path.
   const finished = new Map<string, CaptureDone>();
@@ -53,7 +67,7 @@ export default defineBackground(() => {
     mode: CaptureMode,
     opts: CaptureOptions = {},
   ): Promise<string> {
-    const blocked = blockedReason(tab.url, await chrome.extension.isAllowedFileSchemeAccess());
+    const blocked = blockedReason(tab.url, await isFileAccessAllowed());
     if (blocked || tab.id === undefined) throw new Error(blocked?.message ?? 'No tab to capture.');
     const id = crypto.randomUUID();
     const { silent: isSilent, ...startOpts } = opts;
@@ -75,6 +89,7 @@ export default defineBackground(() => {
       tabId: tab.id,
       windowId: tab.windowId,
       mode,
+      ...(startOpts.region ? { region: startOpts.region } : {}),
       ...(isSilent ? { run: { silent: true } } : {}),
     });
     const settings = await loadSettings();
@@ -84,7 +99,7 @@ export default defineBackground(() => {
     const scale = RESOLUTION_SCALE[settings.capture.resolution];
     let quiet = false;
     let sharpOk = false;
-    if (settings.capture.quiet && mode === 'full') {
+    if (settings.capture.quiet && mode === 'full' && !startOpts.region) {
       const why = await startQuiet(id, tab.id, scale);
       if (why) warnings.push(why);
       else quiet = true;
@@ -250,6 +265,8 @@ export default defineBackground(() => {
     tabId: number,
     scale: number,
   ): Promise<string | null> {
+    if (!hasDebugger())
+      return 'Sharp capture requires Chrome or Edge; captured at screen resolution.';
     if (!(await chrome.permissions.contains({ permissions: ['debugger'] })))
       return 'Sharp capture needs permission (choose 2× or 3× in the panel or Settings to allow it); captured at screen resolution.';
     try {
@@ -273,6 +290,8 @@ export default defineBackground(() => {
     tabId: number,
     scale: number,
   ): Promise<string | null> {
+    if (!hasDebugger())
+      return 'Capturing in the background requires Chrome or Edge; captured by scrolling instead.';
     if (!(await chrome.permissions.contains({ permissions: ['debugger'] })))
       return 'Capturing in the background needs permission (choose “In background” in the panel again to allow it); captured by scrolling instead.';
     try {
@@ -288,15 +307,48 @@ export default defineBackground(() => {
     const q = quietTabs.get(sessionId);
     quietTabs.delete(sessionId);
     const tabId = q?.tabId ?? fallbackTabId;
-    if (tabId === undefined) return;
+    if (tabId === undefined || !hasDebugger()) return;
     await chrome.debugger.detach({ tabId }).catch(() => undefined);
+  }
+
+  /**
+   * When a background capture falls back to on-screen scrolling (for example, an inner scroll
+   * area that could not be expanded), detach the quiet debugger session and engage Sharp
+   * capture if 2×/3× Sharpness was requested.
+   */
+  async function quietFallback(sessionId: string): Promise<{ warning?: string }> {
+    await hydrate(sessionId);
+    const q = quietTabs.get(sessionId);
+    if (!q) return {};
+    await stopQuiet(sessionId, q.tabId);
+    let sharpScale: number | undefined;
+    let warning: string | undefined;
+    if (q.scale > 1) {
+      const why = await startSharp(sessionId, q.tabId, q.scale);
+      if (why) warning = why;
+      else sharpScale = q.scale;
+    }
+    const d = await db();
+    const rec = await d.get('sessions', sessionId);
+    if (rec) {
+      const nextRun: NonNullable<SessionRecord['run']> = {
+        ...(rec.run?.silent ? { silent: true } : {}),
+        ...(sharpScale ? { sharpScale } : {}),
+      };
+      await d.put('sessions', {
+        ...rec,
+        run: Object.keys(nextRun).length ? nextRun : undefined,
+      });
+    }
+    return warning ? { warning } : {};
   }
 
   /** One region of the page's layout, pictured without scrolling the page. */
   async function grabQuiet(msg: GrabFrame & { clip: Rect }): Promise<GrabResult> {
     await hydrate(msg.sessionId);
     const q = quietTabs.get(msg.sessionId);
-    if (!q) return { ok: false, error: 'Background capture is not running for this tab.' };
+    if (!q || !hasDebugger())
+      return { ok: false, error: 'Background capture is not running for this tab.' };
     const shot = () =>
       chrome.debugger.sendCommand({ tabId: q.tabId }, 'Page.captureScreenshot', {
         format: 'png',
@@ -338,7 +390,7 @@ export default defineBackground(() => {
     const s = sharp.get(sessionId);
     sharp.delete(sessionId);
     const tabId = s?.tabId ?? fallbackTabId;
-    if (tabId === undefined) return;
+    if (tabId === undefined || !hasDebugger()) return;
     await chrome.debugger
       .sendCommand({ tabId }, 'Emulation.clearDeviceMetricsOverride')
       .catch(() => undefined);
@@ -350,9 +402,11 @@ export default defineBackground(() => {
    * have started it by accident from a menu or a key.
    */
   async function showCapturing(tabId: number): Promise<void> {
-    await chrome.action.setBadgeBackgroundColor({ tabId, color: '#0e7c7b' });
-    await chrome.action.setBadgeText({ tabId, text: 'REC' });
-    await chrome.action.setTitle({
+    const action = actionApi();
+    if (!action) return;
+    await action.setBadgeBackgroundColor({ tabId, color: '#0e7c7b' });
+    await action.setBadgeText({ tabId, text: 'REC' });
+    await action.setTitle({
       tabId,
       title:
         'ScreenScroll is capturing this tab. Press Esc on the page to cancel, or click here to stop.',
@@ -360,11 +414,12 @@ export default defineBackground(() => {
   }
 
   async function clearCapturing(tabId: number | undefined): Promise<void> {
-    if (tabId === undefined) return;
-    const text = await chrome.action.getBadgeText({ tabId }).catch(() => '');
+    const action = actionApi();
+    if (tabId === undefined || !action) return;
+    const text = await action.getBadgeText({ tabId }).catch(() => '');
     if (text !== 'REC' && text !== 'WAIT') return;
-    await chrome.action.setBadgeText({ tabId, text: '' }).catch(() => undefined);
-    await chrome.action.setTitle({ tabId, title: ICON_TITLE }).catch(() => undefined);
+    await action.setBadgeText({ tabId, text: '' }).catch(() => undefined);
+    await action.setTitle({ tabId, title: ICON_TITLE }).catch(() => undefined);
   }
 
   /** The capturing tab must be the one in front: captureVisibleTab pictures that one. */
@@ -377,17 +432,19 @@ export default defineBackground(() => {
   async function grab(msg: GrabFrame, tabId?: number): Promise<GrabResult> {
     if (msg.clip) return grabQuiet(msg as GrabFrame & { clip: Rect });
     await hydrate(msg.sessionId);
+    if (quietTabs.has(msg.sessionId)) await quietFallback(msg.sessionId);
     const windowId = windowOf.get(msg.sessionId);
     if (windowId === undefined) return { ok: false, error: 'Unknown capture session.' };
     if (__SP_E2E__ && failGrabAt === msg.index) {
       failGrabAt = null;
       return { ok: false, error: 'Injected test failure' };
     }
+    const action = actionApi();
     if (!(await inFront(tabId))) {
       // The page can't show this while its tab is hidden; the icon can.
-      if (tabId !== undefined) {
-        await chrome.action.setBadgeText({ tabId, text: 'WAIT' }).catch(() => undefined);
-        await chrome.action
+      if (tabId !== undefined && action) {
+        await action.setBadgeText({ tabId, text: 'WAIT' }).catch(() => undefined);
+        await action
           .setTitle({
             tabId,
             title: 'ScreenScroll paused: the capture goes on when you return to its tab.',
@@ -396,7 +453,7 @@ export default defineBackground(() => {
       }
       return { ok: false, error: TAB_HIDDEN };
     }
-    if (tabId !== undefined && (await chrome.action.getBadgeText({ tabId })) === 'WAIT')
+    if (tabId !== undefined && action && (await action.getBadgeText({ tabId })) === 'WAIT')
       await showCapturing(tabId);
     try {
       const hi = sharp.get(msg.sessionId);
@@ -466,6 +523,7 @@ export default defineBackground(() => {
       );
     const d = await db();
     const pre = await d.get('sessions', msg.sessionId);
+    const wasQuiet = !!pre?.run?.quietScale;
     await stopSharp(msg.sessionId, pre?.run?.sharpScale ? pre.tabId : undefined);
     await stopQuiet(msg.sessionId, pre?.run?.quietScale ? pre.tabId : undefined);
     await restoreWindow(msg.sessionId);
@@ -490,6 +548,8 @@ export default defineBackground(() => {
     if (session) {
       await d.put('sessions', {
         ...session,
+        ...(msg.title ? { title: msg.title } : {}),
+        ...(msg.region ? { region: msg.region } : {}),
         status: msg.status,
         docWidth: msg.docWidth,
         docHeight: msg.docHeight,
@@ -512,7 +572,8 @@ export default defineBackground(() => {
         });
     }
     // UI §7: whatever was captured opens, even after an error; the Studio says why.
-    if (frameCount > 0 && !isSilent) await openStudio(msg.sessionId, msg.output, session?.tabId);
+    if (frameCount > 0 && !isSilent)
+      await openStudio(msg.sessionId, msg.output, session?.tabId, wasQuiet);
     if (__SP_E2E__) finished.set(msg.sessionId, msg);
     waiters.get(msg.sessionId)?.(msg);
     waiters.delete(msg.sessionId);
@@ -522,6 +583,7 @@ export default defineBackground(() => {
     sessionId: string,
     output?: CaptureDone['output'],
     openerTabId?: number,
+    wasQuiet = false,
   ): Promise<void> {
     const { afterCapture } = await loadSettings();
     const mode = output ?? (afterCapture === 'pdf' ? 'pdf' : 'studio');
@@ -530,9 +592,12 @@ export default defineBackground(() => {
     );
     // "Save PDF directly" works in a background tab that closes itself when done. Copying
     // needs a focused page, so that tab comes to the front and closes back to the page.
-    const opener =
-      openerTabId !== undefined && (await inFront(openerTabId)) ? openerTabId : undefined;
-    await chrome.tabs.create({ url, active: mode !== 'pdf', openerTabId: opener });
+    // A background (quiet) capture whose tab is no longer active opens Studio in the
+    // background so it never steals focus from what the user switched to.
+    const wasActive = openerTabId !== undefined && (await inFront(openerTabId));
+    const opener = wasActive ? openerTabId : undefined;
+    const active = mode !== 'pdf' && (!wasQuiet || wasActive);
+    await chrome.tabs.create({ url, active, openerTabId: opener });
   }
 
   /** Resolves when a tab has finished loading, or after `ms` (then `false`). */
@@ -541,8 +606,11 @@ export default defineBackground(() => {
       const done = (ok: boolean) => {
         clearTimeout(timer);
         chrome.tabs.onUpdated.removeListener(onUpdated);
+        if (batchCancelWake === abort) batchCancelWake = null;
         resolve(ok);
       };
+      const abort = () => done(false);
+      batchCancelWake = abort;
       const onUpdated = (id: number, info: { status?: string }) => {
         if (id === tabId && info.status === 'complete') done(true);
       };
@@ -569,6 +637,18 @@ export default defineBackground(() => {
     });
   }
 
+  /** Cancels a running batch: aborts the in-flight item and skips remaining ones. */
+  function cancelBatch(): void {
+    batchCancelled = true;
+    batchCancelWake?.();
+    batchCancelWake = null;
+    if (batchCurrentTabId !== null) {
+      void chrome.tabs
+        .sendMessage(batchCurrentTabId, { type: 'sp:control', action: 'cancel' } satisfies CaptureControl)
+        .catch(() => undefined);
+    }
+  }
+
   /**
    * Batch (ROADMAP M5): each target in turn is brought to the front (captureVisibleTab
    * pictures the visible tab), captured as a full page and saved without a Studio tab.
@@ -576,22 +656,27 @@ export default defineBackground(() => {
    * skipped with the reason; progress is kept in session storage for the batch page.
    */
   async function runBatch(m: BatchStart): Promise<void> {
-    const fileAccess = await chrome.extension.isAllowedFileSchemeAccess();
+    batchCancelled = false;
+    batchCurrentTabId = null;
+    const fileAccess = await isFileAccessAllowed();
     const items: BatchItem[] = await Promise.all(
       m.targets.map(async (t) => {
-        if (t.kind === 'url') return { label: t.url, url: t.url, status: 'waiting' as const };
+        if (t.kind === 'url')
+          return { label: t.url, url: t.url, status: 'waiting' as const, target: t };
         const tab = await chrome.tabs.get(t.tabId).catch(() => null);
         return {
           label: tab?.title || tab?.url || 'Closed tab',
           url: tab?.url ?? '',
           status: 'waiting' as const,
+          target: t,
         };
       }),
     );
     const state: BatchState = { running: true, items };
-    const save = () => chrome.storage.session.set({ [BATCH_KEY]: state });
+    const save = () => chrome.storage.session?.set({ [BATCH_KEY]: state }) ?? Promise.resolve();
     await save();
     for (const [i, t] of m.targets.entries()) {
+      if (batchCancelled) break;
       const item = items[i]!;
       let opened: number | null = null;
       try {
@@ -607,26 +692,49 @@ export default defineBackground(() => {
           tab = (await chrome.tabs.update(tab.id, { active: true })) ?? null;
         }
         if (!tab?.id) throw new Error('No tab to capture.');
+        batchCurrentTabId = tab.id;
         item.status = 'capturing';
         await save();
         const ready = await loaded(tab.id);
+        if (batchCancelled) throw new Skip('Cancelled.');
         // Settle after the page reports loaded (late layout, web fonts).
-        await new Promise((r) => setTimeout(r, 500));
+        await new Promise<void>((r) => {
+          const timer = setTimeout(() => {
+            if (batchCancelWake === done) batchCancelWake = null;
+            r();
+          }, 500);
+          const done = () => {
+            clearTimeout(timer);
+            batchCancelWake = null;
+            r();
+          };
+          batchCancelWake = done;
+        });
+        if (batchCancelled) throw new Skip('Cancelled.');
         tab = await chrome.tabs.get(tab.id);
         item.label = tab.title || item.label;
         item.url = tab.url ?? item.url;
         const blocked = blockedReason(tab.url, fileAccess);
         if (blocked) throw new Skip(blocked.message);
         const id = await startCapture(tab, 'full', { silent: true });
+        if (batchCancelled && tab.id !== undefined) {
+          void chrome.tabs
+            .sendMessage(tab.id, { type: 'sp:control', action: 'cancel' } satisfies CaptureControl)
+            .catch(() => undefined);
+        }
         const done = await ended(id);
         if (!done) throw new Error('The capture did not finish within 10 minutes.');
-        item.sessionId = id;
         if (done.status === 'complete') {
+          item.sessionId = id;
           item.status = 'done';
           const notes = [...done.warnings];
           if (!ready) notes.unshift('The page was still loading after 30 s.');
           if (notes.length) item.reason = notes.join(' ');
+        } else if (batchCancelled) {
+          item.status = 'skipped';
+          item.reason = 'Cancelled.';
         } else {
+          item.sessionId = id;
           item.status = 'failed';
           item.reason = done.warnings.at(-1) ?? 'The capture was cancelled.';
         }
@@ -634,9 +742,13 @@ export default defineBackground(() => {
         item.status = e instanceof Skip ? 'skipped' : 'failed';
         item.reason = e instanceof Error ? e.message : String(e);
       } finally {
+        batchCurrentTabId = null;
         if (opened !== null) await chrome.tabs.remove(opened).catch(() => undefined);
       }
       await save();
+    }
+    if (batchCancelled) {
+      state.items = cancelRemainingItems(state.items, 'Cancelled.');
     }
     state.running = false;
     await save();
@@ -659,7 +771,10 @@ export default defineBackground(() => {
     await chrome.tabs.update(tab.id!, { active: true });
     await chrome.windows.update(tab.windowId, { focused: true }).catch(() => undefined);
     try {
-      await startCapture(tab, s.mode ?? 'full', { hideOverlays: true });
+      await startCapture(tab, s.mode ?? 'full', {
+        hideOverlays: true,
+        ...(s.region ? { region: s.region } : {}),
+      });
       return { ok: true };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -667,7 +782,7 @@ export default defineBackground(() => {
   }
 
   /** The capture running in the active tab, if any (for the toolbar panel). */
-  async function running(): Promise<{ sessionId: string; tabId: number } | null> {
+  async function running(): Promise<{ sessionId: string; tabId: number; paused: boolean } | null> {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab?.id === undefined) return null;
     const d = await db();
@@ -678,10 +793,11 @@ export default defineBackground(() => {
     // A record says "capturing", but only the page knows: after a reload, a crash or a
     // browser restart (tab ids are reused) the record stays behind, and trusting it would
     // lock the panel's capture buttons on this tab for good.
-    const live = await chrome.tabs
+    const status = await chrome.tabs
       .sendMessage(tab.id, { type: 'sp:status' })
-      .then((r: { sessionId?: string | null } | undefined) => r?.sessionId ?? null)
+      .then((r: { sessionId?: string | null; paused?: boolean } | undefined) => r ?? null)
       .catch(() => null);
+    const live = status?.sessionId ?? null;
     for (const s of stale) {
       if (s.id === live) continue;
       await d.put('sessions', {
@@ -700,7 +816,8 @@ export default defineBackground(() => {
       windowOf.delete(s.id);
       silent.delete(s.id);
     }
-    if (live && stale.some((s) => s.id === live)) return { sessionId: live, tabId: tab.id };
+    if (live && stale.some((s) => s.id === live))
+      return { sessionId: live, tabId: tab.id, paused: !!status?.paused };
     await clearCapturing(tab.id);
     return null;
   }
@@ -729,6 +846,9 @@ export default defineBackground(() => {
         | ToBackground
         | PopupCapture
         | CaptureControl
+        | CapturePause
+        | CaptureResume
+        | BatchCancel
         | PageNotice
         | BatchStart
         | Recapture
@@ -740,8 +860,17 @@ export default defineBackground(() => {
         void grab(msg, _sender.tab?.id).then(reply);
         return true;
       }
+      if (msg.type === 'sp:quiet-fallback') {
+        void quietFallback(msg.sessionId).then(reply);
+        return true;
+      }
       if (msg.type === 'sp:batch-start') {
         void runBatch(msg);
+        reply({ ok: true });
+        return false;
+      }
+      if (msg.type === 'sp:batch-cancel') {
+        cancelBatch();
         reply({ ok: true });
         return false;
       }
@@ -765,6 +894,27 @@ export default defineBackground(() => {
           if (r) await chrome.tabs.sendMessage(r.tabId, msg).catch(() => undefined);
           reply({ ok: !!r });
         });
+        return true;
+      }
+      if (msg.type === 'sp:pause' || msg.type === 'sp:resume') {
+        void (async () => {
+          let targetTabId: number | undefined;
+          const r = await running();
+          if (r && (!msg.sessionId || r.sessionId === msg.sessionId)) {
+            targetTabId = r.tabId;
+          } else if (msg.sessionId) {
+            const s = await (await db()).get('sessions', msg.sessionId);
+            if (s && s.status === 'capturing') targetTabId = s.tabId;
+          }
+          if (targetTabId === undefined) return reply({ ok: false });
+          await chrome.tabs.sendMessage(targetTabId, msg).catch(() => undefined);
+          if (msg.type === 'sp:pause') {
+            await actionApi()?.setBadgeText({ tabId: targetTabId, text: 'WAIT' }).catch(() => undefined);
+          } else {
+            await showCapturing(targetTabId).catch(() => undefined);
+          }
+          reply({ ok: true });
+        })();
         return true;
       }
       if (msg.type === 'sp:popup-capture') {
@@ -799,6 +949,7 @@ export default defineBackground(() => {
     { id: 'sp-lines', title: 'Capture from line to line', mode: 'lines' },
     { id: 'sp-element', title: 'Capture an element', mode: 'element' },
     { id: 'sp-pick-scroller', title: 'Capture a scroll area', mode: 'pick-scroller' },
+    { id: 'sp-reader', title: 'Capture clean page', mode: 'reader' },
   ];
 
   chrome.runtime.onInstalled.addListener(() => {
@@ -842,18 +993,19 @@ export default defineBackground(() => {
     opts: CaptureOptions = {},
   ): Promise<string | null> {
     const tabId = tab.id;
+    const action = actionApi();
     try {
-      if (tabId !== undefined) {
-        await chrome.action.setBadgeText({ tabId, text: '' });
-        await chrome.action.setTitle({ tabId, title: ICON_TITLE });
+      if (tabId !== undefined && action) {
+        await action.setBadgeText({ tabId, text: '' });
+        await action.setTitle({ tabId, title: ICON_TITLE });
       }
       return await startCapture(tab, mode, opts);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      if (tabId !== undefined) {
-        await chrome.action.setBadgeBackgroundColor({ tabId, color: '#b3261e' });
-        await chrome.action.setBadgeText({ tabId, text: '!' });
-        await chrome.action.setTitle({ tabId, title: `ScreenScroll: ${message}` });
+      if (tabId !== undefined && action) {
+        await action.setBadgeBackgroundColor({ tabId, color: '#b3261e' });
+        await action.setBadgeText({ tabId, text: '!' });
+        await action.setTitle({ tabId, title: `ScreenScroll: ${message}` });
       }
       return null;
     }
@@ -879,9 +1031,10 @@ export default defineBackground(() => {
           return onMenu({ menuItemId }, await chrome.tabs.get(tabId));
         },
         async badge(tabId: number) {
+          const action = actionApi();
           return {
-            text: await chrome.action.getBadgeText({ tabId }),
-            title: await chrome.action.getTitle({ tabId }),
+            text: (await action?.getBadgeText({ tabId })) ?? '',
+            title: (await action?.getTitle({ tabId })) ?? '',
           };
         },
         failGrabAt(index: number | null) {
