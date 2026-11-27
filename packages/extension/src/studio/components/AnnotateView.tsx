@@ -699,7 +699,7 @@ export function AnnotateView(p: Props) {
               // here, not trigger tool shortcuts.
               if (el && document.activeElement !== el) el.focus();
             }}
-            aria-label="Annotation text"
+            aria-label={t('Annotation text')}
             value={editing.text}
             onChange={(e) => setEditing({ ...editing, text: e.target.value })}
             onPointerDown={(e) => e.stopPropagation()}
