@@ -24,6 +24,7 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+      - run: pnpm build:firefox
       - run: pnpm dist
       - name: extension/ is up to date
         run: |
@@ -32,3 +33,35 @@ jobs:
             echo "::error::extension/ is out of date. Run 'pnpm dist' and commit it."
             exit 1
           fi
+
+  e2e:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: sudo apt-get update && sudo apt-get install -y poppler-utils fonts-dejavu-core fonts-wqy-zenhei
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm build:e2e
+      - name: Run Playwright extension E2E suite
+        run: >-
+          pnpm exec playwright test
+          tests/e2e/capture-studio-ux.spec.ts
+          tests/e2e/panel-flow.spec.ts
+          tests/e2e/studio-ui.spec.ts
+          tests/e2e/library.spec.ts
+          tests/e2e/annotate.spec.ts
+          tests/e2e/i18n.spec.ts
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-e2e-results
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

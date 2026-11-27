@@ -35,6 +35,7 @@ import {
   type BatchStart,
   type BatchState,
 } from '@/shared/batch';
+import { actionApi, hasDebugger, isFileAccessAllowed } from '@/shared/capabilities';
 import { dataUrlToBlob, pngSize } from '@/shared/png';
 import { resolveLang } from '@/shared/i18n';
 import { loadSettings, RESOLUTION_SCALE, SPEED_TIMING } from '@/shared/settings';
@@ -66,7 +67,7 @@ export default defineBackground(() => {
     mode: CaptureMode,
     opts: CaptureOptions = {},
   ): Promise<string> {
-    const blocked = blockedReason(tab.url, await chrome.extension.isAllowedFileSchemeAccess());
+    const blocked = blockedReason(tab.url, await isFileAccessAllowed());
     if (blocked || tab.id === undefined) throw new Error(blocked?.message ?? 'No tab to capture.');
     const id = crypto.randomUUID();
     const { silent: isSilent, ...startOpts } = opts;
@@ -264,6 +265,8 @@ export default defineBackground(() => {
     tabId: number,
     scale: number,
   ): Promise<string | null> {
+    if (!hasDebugger())
+      return 'Sharp capture requires Chrome or Edge; captured at screen resolution.';
     if (!(await chrome.permissions.contains({ permissions: ['debugger'] })))
       return 'Sharp capture needs permission (choose 2× or 3× in the panel or Settings to allow it); captured at screen resolution.';
     try {
@@ -287,6 +290,8 @@ export default defineBackground(() => {
     tabId: number,
     scale: number,
   ): Promise<string | null> {
+    if (!hasDebugger())
+      return 'Capturing in the background requires Chrome or Edge; captured by scrolling instead.';
     if (!(await chrome.permissions.contains({ permissions: ['debugger'] })))
       return 'Capturing in the background needs permission (choose “In background” in the panel again to allow it); captured by scrolling instead.';
     try {
@@ -302,7 +307,7 @@ export default defineBackground(() => {
     const q = quietTabs.get(sessionId);
     quietTabs.delete(sessionId);
     const tabId = q?.tabId ?? fallbackTabId;
-    if (tabId === undefined) return;
+    if (tabId === undefined || !hasDebugger()) return;
     await chrome.debugger.detach({ tabId }).catch(() => undefined);
   }
 
@@ -342,7 +347,8 @@ export default defineBackground(() => {
   async function grabQuiet(msg: GrabFrame & { clip: Rect }): Promise<GrabResult> {
     await hydrate(msg.sessionId);
     const q = quietTabs.get(msg.sessionId);
-    if (!q) return { ok: false, error: 'Background capture is not running for this tab.' };
+    if (!q || !hasDebugger())
+      return { ok: false, error: 'Background capture is not running for this tab.' };
     const shot = () =>
       chrome.debugger.sendCommand({ tabId: q.tabId }, 'Page.captureScreenshot', {
         format: 'png',
@@ -384,7 +390,7 @@ export default defineBackground(() => {
     const s = sharp.get(sessionId);
     sharp.delete(sessionId);
     const tabId = s?.tabId ?? fallbackTabId;
-    if (tabId === undefined) return;
+    if (tabId === undefined || !hasDebugger()) return;
     await chrome.debugger
       .sendCommand({ tabId }, 'Emulation.clearDeviceMetricsOverride')
       .catch(() => undefined);
@@ -396,9 +402,11 @@ export default defineBackground(() => {
    * have started it by accident from a menu or a key.
    */
   async function showCapturing(tabId: number): Promise<void> {
-    await chrome.action.setBadgeBackgroundColor({ tabId, color: '#0e7c7b' });
-    await chrome.action.setBadgeText({ tabId, text: 'REC' });
-    await chrome.action.setTitle({
+    const action = actionApi();
+    if (!action) return;
+    await action.setBadgeBackgroundColor({ tabId, color: '#0e7c7b' });
+    await action.setBadgeText({ tabId, text: 'REC' });
+    await action.setTitle({
       tabId,
       title:
         'ScreenScroll is capturing this tab. Press Esc on the page to cancel, or click here to stop.',
@@ -406,11 +414,12 @@ export default defineBackground(() => {
   }
 
   async function clearCapturing(tabId: number | undefined): Promise<void> {
-    if (tabId === undefined) return;
-    const text = await chrome.action.getBadgeText({ tabId }).catch(() => '');
+    const action = actionApi();
+    if (tabId === undefined || !action) return;
+    const text = await action.getBadgeText({ tabId }).catch(() => '');
     if (text !== 'REC' && text !== 'WAIT') return;
-    await chrome.action.setBadgeText({ tabId, text: '' }).catch(() => undefined);
-    await chrome.action.setTitle({ tabId, title: ICON_TITLE }).catch(() => undefined);
+    await action.setBadgeText({ tabId, text: '' }).catch(() => undefined);
+    await action.setTitle({ tabId, title: ICON_TITLE }).catch(() => undefined);
   }
 
   /** The capturing tab must be the one in front: captureVisibleTab pictures that one. */
@@ -430,11 +439,12 @@ export default defineBackground(() => {
       failGrabAt = null;
       return { ok: false, error: 'Injected test failure' };
     }
+    const action = actionApi();
     if (!(await inFront(tabId))) {
       // The page can't show this while its tab is hidden; the icon can.
-      if (tabId !== undefined) {
-        await chrome.action.setBadgeText({ tabId, text: 'WAIT' }).catch(() => undefined);
-        await chrome.action
+      if (tabId !== undefined && action) {
+        await action.setBadgeText({ tabId, text: 'WAIT' }).catch(() => undefined);
+        await action
           .setTitle({
             tabId,
             title: 'ScreenScroll paused: the capture goes on when you return to its tab.',
@@ -443,7 +453,7 @@ export default defineBackground(() => {
       }
       return { ok: false, error: TAB_HIDDEN };
     }
-    if (tabId !== undefined && (await chrome.action.getBadgeText({ tabId })) === 'WAIT')
+    if (tabId !== undefined && action && (await action.getBadgeText({ tabId })) === 'WAIT')
       await showCapturing(tabId);
     try {
       const hi = sharp.get(msg.sessionId);
@@ -648,7 +658,7 @@ export default defineBackground(() => {
   async function runBatch(m: BatchStart): Promise<void> {
     batchCancelled = false;
     batchCurrentTabId = null;
-    const fileAccess = await chrome.extension.isAllowedFileSchemeAccess();
+    const fileAccess = await isFileAccessAllowed();
     const items: BatchItem[] = await Promise.all(
       m.targets.map(async (t) => {
         if (t.kind === 'url')
@@ -663,7 +673,7 @@ export default defineBackground(() => {
       }),
     );
     const state: BatchState = { running: true, items };
-    const save = () => chrome.storage.session.set({ [BATCH_KEY]: state });
+    const save = () => chrome.storage.session?.set({ [BATCH_KEY]: state }) ?? Promise.resolve();
     await save();
     for (const [i, t] of m.targets.entries()) {
       if (batchCancelled) break;
@@ -899,7 +909,7 @@ export default defineBackground(() => {
           if (targetTabId === undefined) return reply({ ok: false });
           await chrome.tabs.sendMessage(targetTabId, msg).catch(() => undefined);
           if (msg.type === 'sp:pause') {
-            await chrome.action.setBadgeText({ tabId: targetTabId, text: 'WAIT' }).catch(() => undefined);
+            await actionApi()?.setBadgeText({ tabId: targetTabId, text: 'WAIT' }).catch(() => undefined);
           } else {
             await showCapturing(targetTabId).catch(() => undefined);
           }
@@ -983,18 +993,19 @@ export default defineBackground(() => {
     opts: CaptureOptions = {},
   ): Promise<string | null> {
     const tabId = tab.id;
+    const action = actionApi();
     try {
-      if (tabId !== undefined) {
-        await chrome.action.setBadgeText({ tabId, text: '' });
-        await chrome.action.setTitle({ tabId, title: ICON_TITLE });
+      if (tabId !== undefined && action) {
+        await action.setBadgeText({ tabId, text: '' });
+        await action.setTitle({ tabId, title: ICON_TITLE });
       }
       return await startCapture(tab, mode, opts);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      if (tabId !== undefined) {
-        await chrome.action.setBadgeBackgroundColor({ tabId, color: '#b3261e' });
-        await chrome.action.setBadgeText({ tabId, text: '!' });
-        await chrome.action.setTitle({ tabId, title: `ScreenScroll: ${message}` });
+      if (tabId !== undefined && action) {
+        await action.setBadgeBackgroundColor({ tabId, color: '#b3261e' });
+        await action.setBadgeText({ tabId, text: '!' });
+        await action.setTitle({ tabId, title: `ScreenScroll: ${message}` });
       }
       return null;
     }
@@ -1020,9 +1031,10 @@ export default defineBackground(() => {
           return onMenu({ menuItemId }, await chrome.tabs.get(tabId));
         },
         async badge(tabId: number) {
+          const action = actionApi();
           return {
-            text: await chrome.action.getBadgeText({ tabId }),
-            title: await chrome.action.getTitle({ tabId }),
+            text: (await action?.getBadgeText({ tabId })) ?? '',
+            title: (await action?.getTitle({ tabId })) ?? '',
           };
         },
         failGrabAt(index: number | null) {

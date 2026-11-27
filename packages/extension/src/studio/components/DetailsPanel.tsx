@@ -1,5 +1,6 @@
 import { Copy, X } from 'lucide-react';
 import { useState } from 'react';
+import { t } from '@/shared/i18n';
 import { detailsText, type Details } from '@/studio/engine/details';
 
 /**
@@ -16,19 +17,19 @@ export function DetailsPanel({ details, onClose }: { details: Details; onClose: 
   const icon =
     'rounded p-1 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 focus-visible:outline-2 focus-visible:outline-accent dark:hover:bg-neutral-800 dark:hover:text-white';
   return (
-    <aside className="h-full overflow-y-auto p-3 text-[12px]" aria-label="Details">
+    <aside className="h-full overflow-y-auto p-3 text-[12px]" aria-label={t('Details')}>
       <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-[13px] font-semibold">Details</h2>
+        <h2 className="text-[13px] font-semibold">{t('Details')}</h2>
         <div className="flex items-center gap-1">
           <span role="status" className="text-[11px] text-neutral-500">
-            {copied ? 'Copied' : ''}
+            {copied ? t('Copied') : ''}
           </span>
           <button
             type="button"
             className={icon}
             onClick={() => void copy()}
-            aria-label="Copy all as text"
-            title="Copy all as text"
+            aria-label={t('Copy all as text')}
+            title={t('Copy all as text')}
           >
             <Copy aria-hidden size={14} />
           </button>
@@ -36,8 +37,8 @@ export function DetailsPanel({ details, onClose }: { details: Details; onClose: 
             type="button"
             className={icon}
             onClick={onClose}
-            aria-label="Close details"
-            title="Close details (I)"
+            aria-label={t('Close details')}
+            title={t('Close details (I)')}
           >
             <X aria-hidden size={14} />
           </button>
@@ -46,13 +47,13 @@ export function DetailsPanel({ details, onClose }: { details: Details; onClose: 
       {details.sections.map((s) => (
         <section key={s.title} className="mb-3">
           <h3 className="mb-1 border-b border-neutral-200 pb-0.5 text-[11px] font-semibold tracking-wide text-neutral-500 uppercase dark:border-neutral-700">
-            {s.title}
+            {t(s.title)}
           </h3>
           <dl>
             {s.rows.map((r) => (
               <div key={r.label} className="py-0.5">
                 <div className="flex justify-between gap-2">
-                  <dt className="shrink-0 text-neutral-500">{r.label}</dt>
+                  <dt className="shrink-0 text-neutral-500">{t(r.label)}</dt>
                   <dd className="min-w-0 text-right font-mono text-[11px] break-words">
                     {r.value}
                   </dd>
@@ -75,27 +76,27 @@ export function DetailsPanel({ details, onClose }: { details: Details; onClose: 
             setTimeout(() => setCopied(false), 1500);
           }}
         >
-          Copy page detection as a test case
+          {t('Copy page detection as a test case')}
         </button>
       )}
       <section>
         <h3 className="mb-1 border-b border-neutral-200 pb-0.5 text-[11px] font-semibold tracking-wide text-neutral-500 uppercase dark:border-neutral-700">
-          Pages
+          {t('Pages')}
         </h3>
         <div className="overflow-x-auto">
-          <table className="w-full font-mono text-[10.5px]" aria-label="Pages">
+          <table className="w-full font-mono text-[10.5px]" aria-label={t('Pages')}>
             <thead className="text-neutral-500">
               <tr>
                 <th className="pr-1.5 text-left font-normal">#</th>
-                <th className="pr-1.5 text-right font-normal" title="Top and bottom, CSS px">
+                <th className="pr-1.5 text-right font-normal" title={t('Top and bottom, CSS px')}>
                   y
                 </th>
-                <th className="pr-1.5 text-right font-normal" title="Share of T used">
+                <th className="pr-1.5 text-right font-normal" title={t('Share of T used')}>
                   fill
                 </th>
                 <th className="pr-1.5 text-left font-normal">break</th>
                 <th className="pr-1.5 text-right font-normal">cost</th>
-                <th className="text-right font-normal" title="Page image, px">
+                <th className="text-right font-normal" title={t('Page image, px')}>
                   image
                 </th>
               </tr>
@@ -106,7 +107,9 @@ export function DetailsPanel({ details, onClose }: { details: Details; onClose: 
                   key={p.n}
                   className={p.overlap > 0 ? 'text-amber-700 dark:text-amber-400' : undefined}
                   title={
-                    p.overlap > 0 ? `Forced cut, ${Math.round(p.overlap)} px repeated` : undefined
+                    p.overlap > 0
+                      ? t('Forced cut, {px} px repeated', { px: Math.round(p.overlap) })
+                      : undefined
                   }
                 >
                   <td className="pr-1.5">{p.n}</td>

@@ -42,4 +42,18 @@ describe('interface languages', () => {
     }
     expect([...missing]).toEqual([]);
   });
+
+  it('every zh-CN translation is non-empty and preserves all {placeholder} tokens', () => {
+    const tokens = (s: string) => [...new Set([...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]!))].sort();
+    const mismatches: string[] = [];
+    for (const [en, zh] of Object.entries(ZH_CN)) {
+      if (!zh.trim()) mismatches.push(`empty translation for "${en}"`);
+      const expected = tokens(en);
+      const actual = tokens(zh);
+      if (expected.join(',') !== actual.join(',')) {
+        mismatches.push(`placeholder mismatch for "${en}": expected [${expected.join(', ')}], got [${actual.join(', ')}]`);
+      }
+    }
+    expect(mismatches).toEqual([]);
+  });
 });

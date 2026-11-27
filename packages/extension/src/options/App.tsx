@@ -1,6 +1,7 @@
 import { t, resolveLang, setLang } from '@/shared/i18n';
 import { RotateCcw, ShieldCheck } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { ensureDebuggerPermission, hasDebugger, shortcutsPageUrl } from '@/shared/capabilities';
 import {
   DEFAULT_SETTINGS,
   loadSettings,
@@ -28,9 +29,11 @@ export function App() {
   const [s, setS] = useState<Settings | null>(null);
   const [undo, setUndo] = useState<{ settings: Settings; text: string } | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const debuggerAvailable = hasDebugger();
+  const shortcutsUrl = shortcutsPageUrl();
 
   useEffect(() => {
-    document.title = 'Settings · ScreenScroll';
+    document.title = `${t('Settings')} · ScreenScroll`;
     void loadSettings().then(setS);
   }, []);
 
@@ -45,12 +48,11 @@ export function App() {
       patch.capture.resolution !== 'standard' &&
       patch.capture.resolution !== s.capture.resolution;
     if (enablingQuiet || raisingSharp) {
-      let ok: boolean;
-      try {
-        ok = await chrome.permissions.request({ permissions: ['debugger'] });
-      } catch {
-        ok = await chrome.permissions.contains({ permissions: ['debugger'] }).catch(() => false);
+      if (!debuggerAvailable) {
+        setNote(t('Requires Chrome or Edge.'));
+        return;
       }
+      const ok = await ensureDebuggerPermission();
       if (!ok) {
         setNote(
           enablingQuiet
@@ -68,7 +70,7 @@ export function App() {
     void saveSettings(patch);
   };
   const resetAll = () => {
-    setUndo({ settings: s, text: 'All settings are back to their defaults.' });
+    setUndo({ settings: s, text: t('All settings are back to their defaults.') });
     setS(DEFAULT_SETTINGS);
     void saveSettings(DEFAULT_SETTINGS);
     setTimeout(() => setUndo(null), 8000);
@@ -105,11 +107,17 @@ export function App() {
       )}
 
       {SECTIONS.map((section) => (
-        <section key={section} aria-label={section} className="mt-5">
+        <section key={section} aria-label={t(section)} className="mt-5">
           <h2 className="pb-2 text-sm font-semibold">{t(section)}</h2>
           <div className="divide-y divide-neutral-200 rounded-lg border border-neutral-200 bg-white dark:divide-neutral-800 dark:border-neutral-800 dark:bg-neutral-900">
             {SETTINGS.filter((e) => e.section === section).map((e) => (
-              <Row key={e.id} entry={e} settings={s} onChange={(p) => void apply(p)} />
+              <Row
+                key={e.id}
+                entry={e}
+                settings={s}
+                debuggerAvailable={debuggerAvailable}
+                onChange={(p) => void apply(p)}
+              />
             ))}
             {section === 'Text recognition' && <OcrModelRow />}
           </div>
@@ -117,7 +125,7 @@ export function App() {
       ))}
 
       <section
-        aria-label="Privacy"
+        aria-label={t('Privacy')}
         className="mt-5 flex gap-2 rounded-lg border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900"
       >
         <ShieldCheck aria-hidden size={18} className="mt-0.5 shrink-0 text-accent" />
@@ -129,7 +137,7 @@ export function App() {
       </section>
 
       <section
-        aria-label="Settings file"
+        aria-label={t('Settings file')}
         className="mt-5 flex flex-wrap items-center gap-2 rounded-lg border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900"
       >
         <span className="mr-auto text-neutral-600 dark:text-neutral-300">
@@ -163,7 +171,10 @@ export function App() {
               if (!file) return;
               try {
                 const next = readSettingsFile(await file.text());
-                setUndo({ settings: s, text: `Settings loaded from ${file.name}.` });
+                setUndo({
+                  settings: s,
+                  text: t('Settings loaded from {name}.', { name: file.name }),
+                });
                 setS(next);
                 await saveSettings(next);
                 setNote(null);
@@ -178,14 +189,20 @@ export function App() {
 
       <p className="mt-4 text-neutral-500">
         {t('Keyboard shortcuts')}:{' '}
-        <button
-          type="button"
-          className="text-accent underline-offset-2 hover:underline"
-          onClick={() => void chrome.tabs.create({ url: 'chrome://extensions/shortcuts' })}
-        >
-          {t('change them in the browser')}
-        </button>
-        .
+        {shortcutsUrl ? (
+          <>
+            <button
+              type="button"
+              className="text-accent underline-offset-2 hover:underline"
+              onClick={() => void chrome.tabs.create({ url: shortcutsUrl })}
+            >
+              {t('change them in the browser')}
+            </button>
+            .
+          </>
+        ) : (
+          t('Manage shortcuts in Firefox Add-ons (about:addons).')
+        )}
       </p>
 
       {undo && (
@@ -241,32 +258,37 @@ function OcrModelRow() {
   };
   const e = DEFAULT_ENGINE;
   return (
-    <div className="p-3" role="group" aria-label="Text recognition model">
+    <div className="p-3" role="group" aria-label={t('Text recognition model')}>
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="font-medium">Model: {e.name}</p>
+          <p className="font-medium">{t('Model: {name}', { name: e.name })}</p>
           <p className="text-[12px] text-neutral-500">
-            {e.languages}. {e.license}. Kept on this computer; downloaded once from{' '}
-            <span className="font-mono">{e.baseUrls.map((u) => new URL(u).host).join(' or ')}</span>{' '}
-            and checked (SHA-256).
+            {t('{languages}. {license}. Kept on this computer; downloaded once from {hosts} and checked (SHA-256).', {
+              languages: e.languages,
+              license: e.license,
+              hosts: e.baseUrls.map((u) => new URL(u).host).join(' or '),
+            })}
           </p>
         </div>
         {status?.ready ? (
           <button type="button" className={`${control} shrink-0`} onClick={() => void remove()}>
-            Remove ({mb(status.stored)})
+            {t('Remove ({size})', { size: mb(status.stored) })}
           </button>
         ) : progress ? null : (
           <button type="button" className={`${control} shrink-0`} onClick={() => void get()}>
-            Download ({mb(status?.total ?? 0)})
+            {t('Download ({size})', { size: mb(status?.total ?? 0) })}
           </button>
         )}
       </div>
       <p role="status" className="pt-1 text-[12px] text-neutral-600 dark:text-neutral-300">
         {progress
-          ? `Downloading ${mb(progress.done)} of ${mb(progress.total)}`
+          ? t('Downloading {done} of {total}', {
+              done: mb(progress.done),
+              total: mb(progress.total),
+            })
           : status?.ready
-            ? 'Ready.'
-            : 'Not downloaded. Pages without text of their own stay unsearchable until it is.'}
+            ? t('Ready.')
+            : t('Not downloaded. Pages without text of their own stay unsearchable until it is.')}
       </p>
       {error && (
         <p role="alert" className="pt-1 text-[12px] text-red-700 dark:text-red-300">
@@ -283,16 +305,22 @@ const control =
 function Row({
   entry: e,
   settings: s,
+  debuggerAvailable,
   onChange,
 }: {
   entry: SettingEntry;
   settings: Settings;
+  debuggerAvailable: boolean;
   onChange: (patch: Partial<Settings>) => void;
 }) {
   const value = e.get(s);
   const def = defaultOf(e);
   const set = (v: string | number | boolean) => onChange(e.set(s, v));
   const id = `set-${e.id}`;
+  const isDebuggerChoiceDisabled = (choiceValue: string | number | boolean) =>
+    !debuggerAvailable &&
+    ((e.id === 'capture.quiet' && choiceValue === true) ||
+      (e.id === 'capture.resolution' && choiceValue !== 'standard'));
   return (
     <div className="grid gap-2 p-3 sm:grid-cols-[1fr_auto]" data-testid={id}>
       <div>
@@ -370,21 +398,26 @@ function Row({
             aria-labelledby={`${id}-label`}
             className="flex flex-wrap rounded-md border border-neutral-200 p-0.5 dark:border-neutral-700"
           >
-            {e.choices!.map((c) => (
-              <button
-                key={String(c.value)}
-                type="button"
-                role="radio"
-                aria-checked={value === c.value}
-                onClick={() => set(c.value)}
-                className={`rounded px-2 py-0.5 focus-visible:outline-2 focus-visible:outline-accent ${value === c.value ? 'bg-accent font-medium text-white' : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-white'}`}
-              >
-                {t(c.label)}
-                {c.value === e.recommended && (
-                  <span className="sr-only"> ({t('recommended')})</span>
-                )}
-              </button>
-            ))}
+            {e.choices!.map((c) => {
+              const disabled = isDebuggerChoiceDisabled(c.value);
+              return (
+                <button
+                  key={String(c.value)}
+                  type="button"
+                  role="radio"
+                  aria-checked={value === c.value}
+                  disabled={disabled}
+                  title={disabled ? t('Requires Chrome or Edge.') : undefined}
+                  onClick={() => set(c.value)}
+                  className={`rounded px-2 py-0.5 focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40 ${value === c.value ? 'bg-accent font-medium text-white' : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-white'}`}
+                >
+                  {t(c.label)}
+                  {c.value === e.recommended && (
+                    <span className="sr-only"> ({t('recommended')})</span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         ) : (
           <select

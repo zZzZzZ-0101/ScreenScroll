@@ -11,6 +11,7 @@ import {
   type BatchTarget,
 } from '@/shared/batch';
 import type { BatchCancel } from '@/shared/messages';
+import { isFileAccessAllowed } from '@/shared/capabilities';
 import { listCaptures, type StoredCapture } from '@/shared/db';
 import { MergeSheet } from '@/library/MergeSheet';
 import { t } from '@/shared/i18n';
@@ -41,15 +42,15 @@ export function App() {
 
   const readTabs = async () => {
     const me = await chrome.tabs.getCurrent();
-    const fileAccess = await chrome.extension.isAllowedFileSchemeAccess();
+    const fileAccess = await isFileAccessAllowed();
     const list = await chrome.tabs.query({ windowId: me?.windowId });
     const rows = list
-      .filter((t) => t.id !== undefined && t.id !== me?.id)
-      .map((t) => ({
-        id: t.id!,
-        title: t.title || t.url || 'Untitled tab',
-        url: t.url ?? '',
-        blocked: blockedReason(t.url, fileAccess)?.message ?? null,
+      .filter((tab) => tab.id !== undefined && tab.id !== me?.id)
+      .map((tab) => ({
+        id: tab.id!,
+        title: tab.title || tab.url || t('Untitled tab'),
+        url: tab.url ?? '',
+        blocked: blockedReason(tab.url, fileAccess)?.message ?? null,
       }));
     setTabs(rows);
     setChosen(new Set(rows.filter((r) => !r.blocked).map((r) => r.id)));
@@ -60,9 +61,8 @@ export function App() {
       const ok = await chrome.permissions.contains(ALL_SITES);
       setAllowed(ok);
       if (ok) await readTabs();
-      const stored = (await chrome.storage.session.get(BATCH_KEY))[BATCH_KEY] as
-        | BatchState
-        | undefined;
+      const sessionBag = await chrome.storage.session?.get(BATCH_KEY);
+      const stored = sessionBag?.[BATCH_KEY] as BatchState | undefined;
       if (stored) setState(stored);
     })();
     const onChange = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
@@ -110,22 +110,24 @@ export function App() {
     const byId = new Map(all.map((c) => [c.session.id, c]));
     const list = ids.map((id) => byId.get(id)).filter((c): c is StoredCapture => !!c);
     if (list.length) setMerging(list);
-    else setNote('Those captures are no longer saved.');
+    else setNote(t('Those captures are no longer saved.'));
   };
 
   return (
     <main className="mx-auto max-w-3xl p-6 text-[13px] text-neutral-900 dark:text-neutral-100">
-      <h1 className="text-lg font-semibold">Capture several pages</h1>
+      <h1 className="text-lg font-semibold">{t('Capture several pages')}</h1>
       <p className="text-neutral-500">
-        One full-page capture each, one after another. Each page comes to the front while it is
-        captured. Then save them as one PDF, or open them one by one.
+        {t(
+          'One full-page capture each, one after another. Each page comes to the front while it is captured. Then save them as one PDF, or open them one by one.',
+        )}
       </p>
 
       {allowed === false && (
         <section aria-label={t('Permission')} className={`${card} mt-4`}>
           <p>
-            To capture pages other than the one you clicked on, ScreenScroll needs the browser’s
-            permission to read and capture all sites. Nothing is sent anywhere.
+            {t(
+              'To capture pages other than the one you clicked on, ScreenScroll needs the browser’s permission to read and capture all sites. Nothing is sent anywhere.',
+            )}
           </p>
           <button type="button" className={`${primary} mt-2`} onClick={() => void allow()}>
             {t('Allow')}
@@ -136,38 +138,40 @@ export function App() {
       {allowed && (
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           <section aria-label={t('Tabs in this window')} className={card}>
-            <h2 className="pb-1 font-medium">Tabs in this window</h2>
+            <h2 className="pb-1 font-medium">{t('Tabs in this window')}</h2>
             <ul className="max-h-72 overflow-y-auto">
-              {tabs.map((t) => (
-                <li key={t.id}>
+              {tabs.map((tab) => (
+                <li key={tab.id}>
                   <label
-                    className={`flex items-start gap-2 py-0.5 ${t.blocked ? 'text-neutral-400' : ''}`}
-                    title={t.blocked ?? t.url}
+                    className={`flex items-start gap-2 py-0.5 ${tab.blocked ? 'text-neutral-400' : ''}`}
+                    title={tab.blocked ?? tab.url}
                   >
                     <input
                       type="checkbox"
-                      disabled={!!t.blocked || running}
-                      checked={chosen.has(t.id)}
+                      disabled={!!tab.blocked || running}
+                      checked={chosen.has(tab.id)}
                       onChange={(e) =>
                         setChosen((c) => {
                           const n = new Set(c);
-                          if (e.target.checked) n.add(t.id);
-                          else n.delete(t.id);
+                          if (e.target.checked) n.add(tab.id);
+                          else n.delete(tab.id);
                           return n;
                         })
                       }
                       className="mt-0.5 accent-[#0e7c7b]"
                     />
                     <span className="min-w-0">
-                      <span className="block truncate">{t.title}</span>
-                      {t.blocked && (
-                        <span className="block text-[12px]">{t.blocked.split('. ')[0]?.replace(/\.?$/, '.')}</span>
+                      <span className="block truncate">{tab.title}</span>
+                      {tab.blocked && (
+                        <span className="block text-[12px]">
+                          {tab.blocked.split('. ')[0]?.replace(/\.?$/, '.')}
+                        </span>
                       )}
                     </span>
                   </label>
                 </li>
               ))}
-              {!tabs.length && <li className="text-neutral-500">No other tabs.</li>}
+              {!tabs.length && <li className="text-neutral-500">{t('No other tabs.')}</li>}
             </ul>
             <button
               type="button"
@@ -176,17 +180,19 @@ export function App() {
               onClick={() =>
                 void start(
                   tabs
-                    .filter((t) => chosen.has(t.id))
-                    .map((t) => ({ kind: 'tab', tabId: t.id }) as const),
+                    .filter((tab) => chosen.has(tab.id))
+                    .map((tab) => ({ kind: 'tab', tabId: tab.id }) as const),
                 )
               }
             >
-              Capture {chosen.size} tab{chosen.size === 1 ? '' : 's'}
+              {chosen.size === 1
+                ? t('Capture 1 tab')
+                : t('Capture {n} tabs', { n: chosen.size })}
             </button>
           </section>
 
           <section aria-label={t('Addresses')} className={card}>
-            <h2 className="pb-1 font-medium">Addresses</h2>
+            <h2 className="pb-1 font-medium">{t('Addresses')}</h2>
             <textarea
               aria-label={t('Addresses, one per line')}
               value={text}
@@ -198,7 +204,7 @@ export function App() {
             />
             {parsed.rejected.length > 0 && (
               <p className="text-[12px] text-amber-700 dark:text-amber-400">
-                Not web addresses, left out: {parsed.rejected.join(', ')}
+                {t('Not web addresses, left out: {items}', { items: parsed.rejected.join(', ') })}
               </p>
             )}
             <p className="text-[12px] text-neutral-500">
@@ -210,7 +216,9 @@ export function App() {
               disabled={running || !parsed.urls.length}
               onClick={() => void start(parsed.urls.map((url) => ({ kind: 'url', url }) as const))}
             >
-              Capture {parsed.urls.length} address{parsed.urls.length === 1 ? '' : 'es'}
+              {parsed.urls.length === 1
+                ? t('Capture 1 address')
+                : t('Capture {n} addresses', { n: parsed.urls.length })}
             </button>
           </section>
         </div>
@@ -221,8 +229,16 @@ export function App() {
           <div className="flex items-center justify-between gap-2 pb-1">
             <h2 className="font-medium">
               {running
-                ? `Capturing ${state.items.filter((i) => i.status !== 'waiting' && i.status !== 'capturing').length + 1} of ${state.items.length}`
-                : `Done: ${captured.length} of ${state.items.length} captured`}
+                ? t('Capturing {done} of {total}', {
+                    done:
+                      state.items.filter((i) => i.status !== 'waiting' && i.status !== 'capturing')
+                        .length + 1,
+                    total: state.items.length,
+                  })
+                : t('Done: {done} of {total} captured', {
+                    done: captured.length,
+                    total: state.items.length,
+                  })}
             </h2>
             {running && (
               <button
@@ -295,7 +311,7 @@ function ItemRow({ item }: { item: BatchItem }) {
       <Icon aria-hidden size={15} className={`mt-0.5 shrink-0 ${cls}`} />
       <div className="min-w-0">
         <p className="truncate" title={item.url}>
-          <span className="sr-only">{word}: </span>
+          <span className="sr-only">{t(word)}: </span>
           {item.label}
         </p>
         {item.reason && <p className="text-[12px] text-neutral-500">{item.reason}</p>}

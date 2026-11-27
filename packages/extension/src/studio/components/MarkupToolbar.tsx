@@ -100,15 +100,15 @@ export function MarkupToolbar(a: MarkupControls) {
               key={g}
               className="flex items-center gap-0.5 border-r border-neutral-200 pr-1 last:border-0 dark:border-neutral-700"
             >
-              {group.map(([t, label, Icon]) => (
+              {group.map(([tool, label, Icon]) => (
                 <button
-                  key={t}
+                  key={tool}
                   type="button"
-                  aria-label={label}
-                  aria-pressed={a.tool === t}
-                  title={`${label} (${keyOf[t]})`}
-                  onClick={() => a.onTool(t)}
-                  className={`${iconBtn} ${a.tool === t ? 'bg-accent text-white' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
+                  aria-label={t(label)}
+                  aria-pressed={a.tool === tool}
+                  title={`${t(label)} (${keyOf[tool]})`}
+                  onClick={() => a.onTool(tool)}
+                  className={`${iconBtn} ${a.tool === tool ? 'bg-accent text-white' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
                 >
                   <Icon aria-hidden size={17} />
                 </button>
@@ -152,8 +152,8 @@ export function MarkupToolbar(a: MarkupControls) {
               type="button"
               role="radio"
               aria-checked={size === short}
-              aria-label={label}
-              title={`${label} lines and text`}
+              aria-label={t(label)}
+              title={t('{size} lines and text', { size: t(label) })}
               onClick={() => a.onStyle({ ...a.style, ...s })}
               className={`w-7 rounded py-0.5 focus-visible:outline-2 focus-visible:outline-accent ${size === short ? 'bg-neutral-200 font-medium dark:bg-neutral-700' : 'text-neutral-500'}`}
             >
@@ -196,9 +196,9 @@ export function MarkupToolbar(a: MarkupControls) {
         </div>
       </div>
       <p className="flex flex-wrap gap-x-3 pt-1 text-[12px] text-neutral-500" aria-live="polite">
-        <span>{HINTS[a.tool]}</span>
+        <span>{t(HINTS[a.tool])}</span>
         {a.selected && a.tool === 'select' && (
-          <span>Colour and size apply to the selected mark.</span>
+          <span>{t('Colour and size apply to the selected mark.')}</span>
         )}
         {a.cropped && (
           <button
@@ -211,7 +211,7 @@ export function MarkupToolbar(a: MarkupControls) {
         )}
         {a.count > 0 && (
           <button type="button" className="underline-offset-2 hover:underline" onClick={a.onClear}>
-            Clear all ({a.count})
+            {t('Clear all')} ({a.count})
           </button>
         )}
       </p>

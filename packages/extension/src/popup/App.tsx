@@ -16,20 +16,17 @@ import {
   Timer,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import {
+  ensureDebuggerPermission,
+  hasDebugger,
+  isFileAccessAllowed,
+  shortcutsPageUrl,
+} from '@/shared/capabilities';
 import { lastSession, storageSummary, type SessionRecord } from '@/shared/db';
 import type { CaptureMode, CapturePause, CaptureResume } from '@/shared/messages';
 import { loadSettings, saveSettings, type Settings } from '@/shared/settings';
 import { ThemeSwitch } from '@/shared/ThemeSwitch';
 import { t } from '@/shared/i18n';
-
-/** Verifies debugger permission (resolves immediately when declared in manifest.permissions). */
-async function ensureDebuggerPermission(): Promise<boolean> {
-  try {
-    return await chrome.permissions.request({ permissions: ['debugger'] });
-  } catch {
-    return chrome.permissions.contains({ permissions: ['debugger'] }).catch(() => false);
-  }
-}
 
 /**
  * UI §1: the small panel under the toolbar icon. One main action, every other way to
@@ -80,6 +77,8 @@ export function App() {
   const [delay, setDelay] = useState(0);
   const [busy, setBusy] = useState(false);
   const [running, setRunning] = useState<RunningCapture | null>(null);
+  const debuggerAvailable = hasDebugger();
+  const shortcutsUrl = shortcutsPageUrl();
 
   useEffect(() => {
     void loadSettings().then(setSettings);
@@ -97,7 +96,7 @@ export function App() {
     // Say up front when this page can't be captured, instead of after a click.
     void (async () => {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      const info = blockedReason(tab?.url, await chrome.extension.isAllowedFileSchemeAccess());
+      const info = blockedReason(tab?.url, await isFileAccessAllowed());
       setBlocked(info?.message ?? null);
     })();
   }, []);
@@ -180,15 +179,17 @@ export function App() {
           >
             <Gear aria-hidden size={16} />
           </button>
-          <button
-            type="button"
-            title={t('Change keyboard shortcuts')}
-            aria-label={t('Change keyboard shortcuts')}
-            onClick={() => open('chrome://extensions/shortcuts')}
-            className="rounded p-1 text-neutral-500 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:hover:bg-neutral-800"
-          >
-            <Keyboard aria-hidden size={16} />
-          </button>
+          {shortcutsUrl && (
+            <button
+              type="button"
+              title={t('Change keyboard shortcuts')}
+              aria-label={t('Change keyboard shortcuts')}
+              onClick={() => open(shortcutsUrl)}
+              className="rounded p-1 text-neutral-500 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-accent dark:hover:bg-neutral-800"
+            >
+              <Keyboard aria-hidden size={16} />
+            </button>
+          )}
         </div>
       </header>
       <div className="mb-2 flex items-center justify-between">
@@ -332,11 +333,14 @@ export function App() {
               title={t(
                 'In background: the page stays where you are while it is captured (Chrome shows a “debugging” bar meanwhile).',
               )}
-              value={settings.capture.quiet ? 'quiet' : 'screen'}
+              value={settings.capture.quiet && debuggerAvailable ? 'quiet' : 'screen'}
               options={[
                 ['screen', t('On screen')],
                 ['quiet', t('In background')],
               ]}
+              disabledOption={(v) =>
+                v === 'quiet' && !debuggerAvailable ? t('Requires Chrome or Edge.') : undefined
+              }
               onChange={(v) => {
                 void (async () => {
                   if (v === 'quiet') {
@@ -359,12 +363,15 @@ export function App() {
               title={t(
                 '2× and 3× render the page at a higher density for crisp print; Chrome shows a “debugging” bar while they capture.',
               )}
-              value={settings.capture.resolution}
+              value={debuggerAvailable ? settings.capture.resolution : 'standard'}
               options={[
                 ['standard', '1×'],
                 ['high', '2×'],
                 ['max', '3×'],
               ]}
+              disabledOption={(v) =>
+                v !== 'standard' && !debuggerAvailable ? t('Requires Chrome or Edge.') : undefined
+              }
               onChange={(resolution) => {
                 void (async () => {
                   if (resolution !== 'standard') {
@@ -517,6 +524,7 @@ function Choice<T extends string>(p: {
   title: string;
   value: T;
   options: ReadonlyArray<readonly [T, string]>;
+  disabledOption?: (v: T) => string | undefined;
   onChange: (v: T) => void;
 }) {
   return (
@@ -529,22 +537,27 @@ function Choice<T extends string>(p: {
         aria-labelledby={p.id}
         className="flex rounded-md border border-neutral-200 p-0.5 dark:border-neutral-700"
       >
-        {p.options.map(([v, label]) => (
-          <button
-            key={v}
-            type="button"
-            role="radio"
-            aria-checked={p.value === v}
-            onClick={() => p.onChange(v)}
-            className={`rounded px-2 py-0.5 focus-visible:outline-2 focus-visible:outline-accent ${
-              p.value === v
-                ? 'bg-neutral-200 font-medium dark:bg-neutral-700'
-                : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
+        {p.options.map(([v, label]) => {
+          const reason = p.disabledOption?.(v);
+          return (
+            <button
+              key={v}
+              type="button"
+              role="radio"
+              aria-checked={p.value === v}
+              disabled={!!reason}
+              title={reason}
+              onClick={() => p.onChange(v)}
+              className={`rounded px-2 py-0.5 focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40 ${
+                p.value === v
+                  ? 'bg-neutral-200 font-medium dark:bg-neutral-700'
+                  : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
+              }`}
+            >
+              {label}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
